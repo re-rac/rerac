@@ -395,7 +395,8 @@ fn hover_physics(h: &mut Hero, env: &Env) {
     let low = DT * p(4.0);
     let t = if high { low } else { DT * p(5.75) };
     h.stick_target(env, h.stick_mag * t);
-    let strafe = env.pad.held & (button::L2 | button::R2) != 0;
+    // Port-only: the Port Options strafe keeps L2 / R2 from the hero's pad and reports them as `Hero::strafe`.
+    let strafe = env.pad.held & (button::L2 | button::R2) != 0 || h.strafe;
     if p(0.2) < h.stick_mag && !strafe {
         h.turn_to(SCALE64 * p(0.027), SCALE64 * p(0.3), (DT * p(5.934_119)) * h.stick_mag);
     } else if strafe {

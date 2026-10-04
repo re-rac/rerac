@@ -276,7 +276,11 @@ impl Hero {
     pub(super) fn dispatch_physics(&mut self, env: &Env, anim: &mut dyn AnimCtl, rng: &mut Rng) -> bool {
         let s = self.state;
         match module_of(s) {
-            Ground => self.phys_ground(env, anim, rng),
+            Ground => {
+                self.phys_ground(env, anim, rng);
+                // Port-only: the Port Options strafe keeps Ratchet facing the camera in idle and stop (super::strafe).
+                if self.strafe && matches!(s, 0 | 3) { super::strafe::face_camera(self, env); }
+            }
             Walk => self.phys_walk(env),
             Air => self.phys_fall(env),
             Jump if implemented(s) => {

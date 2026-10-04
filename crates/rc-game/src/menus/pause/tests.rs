@@ -340,8 +340,8 @@ fn port_page_from_the_disc() {
     assert_eq!(opts, vec![(20254, 3), (20255, 4), (20256, 5), (20258, 3), (20259, 3), (20260, 3), (port::text::ENTRY as i16, 3), (20262, 3)]);
     let Data::Label(l) = &m.widgets[&port::OPTIONS_LABEL].data else { panic!() };
     assert_eq!(l.table.as_deref(), Some(&[20273, 20274, 20275, 20277, 20278, 20279, port::text::DESCRIPTION as u32, 20281][..]));
-    // The page: Subtitles' frames, filler and hint widgets, parent Options.
-    let (pg, sub) = (&m.pages[&port::PAGE], m.pages[&port::MODEL_FEW].clone());
+    // The page (three rows): Camera's frames, filler and hint widgets, parent Options.
+    let (pg, sub) = (&m.pages[&port::PAGE], m.pages[&port::MODEL_MANY].clone());
     assert_eq!((pg.seqs, pg.parent, pg.focus), (sub.seqs, port::OPTIONS, port::LIST_W));
     assert_eq!((pg.widgets[1], pg.widgets[2], pg.widgets[4]), (sub.widgets[1], sub.widgets[2], sub.widgets[4]));
     assert!(matches!(&m.widgets[&port::TITLE_W].data, Data::Label(t) if t.flags == 0xf && t.id == port::text::TITLE as u32));
@@ -371,16 +371,22 @@ fn port_page_from_the_disc() {
     m.tick(&press(button::CROSS), &mut g, &env);
     m.tick(&press(button::CROSS), &mut g, &env);
     assert_eq!(m.port_value(Setting::Msaa), Some(0), "wraps after 8x");
-    // The shadows row (default on = value 0): Down moves to it, ✕ toggles off and back on; Down stops at the last row.
+    // The shadows row (default on = value 0): Down moves to it, ✕ toggles off and back on.
     assert_eq!(m.port_value(Setting::Shadows), Some(0));
+    let o = m.tick(&press(button::DOWN), &mut g, &env);
+    assert_eq!(o.sounds, vec![MenuSound::Cursor]);
+    m.tick(&press(button::CROSS), &mut g, &env);
+    assert_eq!((m.port_value(Setting::Shadows), m.port_value(Setting::Msaa)), (Some(1), Some(0)));
+    m.tick(&press(button::CROSS), &mut g, &env);
+    assert_eq!(m.port_value(Setting::Shadows), Some(0), "on / off wrap");
+    // The strafe row (default off = value 0): Down moves to it, ✕ turns it on; Down stops at the last row.
+    assert_eq!(m.port_value(Setting::Strafe), Some(0));
     let o = m.tick(&press(button::DOWN), &mut g, &env);
     assert_eq!(o.sounds, vec![MenuSound::Cursor]);
     let o = m.tick(&press(button::DOWN), &mut g, &env);
     assert!(o.sounds.is_empty(), "last row: no cursor move");
     m.tick(&press(button::CROSS), &mut g, &env);
-    assert_eq!((m.port_value(Setting::Shadows), m.port_value(Setting::Msaa)), (Some(1), Some(0)));
-    m.tick(&press(button::CROSS), &mut g, &env);
-    assert_eq!(m.port_value(Setting::Shadows), Some(0), "on / off wrap");
+    assert_eq!((m.port_value(Setting::Strafe), m.port_value(Setting::Shadows)), (Some(1), Some(0)));
     // Its values are the game's own on / off strings (the Subtitles toggle's).
     let Data::Toggle(sub_t) = &m.widgets[&0x1b5160].data else { panic!() };
     assert_eq!((sub_t.entries[0].on, sub_t.entries[0].off), (port::text::ON as u32, port::text::OFF as u32));

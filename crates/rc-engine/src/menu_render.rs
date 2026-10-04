@@ -662,6 +662,7 @@ fn menu_frame(
                 menu.set_port_choices(Setting::Msaa, supported.as_deref().map_or_else(|| aa_choices(&SupportedMsaa::default()), aa_choices));
                 if let Some(r) = render.as_deref() { menu.set_port_value(Setting::Msaa, aa_index(r.msaa)); }
                 if let Some(s) = shadows.as_deref() { menu.set_port_value(Setting::Shadows, !s.enabled as u8); }
+                menu.set_port_value(Setting::Strafe, play.game.options.strafe as u8);
                 // The card and the save inputs moved into the menu for its tick (crate::saves).
                 saves_in(menu, &play);
                 // 0x15172a as the widgets read it (the Helpdesk girl).
@@ -672,6 +673,13 @@ fn menu_frame(
                         s.enabled = v == 0;
                         println!("menus: frame {frame}: Port Options: shadows {}", if s.enabled { "on" } else { "off" });
                         s.save();
+                    }
+                }
+                if let Some(v) = menu.port_value(Setting::Strafe) {
+                    if play.game.options.strafe != (v == 1) {
+                        play.game.options.strafe = v == 1;
+                        println!("menus: frame {frame}: Port Options: strafe {}", if v == 1 { "on" } else { "off" });
+                        render_settings::save_key("strafe", if v == 1 { "on" } else { "off" });
                     }
                 }
                 if let (Some(v), Some(r)) = (menu.port_value(Setting::Msaa), render.as_mut()) {

@@ -51,6 +51,8 @@ pub struct GameOptions {
     pub cheats: crate::cheats::Cheats,
     /// 0x15eea0 ‖ 0x15ee20: the game beaten or completed (the cheat entry `0x2285a0` runs).
     pub cheat_entry: bool,
+    /// **Port-only**: the Port Options strafe (`crate::hero::strafe`; off by default).
+    pub strafe: bool,
 }
 
 /// The gameplay state one tick advances.
@@ -290,12 +292,17 @@ impl Game {
         carriers.wall = (wall != 0).then(|| hooks.world.as_deref().and_then(|w| w.spline(wall)).map(|p| (wall, p))).flatten();
         // The weapon's target (0x13fda0) where the moby loop left it (SetState 0x23 aims at it).
         crate::hero::weapons::refresh_aim(&mut self.hero, &self.mobys);
+        // Port-only: the Port Options strafe (crate::hero::strafe): while it owns L2 / R2 the hero sees the pad without
+        // them (the item updates keep the whole pad) and reads the strafe as `Hero::strafe`.
+        self.hero.strafe_mode = self.options.strafe;
+        let strafe_pad = crate::hero::strafe::prepare(&mut self.hero, &self.pad);
+        let hero_pad = strafe_pad.as_ref().unwrap_or(&self.pad);
         let hero_tick = {
             let mobys = scene.as_ref().map(OwnedScene::scene);
             let view = self.camera.out;
             let env = Env {
                 coll,
-                pad: &self.pad,
+                pad: hero_pad,
                 cam_yaw: view.yaw(),
                 cam_rows: view.rows,
                 mirror: self.options.mirror,
@@ -431,9 +438,11 @@ impl Game {
                     let scene = hooks.world.as_deref_mut().and_then(|w| w.scene(&self.mobys));
                     let mobys = scene.as_ref().map(OwnedScene::scene);
                     let view = self.camera.out;
+                    // The strafe's view of the pad as it is now (the released mask above changed it).
+                    let strafe_pad = crate::hero::strafe::owns_buttons(&self.hero).then(|| self.pad.without(crate::hero::strafe::BUTTONS));
                     let env = Env {
                         coll,
-                        pad: &self.pad,
+                        pad: strafe_pad.as_ref().unwrap_or(&self.pad),
                         cam_yaw: view.yaw(),
                         cam_rows: view.rows,
                         mirror: self.options.mirror,

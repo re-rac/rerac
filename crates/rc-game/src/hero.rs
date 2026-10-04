@@ -75,6 +75,7 @@ pub mod scripted;
 pub mod worn;
 pub mod bodies;
 pub mod hoverboard;
+pub mod strafe;
 
 use crate::ps2v::Pf;
 pub use ledge::LedgeBlock;
@@ -477,6 +478,12 @@ pub struct Hero {
     pub board: hoverboard::Board,
     /// The cheat bytes 0x15edb0 as the hero code reads them (the tick copies `GameOptions::cheats` in; `crate::cheats`).
     pub cheats: crate::cheats::Cheats,
+    /// **Port-only**: the Port Options strafe ([`strafe`]): `strafe_mode` = the option, `strafe` = L2 / R2 held this
+    /// tick while it applies (the tick sets both before the hero update).
+    pub strafe_mode: bool,
+    pub strafe: bool,
+    /// The direction the strafe last moved Ratchet ([`strafe::move_yaw`]).
+    pub strafe_yaw: Pf,
     /// The move ring 0x141514[16] / 0x141524 of the cheat entry `0x2285a0` (`crate::cheats::MoveEntry`).
     pub cheat_moves: crate::cheats::MoveEntry,
 }
@@ -546,7 +553,7 @@ impl Hero {
             gadgets: gadgets::Gadgets::default(), swing: swingshot::Swing::default(), fx: fx::HeroFx::default(),
             f13f5: 0, f13ff: 0, weapons: weapons::Weapons::default(), comet: comet::Comet::default(), loop_in: Default::default(),
             joint_targets: Default::default(), help: Default::default(), walloper: Default::default(), bodies: bodies::Bodies::default(),
-            cheats: Default::default(), cheat_moves: Default::default(), board: hoverboard::Board::default(),
+            cheats: Default::default(), strafe_mode: false, strafe: false, strafe_yaw: Pf::ZERO, cheat_moves: Default::default(), board: hoverboard::Board::default(),
         }
     }
 

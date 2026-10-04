@@ -1,5 +1,5 @@
-//! **Port-only** (not in the game): the "Port Options" page, for settings the PS2 never had (anti-aliasing, and
-//! switching the moby shadows off). Spec: docs/plan/menus.md "Port-only settings".
+//! **Port-only** (not in the game): the "Port Options" page, for settings the PS2 never had (anti-aliasing,
+//! switching the moby shadows off, and a Going Commando–style strafe, `crate::hero::strafe`). Spec: docs/plan/menus.md "Port-only settings".
 //!
 //! It is built entirely from the game's own machinery so it looks and behaves like the Options sub-pages:
 //! a page record whose frame-moby seqs, filler widgets and "✕ Toggle / △ Exit" hint list are those of a
@@ -58,6 +58,7 @@ pub mod text {
     pub const X4: i32 = -0x112;
     pub const X8: i32 = -0x113;
     pub const SHADOWS: i32 = -0x120;
+    pub const STRAFE: i32 = -0x130;
     /// The game's own "on" / "off" (20314 / 20315, the Subtitles / HelpDesk toggle values).
     pub const ON: i32 = 20314;
     pub const OFF: i32 = 20315;
@@ -71,6 +72,7 @@ pub mod text {
             X4 => b"4x",
             X8 => b"8x",
             SHADOWS => b"Shadows",
+            STRAFE => b"Strafe (L2 / R2)",
             _ => return None,
         })
     }
@@ -83,6 +85,9 @@ pub enum Setting {
     Msaa,
     /// The moby shadows (docs/plan/shadows.md): value 0 on (the game's look, the default), 1 off.
     Shadows,
+    /// The Going Commando–style strafe on L2 / R2 (`crate::hero::strafe`): value 0 off (the game's controls, the
+    /// default), 1 on.
+    Strafe,
 }
 
 /// One row: the setting, its label and the ids of its values (✕ cycles through them).
@@ -97,6 +102,7 @@ pub struct Entry {
 pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::Msaa, label: text::ANTI_ALIASING, values: &[text::OFF, text::X2, text::X4, text::X8] },
     Entry { setting: Setting::Shadows, label: text::SHADOWS, values: &[text::ON, text::OFF] },
+    Entry { setting: Setting::Strafe, label: text::STRAFE, values: &[text::OFF, text::ON] },
 ];
 
 /// The list's run-time state: cursor, each row's value index and each row's selectable values (bit k = value k;

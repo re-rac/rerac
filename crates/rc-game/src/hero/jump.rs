@@ -512,8 +512,11 @@ impl Hero {
                     let mut ok = true;
                     if self.state == 0x1c || self.jump.landed != 0 { ok = x7; }
                     if self.state == 0xb && self.jump.landed == 0 { ok = false; }
-                    if ok && pad.pressed_within(0x1f000, ticks(5)).is_some() && pad.held & button::CROUCH != 0 {
+                    // Port-only: while the Port Options strafe is held, the stick itself chains the flips (super::strafe).
+                    let strafe_chain = self.strafe && Pf::f(0.2) < self.stick_mag;
+                    if ok && (strafe_chain || (pad.pressed_within(0x1f000, ticks(5)).is_some() && pad.held & button::CROUCH != 0)) {
                         self.set_state(c, 0xb, true);
+                        if strafe_chain && self.state == 0xb { super::strafe::carry_along_stick(self); }
                         return;
                     }
                 }

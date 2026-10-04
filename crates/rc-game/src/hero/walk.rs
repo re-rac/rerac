@@ -60,6 +60,8 @@ impl Hero {
 
     /// Walk / run 2 (0x23a2e4).
     pub(super) fn phys_walk(&mut self, env: &Env) {
+        // Port-only: the Port Options strafe (super::strafe) has no sharp turn and no turn toward the stick.
+        if self.strafe { self.sharp_turn = 0; self.turn_to_target = 0; }
         if self.eff_len_xy < DT * Pf::b(0x3e99_999a) && Pf::b(0x3f59_999a) < self.stick_mag { self.turn_to_target = 1; }
         if self.yaw_residual.abs() < Pf::b(0x3d56_7750) || self.f13f8 != 0 || self.substate == 1 { self.turn_to_target = 0; }
         if self.sharp_turn != 0 && (self.yaw_residual.abs() < Pf::b(0x3d8e_fa35) || self.f13f8 != 0) { self.sharp_turn = 0; }
@@ -74,7 +76,9 @@ impl Hero {
             self.push = V0;
         }
         let mut f = Pf::ONE;
-        if self.substate == 1 && self.sharp_turn == 0 {
+        if self.strafe {
+            super::strafe::face_camera(self, env);
+        } else if self.substate == 1 && self.sharp_turn == 0 {
             self.turn_to(SCALE64 * Pf::b(0x3c03_126f), SCALE64 * Pf::b(0x3e19_999a), DT * Pf::b(0x411f_2c8d));
         } else {
             if self.f13f8 != 0 {
@@ -103,7 +107,10 @@ impl Hero {
             dec = DT2 * Pf::b(0x4188_0000);
         }
         self.speed_step(acc, dec);
-        if self.turn_to_target != 0 && self.f658 == 0 {
+        if self.strafe {
+            let y = super::strafe::move_yaw(self);
+            self.set_planar_vel(y);
+        } else if self.turn_to_target != 0 && self.f658 == 0 {
             self.set_planar_vel(self.target_yaw);
         } else {
             self.set_planar_vel(Pf::b(0x47c3_4f80));
@@ -157,7 +164,7 @@ impl Hero {
         if self.state == 2 && self.f658 != 0 { self.set_state(c, 0x3f, true); }
         // A grind rail under the feet (0x13f8bc): 0x28 (super::boots).
         if super::boots::rail_contact(self) { self.set_state(c, 0x28, true); return; }
-        if (ticks(15) < self.timer || self.prev_group as u32 >= 2) && pad.pressed & button::FLICK != 0 && self.f13fa == 0 {
+        if (ticks(15) < self.timer || self.prev_group as u32 >= 2) && pad.pressed & button::FLICK != 0 && self.f13fa == 0 && !self.strafe {
             self.sharp_turn = 1;
         }
         if self.state == 0x73 {

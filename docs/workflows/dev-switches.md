@@ -24,6 +24,9 @@ applies to them (`crates/rc-engine/src/render_settings.rs`).
 
 Boolean switches are on with `1` (or off with `0` where the default is on).
 
+`RC_STRAFE=0|1` sets the Port Options strafe (L2 / R2, Going Commando style) at each play start, over the settings
+file's `strafe = on|off` (default off).
+
 This table lists the switches for everyday development. The engine reads more (trace, dump and survey switches added
 by individual ports, e.g. `RC_AUDIO_TRACE`, `RC_MOVIE_TRACE`, `RC_SCREENSHOT_FRAME`); each is documented in the
 module that reads it: `grep -rn '"RC_' crates/` lists them all.

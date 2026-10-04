@@ -60,6 +60,8 @@ impl Hero {
     /// a direction press near the ✕) or jump 7.
     pub(super) fn try_jump(&mut self, c: &mut Ctx, n: i32, no_plain: bool) -> bool {
         if c.env.pad.pressed_within(button::CROSS, n).is_none() { return false; }
+        // Port-only: the Port Options strafe's flip (super::strafe).
+        if super::strafe::flip(self, c) { return true; }
         let w = self.flip_window(c);
         if c.env.pad.held & button::CROUCH != 0 && w > 0 && c.env.pad.combo(button::CROSS, 0x1f000, n + w, w) {
             self.set_state(c, 0xb, true);

@@ -1058,7 +1058,8 @@ fn setup(
     }
     let spawn_moby = table.mobys[hero_id].clone();
     let opts = state.as_ref().map(|s| s.0.options());
-    let options = opts.map_or(GameOptions::default(), |o| o.game_options());
+    let mut options = opts.map_or(GameOptions::default(), |o| o.game_options());
+    options.strafe = strafe_setting();
     // srand(1234), hero init (ground snap, mode 2, the fidget-timer draw), the camera behind him.
     let mut game = Game::new(coll, table, hero_id, options, lv.death_z);
     if let Some(s) = &session { game.hero.health = s.0.hp; }
@@ -1667,6 +1668,13 @@ type HudAudio<'w> = (Option<ResMut<'w, HeldWeapon>>, Option<Res<'w, AmmoTable>>,
 
 type MainCamera<'w, 's> = Query<'w, 's, &'static Transform, (With<Camera3d>, Without<crate::sky_render::SkyCamera>)>;
 
+/// The Port Options strafe at the start of play (`rc_game::hero::strafe`): `RC_STRAFE=0|1`, else the port settings
+/// file's `strafe = on|off`, else off (the game's controls).
+pub fn strafe_setting() -> bool {
+    if let Ok(v) = std::env::var("RC_STRAFE") { return v.trim() == "1"; }
+    crate::render_settings::load_key("strafe").is_some_and(|v| v.trim() == "on")
+}
+
 /// One 60 Hz gameplay tick (see the module docs). Skipped in the modes whose update does not run the game
 /// tick (crate::menu_render: `Mode::advances_tick`, e.g. the mode-3 menus).
 #[allow(clippy::too_many_arguments)]
@@ -1829,6 +1837,8 @@ fn tick(
         let mut o = gs.0.options().game_options();
         o.cheats = rc_game::cheats::Cheats(g.cheats_active);
         o.cheat_entry = g.game_beaten != 0 || g.completes != 0;
+        // The Port Options strafe is the port's own (Play start, the menu row), not the saved game's.
+        o.strafe = p.game.options.strafe;
         p.game.options = o;
         p.game.camera.opts = o.camera;
         svc_cell.borrow_mut().cheats = o.cheats;

@@ -178,6 +178,26 @@ fn mirror_lr(m: u32) -> u32 {
 }
 
 impl PadState {
+    /// **Port-only**: this pad as if the buttons of `mask` were never pressed (every held / pressed / released
+    /// word, their raw and un-mirrored copies, the pressed history and their pressures). The hero sees this
+    /// view while the Port Options strafe owns L2 / R2 (`crate::hero::strafe`).
+    pub fn without(&self, mask: u32) -> PadState {
+        let mut p = self.clone();
+        for w in [
+            &mut p.held, &mut p.pressed, &mut p.released, &mut p.prev_held, &mut p.raw, &mut p.raw_pressed,
+            &mut p.raw_released, &mut p.prev_raw, &mut p.held_unmirrored, &mut p.pressed_unmirrored,
+            &mut p.released_unmirrored, &mut p.held_store,
+        ] {
+            *w &= !mask;
+        }
+        for h in p.hist_pressed.iter_mut() { *h &= !mask; }
+        // The pressure bytes 6..17 are R, L, U, D, △, ○, ✕, □, L1, R1, L2, R2.
+        if mask & button::L2 != 0 { p.pressure[10] = Pf::ZERO; }
+        if mask & button::R2 != 0 { p.pressure[11] = Pf::ZERO; }
+        p.nothing_held = p.held == 0;
+        p
+    }
+
     /// `UpdatePad__FR3PAD` (0x27bb30) for one tick. `data` = the libpad2 read (`sceScfPad2Read`: bytes 0/1
     /// buttons active-low, 2..5 = rx, ry, lx, ly, 6..17 pressures) or `None` when the pad is not
     /// connected / not in a readable state (→ `ClearPadInput`). `mirror` = option byte 0x15edb4.

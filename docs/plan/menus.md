@@ -528,6 +528,11 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   (engine `menu_render.rs` syncs the row with the resource around each menu tick; a change is applied by
   `render_settings::apply` and saved). The world is not re-rendered under the menu (the snapshot is shown), so the new
   setting is visible from the first gameplay frame after the close.
+  Shadows: on / off → `shadow_render::ShadowSettings` (docs/plan/shadows.md). **Strafe (L2 / R2)**: off (default) / on →
+  `GameOptions::strafe`, a Going Commando–style strafe (`crates/rc-game/src/hero/strafe.rs`: L2 / R2 held faces the camera
+  and moves along the stick, ✕ with a side / back stick flips; L1 keeps the look stance, R1 the crouch); the engine seeds
+  it at each play start (`gameplay::strafe_setting`: `RC_STRAFE=0|1`, else the file's `strafe = on|off`), the row writes
+  the running game's value and saves it. With three rows the page uses Camera's frames.
 * **Device support**: the row offers only the sample counts the GPU can use for every multisampled world attachment
   (`render_settings::SupportedMsaa`, detected at start from `RenderAdapter::get_texture_format_features` for
   `Rgba8UnormSrgb` and `Depth32Float` — the WebGPU guarantee {1, 4} when the device lacks
