@@ -215,8 +215,12 @@ So, per record (`spawn_test`, rc-formats moby_spawn.rs): flagged 0x1bbb04 → go
 by the **arrival's** mission state (flag 1 before, flag 2 after), regardless of deaths this visit; else flag 8 → gone
 once killed this visit; flags & 0xc = 4 → gone once ever killed; else always back. Examples (Kerwan): the train's
 troopers (flags 3, mission 3) come back after every death; a nanotech crate (flags 3, mission 1) comes back after a
-death until mission 1 is done, after which a broken one stays gone. The port's reload: `rc-engine` gameplay.rs
-`death_reload` (G-CLS-030).
+death until mission 1 is done, after which a broken one stays gone. **Checkpoints** (805) also make kills permanent:
+taking one calls `SetMissionDone(its mission)` and then its record 0x29ac10, which turns every kill of this visit
+(0x1baea4 ≠ 0) whose mission is done now (0x14c050), or has none, into "never again" (0x1bbb04 and both death bits);
+its own mission counts, as `SetMissionDone` writes at once. Kerwan's missions: 0 the Heli-Pack checkpoint, 1 the train
+station's checkpoint, 2 Helga's course checkpoint, 3 the train's infobot. The port's reload: `rc-engine` gameplay.rs
+`death_reload` (G-CLS-030); the same-tick read: `World::mission_done`.
 
 ## 7. Port plan — `crates/rc-game/src/game_state.rs`
 
