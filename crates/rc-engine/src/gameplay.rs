@@ -1714,6 +1714,9 @@ fn death_reload(p: &mut Play, lv: &crate::level_load::LoadedLevel, state: Option
     p.hero_id = hero_id;
     p.spawn_moby = p.game.mobys.mobys[hero_id].clone();
     p.ship = ship_id.zip(ship_ii);
+    // 0x13e030: the loader's new ship (`ShipUpdate` runs on it alone: its glass, its hatch prompt). The compacted table
+    // moves its id once a placed moby is gone; the old id left the ship without its update after a death.
+    p.svc.travel.moby = ship_id;
     p.moby_to_instance = statics.moby_to_instance.clone();
     let n_static = p.game.mobys.first_dynamic;
     let mut driven: Vec<(MobyId, usize, Option<usize>)> = (0..n_static)
