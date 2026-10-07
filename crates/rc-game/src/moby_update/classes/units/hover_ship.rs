@@ -346,7 +346,7 @@ fn init(w: &mut World, id: MobyId) {
         m.mode &= !0x41;
     }
     let level = w.svc.level;
-    let done = w.missions.mission_done(level, w.m(id).mission) == 0xff;
+    let done = w.mission_done(level, w.m(id).mission) == 0xff;
     let arrive = spline(w, c::pi32(w, id, sp::ARRIVE));
     match arrive {
         Some(p) if !done && c::pi32(w, id, sp::ARRIVE_CUBOID) != -1 => {

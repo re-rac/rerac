@@ -205,7 +205,7 @@ pub fn update(w: &mut World, id: MobyId) {
         }
         1 => {
             let level = w.svc.level;
-            if w.missions.mission_done(level, w.m(id).mission) == 0xff {
+            if w.mission_done(level, w.m(id).mission) == 0xff {
                 let t = w.ticks(0x1e);
                 c::set_pi32(w, id, DOOR_T, t);
                 w.mm(id).state = 2;

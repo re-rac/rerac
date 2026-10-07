@@ -249,7 +249,7 @@ fn done(w: &mut World, id: MobyId) {
 /// at the cuboid (`0x29ac10(centre, Euler)`).
 fn mission_checkpoint(w: &mut World, id: MobyId) {
     let cub = i(w, id, CHECKPOINT);
-    if cub == -1 || w.missions.mission_done(w.svc.level, w.m(id).mission) == 0xff { return; }
+    if cub == -1 || w.mission_done(w.svc.level, w.m(id).mission) == 0xff { return; }
     crate::moby_update::visit::record_pvar(w, id, id, 0, 4);
     let mission = w.m(id).mission;
     crate::cinematic::set_mission_done(w, mission);

@@ -107,7 +107,7 @@ pub fn run(w: &mut World, id: MobyId, base: usize) { run_with(w, id, base, None)
 fn run_with(w: &mut World, id: MobyId, base: usize, held: Option<bool>) {
     let (shut, open) = (held == Some(false), held == Some(true));
     let (mission, level) = (w.m(id).mission, w.svc.level);
-    if mission != 0xff && w.missions.mission_done(level, mission) == 0xff { set_pi32(w, id, base + 0x10, -1); }
+    if mission != 0xff && w.mission_done(level, mission) == 0xff { set_pi32(w, id, base + 0x10, -1); }
     let (a, b) = (pi32(w, id, base + 0x14) as u32, pi32(w, id, base + 0x18) as u32);
     let link = link_state_at(w, id, base).map(u32::from);
     let next = match w.m(id).state {

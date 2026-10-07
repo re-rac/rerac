@@ -164,7 +164,7 @@ pub mod k {
 fn state(w: &World, id: MobyId) -> u8 { w.m(id).state }
 fn link(w: &World, id: MobyId, o: usize) -> Option<MobyId> { usize::try_from(c::pi32(w, id, o)).ok().filter(|&m| m < w.table.mobys.len()) }
 fn phase(w: &World, id: MobyId) -> usize { (c::pi32(w, id, pv::PHASE) & 3) as usize }
-fn mission_done(w: &World, m: i32) -> bool { u8::try_from(m).is_ok_and(|m| w.missions.mission_done(w.svc.level, m) == 0xff) }
+fn mission_done(w: &World, m: i32) -> bool { u8::try_from(m).is_ok_and(|m| w.mission_done(w.svc.level, m) == 0xff) }
 fn hero(w: &World) -> c::V { crate::moby_update::classes::units::hero_pos(w) }
 fn heading_to(p: c::V, t: c::V) -> f32 { c::atan(t[0] - p[0], t[1] - p[1]) }
 fn spline(w: &World, i: i32) -> Option<usize> { usize::try_from(i).ok().filter(|&p| p < w.svc.splines.len()) }

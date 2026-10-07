@@ -56,7 +56,7 @@ pub fn update(w: &mut World, id: MobyId) {
     }
     let level = w.svc.level;
     let gate = p::i32(&w.m(id).pvars, 0x18);
-    if gate != -1 && w.missions.mission_done(level, gate as u8) != 0xff { return; }
+    if gate != -1 && w.mission_done(level, gate as u8) != 0xff { return; }
     let (mode, group) = (w.hero.mode, w.hero.group);
     if flags & 2 != 0 && mode != 1 { return; }
     if flags & 4 != 0 && mode != 3 && mode != 0 { return; }
@@ -100,7 +100,7 @@ pub fn update(w: &mut World, id: MobyId) {
             s.death_level.remove(&sid);
         }
     }
-    if w.m(id).state == 0 && w.missions.mission_done(level, w.m(id).mission) == 0xff { w.mm(id).state = 1; }
+    if w.m(id).state == 0 && w.mission_done(level, w.m(id).mission) == 0xff { w.mm(id).state = 1; }
 }
 
 /// `FUN_0029ac10(point, euler)`: this visit's kills whose mission is done become permanent, and the record.
@@ -109,7 +109,7 @@ pub(crate) fn record(w: &mut World, r: Record) {
     let kills: Vec<(i16, u8)> = w.svc.save.killed.iter().map(|(&k, &v)| (k, v)).collect();
     for (sid, b) in kills {
         if !(0..0x7ff).contains(&sid) || b == 0 { continue; }
-        if b == 1 || w.missions.mission_done(level, b.wrapping_sub(2)) == 0xff {
+        if b == 1 || w.mission_done(level, b.wrapping_sub(2)) == 0xff {
             let s = &mut w.svc.save;
             s.collected.insert(sid, b);
             s.death_level.insert(sid);
@@ -172,5 +172,33 @@ pub(crate) mod tests {
         assert_eq!(done, [&EngineRequest::MissionDone { mission: 3 }]);
         assert!(w.svc.save.checkpoint.is_some());
         assert_eq!(w.svc.fx.unported.get("checkpoint 805 SetMissionDone"), None);
+    }
+
+    /// `SetMissionDone` writes 0x14c050 at once, so the record right after it promotes this visit's kills of the
+    /// checkpoint's own mission ("never again", 0x1bbb04); a kill of a mission still open stays a visit kill.
+    /// (Kerwan: a nanotech crate of mission 1 broken before the train station's checkpoint stays gone once it is taken.)
+    #[test]
+    fn taking_promotes_the_kills_of_its_own_mission() {
+        let at = [10.0, 20.0, 5.0];
+        let mut m = Moby { o_class: 805, mission: 1, spawn_id: 9, position: [at[0], at[1], at[2], 1.0], pvars: vec![0; 0x1c], ..Moby::default() };
+        p::set_i32(&mut m.pvars, 0x18, -1);
+        let mut t = MobyTable::new(vec![m], 4);
+        let mut hero = crate::hero::Hero::new();
+        hero.pos = [Pf::f(at[0]), Pf::f(at[1]), Pf::f(at[2]), Pf::ONE];
+        let mut rng = crate::rng::Rng::new();
+        let classes = crate::moby_update::ClassTable::default();
+        let mut svc = crate::moby_update::Services::new();
+        svc.level = 3;
+        svc.volumes = std::sync::Arc::new(rc_formats::volumes::Volumes { cuboids: vec![cube(at, [0.0; 3])], ..Default::default() });
+        // A crate of mission 1 and an enemy of mission 2, both broken / killed this visit (0x1baea4 = mission + 2).
+        svc.save.killed.insert(42, 1 + 2);
+        svc.save.killed.insert(43, 2 + 2);
+        let missions = crate::moby_update::services::LevelMissions::fresh_load(3, [0; 16]);
+        let mut w = World::new(&mut t, &hero, &mut rng, &classes, &mut svc, 0);
+        w.missions = &missions;
+        for _ in 0..2 { update(&mut w, 0); }
+        assert!(w.svc.save.checkpoint.is_some());
+        assert_eq!(w.svc.save.collected.get(&42), Some(&3), "the kill of the checkpoint's own mission is promoted");
+        assert_eq!(w.svc.save.collected.get(&43), None, "a kill of another, open mission is not");
     }
 }

@@ -429,7 +429,7 @@ fn init(w: &mut World, id: MobyId) -> bool {
             None => true,
             Some(m) => {
                 let killed = m.spawn_id >= 0 && w.svc.save.death.contains(&(w.svc.level, m.spawn_id));
-                m.state == 0xfe || m.state == 0xfd || (killed && w.missions.mission_done(w.svc.level, m.mission) == 0xff)
+                m.state == 0xfe || m.state == 0xfd || (killed && w.mission_done(w.svc.level, m.mission) == 0xff)
             }
         };
         if gone { c::set_pi32(w, id, pv::WATCH, -1); }

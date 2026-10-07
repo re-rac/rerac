@@ -1775,6 +1775,15 @@ impl<'a> World<'a> {
     }
 
     /// `MobyBuildMatrix` 0x265bd8 on one moby.
+    /// 0x14c050 + L·16 as the game has it at this point of the tick: `SetMissionDone` 0x265080 writes it at once, the
+    /// port's request ([`crate::cinematic::set_mission_done`]) is applied by the engine after the tick, so a mission
+    /// done earlier in this tick (a checkpoint's own, which its record reads right after) already counts.
+    pub fn mission_done(&self, level: u32, mission: u8) -> u8 {
+        let pending = level == self.svc.level
+            && self.svc.cinematic.requests.iter().any(|r| matches!(r, crate::cinematic::EngineRequest::MissionDone { mission: m } if *m == mission));
+        if pending { 0xff } else { self.missions.mission_done(level, mission) }
+    }
+
     pub fn build_matrix(&mut self, id: MobyId) { self.svc.build_matrix_in(self.table, self.classes, id); }
 
     /// `FUN_002645a8(moby, list, out)` 0x2645a8: the world point of the last joint of the class's joint list

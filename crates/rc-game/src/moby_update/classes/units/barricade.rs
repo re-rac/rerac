@@ -57,7 +57,7 @@ pub fn update(w: &mut World, id: MobyId) {
     match w.m(id).state {
         0 => {
             let (ms, level) = (w.m(id).mission, w.svc.level);
-            if ms == 0xff || w.missions.mission_done(level, ms) != 0xff {
+            if ms == 0xff || w.mission_done(level, ms) != 0xff {
                 w.mm(id).state = 1;
                 // The pointer is self-relative in the level data (a pvar offset, `rc_formats::gameplay::parse_pvars`).
                 let at = c::pi32(w, id, o::LINK);

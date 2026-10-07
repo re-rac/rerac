@@ -54,7 +54,7 @@ pub fn update(w: &mut World, id: MobyId) {
     match w.m(id).state {
         0 => {
             let (m, level) = (w.m(id).mission, w.svc.level);
-            w.mm(id).state = if w.missions.mission_done(level, m) == 0xff { 3 } else { 1 };
+            w.mm(id).state = if w.mission_done(level, m) == 0xff { 3 } else { 1 };
         }
         1 => {
             let link = c::pi32(w, id, 8);

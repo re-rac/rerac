@@ -89,7 +89,7 @@ pub fn update(w: &mut World, id: MobyId) {
         2 => {
             if w.svc.interact.talker == Some(id) { return look_at(w, id); }
             let mission = w.m(id).mission;
-            if mission != 0xff && w.missions.mission_done(w.svc.level, mission) != 0xff {
+            if mission != 0xff && w.mission_done(w.svc.level, mission) != 0xff {
                 crate::cinematic::set_mission_done(w, mission);
                 let c = p::i32(&w.m(id).pvars, 0x4c);
                 if let Some(s) = w.svc.volumes.shape(rc_formats::volumes::ShapeKind::Cuboid, c).copied() {

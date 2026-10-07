@@ -109,7 +109,7 @@ pub fn update(w: &mut World, id: MobyId) {
     match w.m(id).state {
         0 => {
             let m = w.m(id).mission as i32;
-            if u8::try_from(m).is_ok_and(|mm| w.missions.mission_done(w.svc.level, mm) == 0) {
+            if u8::try_from(m).is_ok_and(|mm| w.mission_done(w.svc.level, mm) == 0) {
                 for g in group(w, pi(w, id, 0x00)) { w.mm(g).state = 4; }
                 for o in [0x04, 0x08] {
                     for g in group(w, pi(w, id, o)) {

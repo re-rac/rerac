@@ -85,7 +85,7 @@ pub fn switch_update(w: &mut World, id: MobyId) {
             set_pf(w, id, 0x68, a);
             set_pi32(w, id, 0x30, 0x3a83_126f);
             let (lvl, b0) = (w.svc.level, w.m(id).mission);
-            if w.missions.mission_done(lvl, b0) != 0xff || pi32(w, id, 0x64) != -1 {
+            if w.mission_done(lvl, b0) != 0xff || pi32(w, id, 0x64) != -1 {
                 w.mm(id).state = 1;
             } else {
                 let m = w.mm(id);

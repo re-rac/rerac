@@ -50,7 +50,7 @@ fn set_pf(w: &mut World, id: MobyId, o: usize, v: f32) { p::set_ff(&mut w.mm(id)
 fn pi(w: &World, id: MobyId, o: usize) -> i32 { p::i32(&w.m(id).pvars, o) }
 fn set_pi(w: &mut World, id: MobyId, o: usize, v: i32) { p::set_i32(&mut w.mm(id).pvars, o, v) }
 
-fn mission_done(w: &World, m: i32) -> bool { w.missions.mission_done(w.svc.level, m as u8) == 0xff }
+fn mission_done(w: &World, m: i32) -> bool { w.mission_done(w.svc.level, m as u8) == 0xff }
 
 /// The beam's registration and its 0x1413f5 store (no state test in this copy).
 fn beam(w: &mut World, id: MobyId) {

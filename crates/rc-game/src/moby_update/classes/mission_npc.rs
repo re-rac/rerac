@@ -91,7 +91,7 @@ pub fn update(w: &mut World, id: MobyId) {
             m.position[2] = z0 + p::ff(&m.pvars, 0);
         }
         1 => {
-            if w.missions.mission_done(level, w.m(id).mission) == 0xff {
+            if w.mission_done(level, w.m(id).mission) == 0xff {
                 if w.m(id).anim.seq_b != 2 {
                     let t = w.ticks(0x14);
                     w.anim_blend(id, 2, 0, t);
@@ -211,7 +211,7 @@ fn mission_done(w: &mut World, id: MobyId) {
     if let Some(t) = link(w, id, 4) {
         let (sid, ms) = (w.m(t).spawn_id, w.m(t).mission);
         w.svc.save.killed.insert(sid, ms.wrapping_add(2));
-        if ms == 0xff || w.missions.mission_done(level, ms) == 0xff { w.svc.save.collected.insert(sid, ms.wrapping_add(2)); }
+        if ms == 0xff || w.mission_done(level, ms) == 0xff { w.svc.save.collected.insert(sid, ms.wrapping_add(2)); }
     }
     if let Some(t) = link(w, id, 0x3c) {
         let hold = w.ticks(BRIDGE_HOLD);

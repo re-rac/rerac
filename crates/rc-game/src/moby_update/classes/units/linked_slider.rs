@@ -54,7 +54,7 @@ fn slide(w: &mut World, id: MobyId, out: bool) {
 pub fn update(w: &mut World, id: MobyId) {
     if w.m(id).pvars.len() < 0x20 { return; }
     let (mission, level) = (w.m(id).mission, w.svc.level);
-    if mission != 0xff && w.missions.mission_done(level, mission) == 0xff { set_pi32(w, id, 0x10, -1); }
+    if mission != 0xff && w.mission_done(level, mission) == 0xff { set_pi32(w, id, 0x10, -1); }
     let a = u16::from_le_bytes([w.m(id).pvars[0x16], w.m(id).pvars[0x17]]) as u32;
     let b = pi32(w, id, 0x18) as u32;
     let l = link(w, id).map(u32::from);

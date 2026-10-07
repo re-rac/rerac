@@ -537,7 +537,7 @@ fn fly(w: &mut World, id: MobyId) {
         let (spawn, mission) = (w.m(id).spawn_id, w.m(id).mission);
         w.svc.save.killed.insert(spawn, mission.wrapping_add(2));
         let write = mission == 0xff
-            || (w.missions.mission_slot(mission) != 0xff && w.missions.mission_done(w.svc.level, mission) == 0xff);
+            || (w.missions.mission_slot(mission) != 0xff && w.mission_done(w.svc.level, mission) == 0xff);
         if write { w.svc.save.collected.insert(spawn, mission.wrapping_add(2)); }
     }
     w.delete_moby(id);

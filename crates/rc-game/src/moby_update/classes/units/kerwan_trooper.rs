@@ -227,7 +227,7 @@ fn blend_now(w: &mut World, id: MobyId, seq: u8, n: i32) {
     let t = w.ticks(n);
     w.anim_blend(id, seq, 0, t);
 }
-fn mission_done(w: &World, id: MobyId) -> bool { w.missions.mission_done(w.svc.level, w.m(id).mission) == 0xff }
+fn mission_done(w: &World, id: MobyId) -> bool { w.mission_done(w.svc.level, w.m(id).mission) == 0xff }
 fn link(w: &World, id: MobyId, o: usize) -> Option<MobyId> { usize::try_from(c::pi32(w, id, o)).ok().filter(|&m| m < w.table.mobys.len()) }
 fn alive(w: &World, m: MobyId) -> bool { let s = w.m(m).state; s != 0xfe && s != 0xfd }
 fn spline(w: &World, o: i32) -> Option<usize> { usize::try_from(o).ok().filter(|&p| p < w.svc.splines.len()) }

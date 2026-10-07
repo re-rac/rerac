@@ -86,7 +86,7 @@ pub fn update(w: &mut World, id: MobyId) {
     if w.m(id).pvars.len() < 0x44 { return; }
     match w.m(id).state {
         0 => {
-            let orxon = w.svc.level == 10 && w.missions.mission_done(10, w.m(id).mission) != 0xff;
+            let orxon = w.svc.level == 10 && w.mission_done(10, w.m(id).mission) != 0xff;
             if dead(w, id) && !orxon {
                 let m = w.mm(id);
                 m.cmd = 1;

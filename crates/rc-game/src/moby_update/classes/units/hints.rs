@@ -101,7 +101,7 @@ pub fn set_flag(w: &mut World, i: usize) {
 }
 
 /// The mission byte `0x14c050[level·16 + m]` is 0xff (done).
-pub fn mission_done(w: &World, m: i32) -> bool { u8::try_from(m).is_ok_and(|m| w.missions.mission_done(w.svc.level, m) == 0xff) }
+pub fn mission_done(w: &World, m: i32) -> bool { u8::try_from(m).is_ok_and(|m| w.mission_done(w.svc.level, m) == 0xff) }
 
 /// The distance from Ratchet's feet to moby `idx` (`VecDistance`).
 pub fn hero_dist(w: &World, idx: usize) -> f32 {

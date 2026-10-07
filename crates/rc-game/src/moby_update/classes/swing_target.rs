@@ -141,7 +141,7 @@ pub fn update(w: &mut World, id: MobyId) {
         }
         2 => {
             let (gate, link) = { let pv = &w.m(id).pvars; (p::i32(pv, 0x30), p::i32(pv, 0x3c)) };
-            let done = gate >= 0 && w.missions.mission_done(w.svc.level, gate as u8) != 0;
+            let done = gate >= 0 && w.mission_done(w.svc.level, gate as u8) != 0;
             if !done {
                 if link == -1 { return; }
                 if !link_gone(w, link) { return; }

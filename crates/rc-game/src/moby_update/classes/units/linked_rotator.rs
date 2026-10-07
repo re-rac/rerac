@@ -44,7 +44,7 @@ fn step(w: &World, id: MobyId) -> [f32; 3] { let s = pv4(w, id, 0x1c); [s[0], s[
 pub fn update(w: &mut World, id: MobyId) {
     if w.m(id).pvars.len() < 0x40 { return; }
     let (mission, level) = (w.m(id).mission, w.svc.level);
-    if mission != 0xff && w.missions.mission_done(level, mission) == 0xff { set_pi32(w, id, 0x10, -1); }
+    if mission != 0xff && w.mission_done(level, mission) == 0xff { set_pi32(w, id, 0x10, -1); }
     let (a, b) = (pi32(w, id, 0x14) as u32, pi32(w, id, 0x18) as u32);
     let link = link_state(w, id).map(u32::from);
     let rate = 1.0 / (pf(w, id, 0x2c) * 60.0);

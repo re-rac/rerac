@@ -165,7 +165,7 @@ pub fn kill_record(w: &mut World, m: MobyId) {
     let (sid, mission) = (w.m(m).spawn_id, w.m(m).mission);
     w.svc.save.killed.insert(sid, mission.wrapping_add(2));
     let lvl = w.svc.level;
-    if mission == 0xff || (w.missions.mission_slot(mission) != 0xff && w.missions.mission_done(lvl, mission) == 0xff) {
+    if mission == 0xff || (w.missions.mission_slot(mission) != 0xff && w.mission_done(lvl, mission) == 0xff) {
         w.svc.save.collected.insert(sid, mission.wrapping_add(2));
     }
 }

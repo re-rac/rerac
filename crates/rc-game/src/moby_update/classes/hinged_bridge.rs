@@ -35,7 +35,7 @@ pub fn update(w: &mut World, id: MobyId) {
             m.state = 1;
         }
         1 => {
-            if w.m(id).cmd == 2 || w.missions.mission_done(level, w.m(id).mission) == 0xff {
+            if w.m(id).cmd == 2 || w.mission_done(level, w.m(id).mission) == 0xff {
                 let m = w.mm(id);
                 m.state = 2;
                 m.cmd = 0;

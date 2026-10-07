@@ -61,7 +61,7 @@ pub fn pressed(w: &World, id: MobyId) -> bool {
 pub fn update(w: &mut World, id: MobyId) {
     if w.m(id).pvars.len() < 0x14 { return; }
     let (group, mission, level) = (w.m(id).group, w.m(id).mission, w.svc.level);
-    if w.m(id).state < 6 && mission != 0xff && w.missions.mission_done(level, mission) == 0xff { group_state(w, group, 6); }
+    if w.m(id).state < 6 && mission != 0xff && w.mission_done(level, mission) == 0xff { group_state(w, group, 6); }
     let press = pi32(w, id, 8) == 0 && pressed(w, id);
     if (2..6).contains(&w.m(id).state) && w.m(id).cmd == 1 {
         if dec_timer_pvar_i32(w, id, 0) == 0 {
@@ -125,7 +125,7 @@ pub fn update(w: &mut World, id: MobyId) {
             w.mm(id).state = 7;
         }
         7 => {
-            if mission != 0xff && w.missions.mission_done(level, mission) != 0xff { crate::cinematic::set_mission_done(w, mission); }
+            if mission != 0xff && w.mission_done(level, mission) != 0xff { crate::cinematic::set_mission_done(w, mission); }
             if dec_timer_pvar_s16(w, id, 0xc) == 0 { return; }
             let t = w.ticks(20);
             set_pi16(w, id, 0xc, t as i16);

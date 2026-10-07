@@ -55,7 +55,7 @@ pub fn update(w: &mut World, id: MobyId) {
             let (sid, ms) = (w.m(id).spawn_id, w.m(id).mission);
             let gated = p::i32(&w.m(id).pvars, 8) != 0;
             let done = w.svc.save.collected.get(&sid).is_some_and(|&b| b != 0) || w.svc.save.death.contains(&(level, sid));
-            if !done && (!gated || w.missions.mission_done(level, ms) != 0xff) {
+            if !done && (!gated || w.mission_done(level, ms) != 0xff) {
                 w.mm(id).state = 1;
             } else {
                 let m = w.mm(id);
@@ -88,7 +88,7 @@ pub fn press(w: &mut World, id: MobyId) {
     let level = w.svc.level;
     let (sid, ms) = (w.m(id).spawn_id, w.m(id).mission);
     w.svc.save.killed.insert(sid, ms.wrapping_add(2));
-    if ms == 0xff || (w.missions.mission_slot(ms) != 0xff && w.missions.mission_done(level, ms) == 0xff) {
+    if ms == 0xff || (w.missions.mission_slot(ms) != 0xff && w.mission_done(level, ms) == 0xff) {
         w.svc.save.collected.insert(sid, ms.wrapping_add(2));
     }
     let m = w.mm(id);

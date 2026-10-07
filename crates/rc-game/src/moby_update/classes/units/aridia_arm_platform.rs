@@ -67,7 +67,7 @@ pub fn update(w: &mut World, id: MobyId) {
         }
         1 => {
             let level = w.svc.level;
-            if w.missions.mission_done(level, w.m(id).mission) == 0xff { w.mm(id).state = 5; }
+            if w.mission_done(level, w.m(id).mission) == 0xff { w.mm(id).state = 5; }
         }
         st @ (2 | 4) => {
             face_joint(w, id, a);

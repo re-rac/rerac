@@ -61,7 +61,7 @@ pub fn update(w: &mut World, id: MobyId) {
             c::set_pv4(w, id, Q0, [r[0], r[1], r[2], 0.0]);
             let t = [c::pf(w, id, TARGET), c::pf(w, id, TARGET + 4), c::pf(w, id, TARGET + 8)];
             let level = w.svc.level;
-            if w.missions.mission_done(level, w.m(id).mission) == 0xff {
+            if w.mission_done(level, w.m(id).mission) == 0xff {
                 let m = w.mm(id);
                 m.rotation[0] = t[0] * DEG;
                 m.rotation[1] = t[1] * DEG;

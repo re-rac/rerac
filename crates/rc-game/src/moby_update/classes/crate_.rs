@@ -879,7 +879,7 @@ pub fn set_death_bits(w: &mut World, id: MobyId, fl: u32, path: i32) {
     w.svc.save.death.insert((lvl, b2));
     w.svc.save.death_level.insert(b2);
     w.svc.save.killed.insert(b2, b0.wrapping_add(2));
-    if b0 == 0xff || (w.missions.mission_slot(b0) != 0xff && w.missions.mission_done(lvl, b0) == 0xff) {
+    if b0 == 0xff || (w.missions.mission_slot(b0) != 0xff && w.mission_done(lvl, b0) == 0xff) {
         w.svc.save.collected.insert(b2, b0.wrapping_add(2));
     }
     if (b1 as i8) >= 0 {

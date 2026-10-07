@@ -486,7 +486,7 @@ fn update_rilgar(w: &mut World, id: MobyId) {
                         }
                     }
                 }
-                let done = w.missions.mission_done(w.svc.level, w.m(id).mission) == 0xff;
+                let done = w.mission_done(w.svc.level, w.m(id).mission) == 0xff;
                 if done {
                     w.mm(id).state = 7;
                     set_z(w, id, 44.0);
@@ -504,7 +504,7 @@ fn update_rilgar(w: &mut World, id: MobyId) {
             if w.m(id).cmd & bit == 0 {
                 if state == 1 {
                     w.mm(id).cmd = reply;
-                } else if pi(w, id, 0x10) >= 0 && w.missions.mission_done(w.svc.level, w.m(id).mission) == 0xff {
+                } else if pi(w, id, 0x10) >= 0 && w.mission_done(w.svc.level, w.m(id).mission) == 0xff {
                     // The flood's mission done: the water stays up.
                     w.mm(id).state = 1;
                     let hi = pf(w, id, 0);
