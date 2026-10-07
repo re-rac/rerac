@@ -1740,6 +1740,19 @@ fn death_reload(p: &mut Play, lv: &crate::level_load::LoadedLevel, state: Option
         p.game.grind_paths = std::sync::Arc::new(v.grind_paths.clone());
         p.svc.set_volumes(v);
     }
+    // Its camera records too, their moby links through this reload's instance map (the compacted table: the ids shift
+    // once a placed moby is gone), then `0x20ef58` (`set_level`: the camera's level state cleared), as the load.
+    if std::env::var("RC_LEVEL_CAMERAS").map_or(true, |v| v != "0") {
+        if let Ok(mut c) = rc_formats::cameras::parse_level_cameras(&lv.gameplay) {
+            if let Err(e) = rc_formats::cameras::remap_moby_links(&mut c, &lv.gameplay, &|i| statics.instance_to_moby.get(i).copied().flatten()) {
+                eprintln!("gameplay: death reload: camera moby links not remapped ({e})");
+            }
+            let lc = rc_game::follow_camera::level::LevelCameras::new(p.level, &c, Some(p.svc.volumes.clone()), *camera_ports());
+            p.svc.camera_classes = c.iter().map(|x| x.record.class).collect();
+            p.svc.camera_focus = lc.slots.iter().map(|s| s.focus.as_ref().map_or([0.0; 2], |f| [f.distance, f.pivot_height])).collect();
+            p.game.camera.set_level(lc);
+        }
+    }
     // The services that hold the old table's ids or per-visit moby state.
     p.svc.groups = statics.groups(&lv.gameplay);
     p.svc.hits = Default::default();
