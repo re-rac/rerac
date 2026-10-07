@@ -218,7 +218,12 @@ troopers (flags 3, mission 3) come back after every death; a nanotech crate (fla
 death until mission 1 is done, after which a broken one stays gone. **Checkpoints** (805) also make kills permanent:
 taking one calls `SetMissionDone(its mission)` and then its record 0x29ac10, which turns every kill of this visit
 (0x1baea4 ≠ 0) whose mission is done now (0x14c050), or has none, into "never again" (0x1bbb04 and both death bits);
-its own mission counts, as `SetMissionDone` writes at once. Kerwan's missions: 0 the Heli-Pack checkpoint, 1 the train
+its own mission counts, as `SetMissionDone` writes at once. **A death forgets the kills no checkpoint promoted**:
+`0x29adc8` copies the checkpoint area 0x1bb6b0..0x1bc310 over 0x1baa50..0x1bb6b0 (zeroes it without a checkpoint), so
+the visit records 0x1baaa0 become the checkpoint's copy 0x1bb700 and the kills 0x1baea4 become a copy of the never-again
+bytes 0x1bbb04; the death bits 0x1ba950 / 0x14c190 stay. Measured in PCSX2 over PINE (Kerwan, every mission done; the
+visit tables are 0x380 lower in level03): the train troopers' 0x1baea4 = 5 after killing them, 0 after the respawn,
+never-again 0 throughout, so they come back after every death (probe: `work/scratch/kerwan_probe.py`). Kerwan's missions: 0 the Heli-Pack checkpoint, 1 the train
 station's checkpoint, 2 Helga's course checkpoint, 3 the train's infobot. The port's reload: `rc-engine` gameplay.rs
 `death_reload` (G-CLS-030); the same-tick read: `World::mission_done`.
 
