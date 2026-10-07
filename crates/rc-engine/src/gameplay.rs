@@ -1734,6 +1734,15 @@ fn death_reload(p: &mut Play, lv: &crate::level_load::LoadedLevel, state: Option
     if let Some(ps) = particles.as_deref() {
         p.emitters = ps.sys.owners.iter().enumerate().filter_map(|(k, o)| Some((statics.instance_to_moby.get(o.instance).copied().flatten()?, k))).collect();
     }
+    // `InitLevelRenderGlobals(0)` empties the particle pool (high water −1, free hint 0): the old visit's particles are
+    // gone (kept, the nanotech orbs of the freed clusters stayed in the air, still and see-through). The moby anchors
+    // go with them (the ids are the old table's).
+    if let Some(ps) = particles {
+        ps.sys.pool.level_init();
+        ps.sys.anchors.clear();
+        ps.sys.anchor_scales.clear();
+        ps.sys.joint_anchors.clear();
+    }
     // `InitLevelRenderGlobals(0)` reads the gameplay file from the disc again and decompresses it: the paths, the
     // shared pvar data and the volumes come back as recorded (classes edit them in place: Kerwan's infobot carries its
     // ride cuboid with the train, the train moves its arrival cuboid; kept, every death shifted the train's riders).
