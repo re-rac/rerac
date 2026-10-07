@@ -1731,6 +1731,15 @@ fn death_reload(p: &mut Play, lv: &crate::level_load::LoadedLevel, state: Option
     if let Some(ps) = particles.as_deref() {
         p.emitters = ps.sys.owners.iter().enumerate().filter_map(|(k, o)| Some((statics.instance_to_moby.get(o.instance).copied().flatten()?, k))).collect();
     }
+    // `InitLevelRenderGlobals(0)` reads the gameplay file from the disc again and decompresses it: the paths, the
+    // shared pvar data and the volumes come back as recorded (classes edit them in place: Kerwan's infobot carries its
+    // ride cuboid with the train, the train moves its arrival cuboid; kept, every death shifted the train's riders).
+    if let Ok(sp) = rc_formats::gameplay::parse_splines(&lv.gameplay) { p.svc.set_splines(&sp); }
+    p.svc.pvar_shared = rc_formats::gameplay::parse_pvar_shared_data(&lv.gameplay).unwrap_or_default();
+    if let Ok(v) = rc_formats::volumes::parse_volumes(&lv.gameplay) {
+        p.game.grind_paths = std::sync::Arc::new(v.grind_paths.clone());
+        p.svc.set_volumes(v);
+    }
     // The services that hold the old table's ids or per-visit moby state.
     p.svc.groups = statics.groups(&lv.gameplay);
     p.svc.hits = Default::default();
