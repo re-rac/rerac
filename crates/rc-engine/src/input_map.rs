@@ -24,7 +24,7 @@ play controls (PS2 pad):  left stick = WASD / arrow keys (Shift: half stick = wa
                           Start/Select, stick clicks L3/R3, d-pad
 engine keys:              Tab = fly camera <-> game camera (the fly camera takes the keys; the pad is neutral) |
                           R = respawn at the level's uid-0 moby | P = print the camera | Esc releases the cursor
-                          F9 = dump the hero and the mobys near him | N = noclip (dev builds)";
+                          F9 = dump the hero and the mobys near him | F10 = the respawn state (compare with work/scratch/respawn_probe.py) | N = noclip (dev builds)";
 
 /// A gamepad stick's scale per axis before the byte, clamped (PCSX2's DualShock 2 default, 133 %). A DualShock 2
 /// reads full on both axes at a full diagonal; a modern pad's round gate gives 0.71 on each, which the game's dead

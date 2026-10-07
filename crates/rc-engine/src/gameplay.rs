@@ -256,7 +256,7 @@ impl Plugin for GameplayPlugin {
                 (setup, input_map::sample_system, set_budget, keys).chain().after(bevy::input::InputSystems),
             )
             .add_systems(FixedUpdate, tick.in_set(GameTick).before(crate::particle_render::tick))
-            .add_systems(Update, (show_reloaded, debug_dump))
+            .add_systems(Update, (show_reloaded, debug_dump, respawn_probe))
             .add_systems(PostUpdate, ratchet_visibility.before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate))
             .add_systems(RunFixedMainLoop, play_camera::apply.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop))
             .add_systems(
@@ -1881,6 +1881,47 @@ fn ratchet_visibility(
 
 /// Debug: F9 prints the hero, the engine's own Ratchet draw and every moby within 12 units of the hero (id, class,
 /// state, mode bits, collision, position) with the visibility of its generic moby meshes.
+/// F10 (debug): the respawn state, in the format of the PCSX2 probe `work/scratch/respawn_probe.py` (the original's
+/// memory over PINE), so the two can be compared line by line: the mission bytes (the arrival copy 0x15fc88, the save's
+/// 0x14c050), the checkpoint, this visit's kills 0x1baea4, the never-again bytes 0x1bbb04, the visit death bits
+/// 0x1ba950, the persistent death bits 0x14c190 and the bolt-drop slots 0x14d590 (spawn id / collected).
+/// `RC_RESPAWN_PROBE_AT=<tick>` prints it once at that gameplay tick too (headless runs).
+fn respawn_probe(keys: Res<ButtonInput<KeyCode>>, play: Option<Res<Play>>, state: Option<Res<Persistent>>, mut done: Local<Option<u64>>) {
+    static AT: std::sync::OnceLock<Option<u64>> = std::sync::OnceLock::new();
+    let at = *AT.get_or_init(|| std::env::var("RC_RESPAWN_PROBE_AT").ok().and_then(|v| v.trim().parse().ok()));
+    let tick = play.as_ref().map(|p| p.game.counter);
+    let timed = at.is_some() && tick == at && *done != at;
+    if !keys.just_pressed(KeyCode::F10) && !timed { return; }
+    if timed { *done = at; }
+    let Some(p) = play else { println!("respawn probe: no gameplay"); return };
+    let l = p.level;
+    let s = &p.svc.save;
+    let lv = state.as_ref().and_then(|g| g.0.levels.get(l as usize));
+    let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<Vec<_>>().join(" ");
+    let list = |v: Vec<String>| if v.is_empty() { "-".to_string() } else { v.join(" ") };
+    let bytes = |m: &HashMap<i16, u8>| {
+        let mut v: Vec<_> = m.iter().filter(|&(_, &b)| b != 0).map(|(&k, &b)| (k, b)).collect();
+        v.sort();
+        list(v.into_iter().map(|(k, b)| format!("{k}={b}")).collect())
+    };
+    let mut visit: Vec<i16> = s.death_level.iter().copied().collect();
+    visit.sort();
+    let mut persistent: std::collections::BTreeSet<i32> = s.death.iter().filter(|(dl, _)| *dl == l).map(|&(_, id)| id as i32).collect();
+    if let Some(lv) = lv {
+        for i in 0..0x800 { if lv.killed.get(i >> 3).is_some_and(|b| b >> (i & 7) & 1 != 0) { persistent.insert(i as i32); } }
+    }
+    println!("== respawn probe (port) tick {}  level {l}", p.game.counter);
+    println!("missions arrival: {}", hex(&p.missions.slot));
+    println!("missions save:    {}", lv.map_or("-".to_string(), |lv| hex(&lv.missions)));
+    println!("checkpoint: {}", s.checkpoint.is_some() as u8);
+    println!("killed this visit: {}", bytes(&s.killed));
+    println!("never again: {}", bytes(&s.collected));
+    println!("visit death bits: {}", list(visit.iter().map(|i| i.to_string()).collect()));
+    println!("persistent bits: {}", list(persistent.iter().map(|i| i.to_string()).collect()));
+    let slots = lv.map(|lv| lv.bolt_drops.iter().enumerate().filter(|(_, d)| d.first != 0).map(|(k, d)| format!("{k}:{}/{}", d.first - 1, d.collected)).collect()).unwrap_or_default();
+    println!("bolt slots: {}", list(slots));
+}
+
 fn debug_dump(
     keys: Res<ButtonInput<KeyCode>>,
     play: Option<Res<Play>>,
