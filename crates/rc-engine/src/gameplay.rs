@@ -2033,6 +2033,19 @@ fn tick(
     if std::mem::take(&mut p.death_pending) {
         let checkpoint = p.svc.save.checkpoint.is_some();
         death_reload(p, lv, state.as_deref().map(|s| &s.0), occl.as_deref_mut(), anim.as_deref_mut(), particles.as_deref_mut());
+        // `0x29adc8`'s copy of the checkpoint area 0x1bb6b0..0x1bc310 over 0x1baa50..0x1bb6b0 (zeroed without a
+        // checkpoint): the live visit records 0x1baaa0 become the checkpoint's 0x1bb700, and this visit's kills 0x1baea4
+        // become a copy of the never-again bytes 0x1bbb04. Kills a checkpoint did not promote before the death are
+        // forgotten (PCSX2: Kerwan's train troopers killed on the ride, 0x1baea4 = 5 → 0 after the respawn, so the
+        // station's checkpoint taken again never makes them permanent).
+        let save = &mut p.svc.save;
+        if checkpoint {
+            save.visit = save.checkpoint_visit.clone();
+            save.killed = save.collected.clone();
+        } else {
+            save.visit.clear();
+            save.killed.clear();
+        }
         respawn(p, coll, class, lv.death_z, state.as_deref_mut().map(|s| &mut s.0), session.as_deref_mut().map(|s| &mut s.0));
         if checkpoint { rc_game::moby_update::visit::restore(&mut p.game.mobys, &p.svc.save.checkpoint_visit); }
         reload_load_pass(p, coll, particles.as_deref_mut(), state.as_deref().map(|s| s.0.global.vendor));
