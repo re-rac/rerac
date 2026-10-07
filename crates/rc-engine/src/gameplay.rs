@@ -1765,6 +1765,11 @@ fn death_reload(p: &mut Play, lv: &crate::level_load::LoadedLevel, state: Option
             p.game.camera.set_level(lc);
         }
     }
+    // The nanotech master 0x15f63c (the cluster that turns the orb directions and counts the clusters on their way):
+    // the clusters are dynamic mobys the reload frees, and the compacted table moves their slots once a placed moby is
+    // gone; a stale master left every new cluster still and its heal check reading another moby (nothing could be
+    // picked up). The first cluster of the load pass takes it again, as the game's same-slot reload gives it.
+    p.svc.pickups.master = None;
     // The services that hold the old table's ids or per-visit moby state.
     p.svc.groups = statics.groups(&lv.gameplay);
     p.svc.hits = Default::default();
