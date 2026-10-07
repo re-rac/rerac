@@ -196,6 +196,28 @@ galaxy page = 0x13d510. First-visit story flights exist for 0, 0→1, 4, from 7,
 (`DoSpaceTransition`). Ship flow and planet page: menus.md §5. Galaxy-map coordinates: **not found** (page
 0x1b6508 layout still open). [H for flags; L for coordinates]
 
+## 6.1 What comes back after a death (the death reload) [H]
+
+A death (0x141401 set, game mode 0) runs `LoadLevelCoreData(0, 1)` from the main loop (level01 entry 0x259c40). With
+`param_1 = 0` it reads neither the core data nor the save's mission bytes again; `InitLevelRenderGlobals(0)` reads the
+gameplay file from the disc again (paths, volumes, camera records, the instance records), zeroes 0x13f350..0x141660,
+empties the particle pool and creates the ship; the instance loop's spawn test then decides per placed record whether
+it is created again. Three word sets decide it:
+
+| word | written by | read by |
+|---|---|---|
+| 0x15fc88[16] (the spawn test's mission bytes, `g_spawn_test_table`) | copied from 0x14c050 + L·16 by a full load only | the spawn test (mission-gated records); `SetDeathBits` |
+| 0x14c050 + L·16 (the save's mission bytes) | `SetMissionDone` 0x265080 (alone) | `SetDeathBits`; the classes |
+| 0x1ba950 (this visit's death bits), 0x14c190 + L·0x100 (the persistent death bits), 0x1baea4[id] | `SetDeathBits` 0x26c250, always | the spawn test (flags 8 / 4); halving the bolt count |
+| 0x1bbb04[id] (never spawn again) | `SetDeathBits`, only when the moby's mission is 0xff, or was not done at the arrival (0x15fc88) and is done now (0x14c050) | the spawn test, first |
+
+So, per record (`spawn_test`, rc-formats moby_spawn.rs): flagged 0x1bbb04 → gone; else mission-gated (flags & 3) →
+by the **arrival's** mission state (flag 1 before, flag 2 after), regardless of deaths this visit; else flag 8 → gone
+once killed this visit; flags & 0xc = 4 → gone once ever killed; else always back. Examples (Kerwan): the train's
+troopers (flags 3, mission 3) come back after every death; a nanotech crate (flags 3, mission 1) comes back after a
+death until mission 1 is done, after which a broken one stays gone. The port's reload: `rc-engine` gameplay.rs
+`death_reload` (G-CLS-030).
+
 ## 7. Port plan — `crates/rc-game/src/game_state.rs`
 
 * **Format in `rc-formats`** (`save_game.rs`): `CHUNKS_GLOBAL: [(id, size); 47]`, `CHUNKS_LEVEL: [(id, size); 11]` as
