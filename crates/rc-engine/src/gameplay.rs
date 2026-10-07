@@ -1015,6 +1015,18 @@ fn moby_table(lv: &crate::level_load::LoadedLevel, classes: &mut ClassTable, shi
     // at the arrival; `SetMissionDone` writes 0x14c050 alone.
     if let Some(m) = arrival_missions { save.missions = m; }
     let tests = ms::loader_spawns(insts, &mut save.clone());
+    // RC_TRACE_RESPAWN=1 (debug): the death reload's spawn test for Kerwan's troopers 574 (the train riders and the rest).
+    if visit.is_some() && std::env::var("RC_TRACE_RESPAWN").is_ok_and(|v| v.trim() == "1") {
+        println!("respawn trace: death reload: mission bytes 0x15fc88 {:02x?}", save.missions);
+        for (k, (i, t)) in insts.iter().zip(&tests).enumerate().filter(|(_, (i, _))| i.o_class == 574) {
+            let id = i.spawn_id;
+            let killed = usize::try_from(id).ok().and_then(|b| save.killed.get(b >> 3)).is_some_and(|b| b >> (id & 7) & 1 != 0);
+            println!(
+                "respawn trace:   instance {k} 574 spawn id {id} flags {:#x} mission {} -> {} (never-again {:?}, death this visit {}, killed ever {killed})",
+                i.spawn_flags, i.unknown_4, if t.spawn { "created" } else { "NOT created" }, save.id_flags.get(&id), save.visit_death.contains(&id)
+            );
+        }
+    }
     let spawned: Vec<bool> = tests.iter().map(|t| t.spawn).collect();
     let pvars = rc_formats::gameplay::parse_pvars_spawned(&lv.gameplay, &spawned)?;
     let statics = scheduler::load_level_mobys(insts, classes, &pvars, &tests);

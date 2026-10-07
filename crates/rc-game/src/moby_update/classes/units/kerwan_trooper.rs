@@ -364,6 +364,7 @@ fn hide(w: &mut World, id: MobyId) {
 /// The respawn of a linked trooper or the delete (module doc, after the explosion). False: deleted.
 fn respawn_or_delete(w: &mut World, id: MobyId) -> bool {
     if c::pi32(w, id, pv::LINK) == -1 {
+        trace_delete(w, id, "blown up without a train link");
         w.delete_moby(id);
         return false;
     }
@@ -377,9 +378,32 @@ fn respawn_or_delete(w: &mut World, id: MobyId) -> bool {
 /// The blast of `SpawnBeamExplosion(0, 0, 2, 1, 9, 1, 15, m, +0x40, pos + 1 z, 5, 2, 4, 6, 1, 1, −1, 0)`.
 pub const BLAST: fx::Beam = fx::Beam { damage_r: 0.0, damage: 0.0, flash: 2.0, flash2: 1.0, flash_dist: 9.0, scale: 1.0, light: 15.0, streaks: 5, sparks: 2, puffs: 4, debris: 1, sound: 6, shake: true };
 
+/// The `RC_TRACE_RESPAWN` line of a delete (`why`: the rule).
+fn trace_delete(w: &World, id: MobyId, why: &str) {
+    if !trace_respawn() { return; }
+    let m = w.m(id);
+    println!(
+        "respawn trace: tick {}: trooper 574 moby {id} (spawn id {}, mission {}, train link {}) deleted ({why}) at {:?} in state {:#x}",
+        w.counter, m.spawn_id, m.mission, c::pi32(w, id, pv::LINK), m.position, m.state
+    );
+}
+
+/// `RC_TRACE_RESPAWN=1` (debug): a line per trooper that blows up (rc-engine prints the death reload's spawn test).
+fn trace_respawn() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("RC_TRACE_RESPAWN").is_ok_and(|v| v.trim() == "1"))
+}
+
 /// The explosion, the pieces, the death bits, then the respawn or the delete (module doc). False: deleted.
 fn explode(w: &mut World, id: MobyId, bits: u32) -> bool {
     let p = c::pos(w, id);
+    if trace_respawn() {
+        let m = w.m(id);
+        println!(
+            "respawn trace: tick {}: trooper 574 moby {id} (spawn id {}, mission {}, train link {}) blew up at ({:.1}, {:.1}, {:.1}) in state {:#x}, death bits {bits:#x}; Ratchet at {:?}",
+            w.counter, m.spawn_id, m.mission, c::pi32(w, id, pv::LINK), p[0], p[1], p[2], m.state, crate::hero::physics::to_f32x3(w.hero.pos)
+        );
+    }
     fx::beam_explosion(w, &BLAST, Some(id), [p[0], p[1], p[2] + 1.0, p[3]]);
     let rot = w.m(id).rotation;
     for class in PIECES { fx::break_piece(w, id, class, p, rot, 0, 0); }
@@ -976,6 +1000,7 @@ pub fn update(w: &mut World, id: MobyId) {
     }
     let p = c::pos(w, id);
     if p.iter().take(3).any(|&x| !(2.0..=1021.0).contains(&x)) || (c::pi32(w, id, pv::PATH_ID) == -1 && state(w, id) != st::DYING) {
+        trace_delete(w, id, "out of the map bounds or without a path");
         w.delete_moby(id);
         return;
     }
@@ -1055,6 +1080,7 @@ pub fn update(w: &mut World, id: MobyId) {
         }
         st::BACK => {
             if mission_done(w, id) {
+                trace_delete(w, id, "respawn state 0xf with its mission done");
                 w.delete_moby(id);
                 return;
             }
