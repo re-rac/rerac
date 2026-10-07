@@ -1770,6 +1770,13 @@ fn death_reload(p: &mut Play, lv: &crate::level_load::LoadedLevel, state: Option
     // gone; a stale master left every new cluster still and its heal check reading another moby (nothing could be
     // picked up). The first cluster of the load pass takes it again, as the game's same-slot reload gives it.
     p.svc.pickups.master = None;
+    // `InitLevelRenderGlobals` also zeroes 0x13f350..0x141660 (`FastMemSet(0x13f350, 0, 0x2310)`): of the words the
+    // port keeps in the services, the Visibomb's missile 0x141330, the drones' block 0x141344..0x141388 and the
+    // buried bolt cache's nearest 0x141390..98 (the others there are the hero's, rebuilt by the respawn).
+    p.svc.visibomb.missile = None;
+    p.svc.drones = Default::default();
+    let b = &mut p.svc.buried;
+    (b.nearest, b.distance, b.alert, b.seen) = (None, 0.0, false, None);
     // The services that hold the old table's ids or per-visit moby state.
     p.svc.groups = statics.groups(&lv.gameplay);
     p.svc.hits = Default::default();
