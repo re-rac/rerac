@@ -651,6 +651,9 @@ pub struct GameCounters {
     pub gold_weapons: Vec<u8>,
     /// `0x14d592 + level·0x100 + spawner(+0xb1)·4` (s16), keyed by (level, spawner byte).
     pub spawner_bolts: HashMap<(u32, u8), i16>,
+    /// `0x14d590 + level·0x100 + k·4` (s16): the spawner slots `FUN_0029ab50` handed out at this load (spawn id + 1,
+    /// 0 free), from the loader's spawn test ([`Services::sync_save`] writes them into the save).
+    pub spawner_first: Vec<i16>,
     /// HUD bolt-counter refreshes requested (`queue_animation_update(2, 0x754e, …)`).
     pub hud_bolt_refresh: u32,
     /// `0x15eda0`: max health (4; 5 / 8 with the nanotech upgrades), synced from the game state by the engine;
@@ -1056,6 +1059,23 @@ impl Services {
     }
 
     pub fn ticks(&self, n: i32) -> i32 { self.timing.ticks(n) }
+
+    /// The level chunks' words the game writes straight into the save's memory while it plays (chunks 3005 / 3006 of
+    /// `level`): the persistent death bits `0x14c190 + L·0x100` (`SetDeathBits` and the other writers of
+    /// [`SaveBits::death`]) and the bolt-drop spawner slots `0x14d590 + L·0x100` (`first` from the load's spawn test,
+    /// `collected` from `CollectBolt`). The port keeps them in the services; this puts them into the game state (the
+    /// save the card writes and the next arrival's spawn test reads), as their writes in the game land there at once.
+    pub fn sync_save(&self, gs: &mut crate::game_state::GameState) {
+        for &(l, id) in &self.save.death {
+            let (Some(lv), Ok(id)) = (gs.levels.get_mut(l as usize), usize::try_from(id)) else { continue };
+            if let Some(b) = lv.killed.get_mut(id >> 3) { *b |= 1 << (id & 7); }
+        }
+        let Some(lv) = gs.levels.get_mut(self.level as usize) else { return };
+        for (k, d) in lv.bolt_drops.iter_mut().enumerate() {
+            if let Some(&f) = self.counters.spawner_first.get(k).filter(|&&f| f != 0) { d.first = f; }
+            if let Some(&n) = self.counters.spawner_bolts.get(&(self.level, k as u8)) { d.collected = n; }
+        }
+    }
 
     /// The splines from `rc_formats::gameplay::parse_splines`, as raw words.
     pub fn set_splines(&mut self, s: &[Vec<[f32; 4]>]) {
@@ -2329,6 +2349,27 @@ pub fn normalize_angle(a: Pf) -> Pf {
 mod tests {
     use super::*;
     use crate::particles::type11;
+
+    /// `SetDeathBits` writes the persistent bits straight into the save's chunk 3005 (0x14c190 + L·0x100), and the load's
+    /// spawn test / `CollectBolt` the spawner slots into chunk 3006: the save and the next arrival see them.
+    #[test]
+    fn sync_save_writes_the_death_bits_and_bolt_slots_into_the_save() {
+        let mut gs = crate::game_state::GameState::zeroed(rc_formats::save_game::ChunkTables { global: vec![], level: vec![] });
+        let mut svc = Services::new();
+        svc.level = 3;
+        svc.save.death.insert((3, 129));
+        svc.save.death.insert((3, 9));
+        svc.save.death.insert((5, 1));
+        svc.counters.spawner_first = vec![0; 64];
+        svc.counters.spawner_first[63] = 41;
+        svc.counters.spawner_bolts.insert((3, 63), 7);
+        svc.sync_save(&mut gs);
+        assert_eq!(gs.levels[3].killed[129 >> 3], 1 << (129 & 7));
+        assert_eq!(gs.levels[3].killed[1], 1 << 1);
+        assert_eq!(gs.levels[5].killed[0], 1 << 1, "another level's bits go to its own chunk");
+        assert_eq!((gs.levels[3].bolt_drops[63].first, gs.levels[3].bolt_drops[63].collected), (41, 7));
+        assert_eq!((gs.levels[3].bolt_drops[0].first, gs.levels[3].bolt_drops[0].collected), (0, 0));
+    }
 
     /// `0x2721f0` inverts `0x221980` (R = Rz·Ry·Rx) for |y| < π/2: x, y and z come back with their signs (the
     /// disassembly stores the last `FastArcTan` as is: `neg.s f1, f0` at 0x2722d8 goes to a dead stack word).

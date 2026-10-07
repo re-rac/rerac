@@ -710,7 +710,11 @@ fn help_frame(p: &mut Play, report: &rc_game::tick::TickReport, other_frame: boo
             }
         }
     }
-    if let Some(gs) = gs { p.svc.help.sync_out(gs); }
+    if let Some(gs) = gs {
+        p.svc.help.sync_out(gs);
+        // The persistent death bits and the bolt-drop slots, written into the save's level chunks as the game's writes are.
+        p.svc.sync_save(gs);
+    }
 }
 
 /// The cheat entry's move patterns 0x179b80 (`rc_game::cheats::CheatTables`) from the level's overlay (relocated against
@@ -1327,7 +1331,22 @@ fn setup(
         // 0x15ee20 (the challenge-gated pads 1135 and gold-weapon offers read it) and 0x13e520.
         svc.counters.times_completed = gs.0.global.completes;
         svc.counters.gold_weapons = gs.0.global.gold_weapons.to_vec();
-        if let Some(l) = gs.0.levels.get(level_index as usize) { svc.counters.level_bolts[level_index as usize % 20] = l.bolts; }
+        if let Some(l) = gs.0.levels.get(level_index as usize) {
+            svc.counters.level_bolts[level_index as usize % 20] = l.bolts;
+            // 0x14d592 + L·0x100 + k·4: the bolts each spawner slot already dropped and were collected (chunk 3006): a
+            // dropper whose slot is short of its total drops the rest (`SetDeathBits`), not the whole count again.
+            for (k, d) in l.bolt_drops.iter().enumerate() {
+                if d.collected != 0 { svc.counters.spawner_bolts.insert((level_index, k as u8), d.collected); }
+            }
+        }
+    }
+    // The spawner slots the loader's spawn test hands out (`FUN_0029ab50` writes them into 0x14d590 + L·0x100: chunk 3006's
+    // `first`), for `Services::sync_save`.
+    {
+        let n = ship_ii.unwrap_or(lv.mobys.instances.len());
+        let mut s = level_spawn_save(state.as_ref().map(|s| &s.0), level_index);
+        let _ = rc_formats::moby_spawn::loader_spawns(&lv.mobys.instances[..n], &mut s);
+        svc.counters.spawner_first = s.spawner.to_vec();
     }
     // Moby collision: the class blobs and the loader's grid registrations (MobyBuildMatrix per instance).
     match moby_collision_blobs(level_index) {

@@ -153,7 +153,10 @@ pub fn memcard_save(play: &mut crate::gameplay::Play, gs: &mut GameState, force:
 pub fn time_warp(play: &mut crate::gameplay::Play, gs: &mut GameState) {
     rc_game::menus::pause::saves::time_warp(gs, take_ending().as_deref());
     memcard_save(play, gs, false, -1);
-    play.svc.save.checkpoint = None;
+    // `FUN_0029abc0`: 0x1baa50 / 0x1bb6b0 (0xc60 each: the visit records, this visit's kills, the checkpoint record and
+    // its copies, the never-again bytes) and the visit death bits 0x1ba950 zeroed; the persistent bits 0x14c190 stay.
+    let death = std::mem::take(&mut play.svc.save.death);
+    play.svc.save = rc_game::moby_update::services::SaveBits { death, ..Default::default() };
     play.svc.cinematic.requests.push(rc_game::cinematic::EngineRequest::FadeToBlack { frames: rc_game::menus::scale_ticks(0x10) });
     play.game.hero.fell_out = 1;
     println!("saves: time warp: the ending buffer restored, game beaten, saved, the reload at the level start");
