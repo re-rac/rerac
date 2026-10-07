@@ -1001,7 +1001,7 @@ fn spawnable_count(gameplay: &[u8]) -> usize {
 /// links through the instance → moby map), the spawnable count of dynamic slots, the ship created in the first
 /// of them (hidden while the level's mission NPC has its mission open: `moby_spawn::ship_hidden_on_arrival`).
 /// Returns the table, the statics' maps and the ship's id.
-fn moby_table(lv: &crate::level_load::LoadedLevel, classes: &mut ClassTable, ship: Option<usize>, state: Option<&GameState>, level: u32, visit: Option<&rc_game::moby_update::services::SaveBits>) -> anyhow::Result<(MobyTable, scheduler::LevelStatics, Option<MobyId>)> {
+fn moby_table(lv: &crate::level_load::LoadedLevel, classes: &mut ClassTable, ship: Option<usize>, state: Option<&GameState>, level: u32, visit: Option<&rc_game::moby_update::services::SaveBits>, arrival_missions: Option<[u8; 16]>) -> anyhow::Result<(MobyTable, scheduler::LevelStatics, Option<MobyId>)> {
     use rc_formats::moby_spawn as ms;
     let m = &lv.mobys;
     let n_inst = ship.unwrap_or(m.instances.len());
@@ -1010,6 +1010,10 @@ fn moby_table(lv: &crate::level_load::LoadedLevel, classes: &mut ClassTable, shi
     // The death reload (G-CLS-030): this visit's bits as the loader reads them again, `0x1ba950` (the death bits),
     // `0x1bbb04` (the per-id flags: the collected placed bolts) and the persistent death bits written this visit.
     if let Some(v) = visit { scheduler::add_visit_bits(&mut save, v, level); }
+    // ...and the mission bytes the spawn test reads, 0x15fc88: copied from the save's 0x14c050 only by a full load
+    // (`LoadLevelCoreData(1, 0)`; the death's `(0, 1)` skips the copy), so the reload sees the missions as they were
+    // at the arrival; `SetMissionDone` writes 0x14c050 alone.
+    if let Some(m) = arrival_missions { save.missions = m; }
     let tests = ms::loader_spawns(insts, &mut save.clone());
     let spawned: Vec<bool> = tests.iter().map(|t| t.spawn).collect();
     let pvars = rc_formats::gameplay::parse_pvars_spawned(&lv.gameplay, &spawned)?;
@@ -1126,7 +1130,7 @@ fn setup(
     // The loader: class table, static mobys, dynamic slots, the ship.
     let mut classes = class_table(lv, &external_update_fn);
     let ship_ii = spawn.as_ref().and_then(|s| s.ship);
-    let (mut table, statics, ship_id) = match moby_table(lv, &mut classes, ship_ii, state.as_ref().map(|s| &s.0), level_index, None) {
+    let (mut table, statics, ship_id) = match moby_table(lv, &mut classes, ship_ii, state.as_ref().map(|s| &s.0), level_index, None, None) {
         Ok(t) => t,
         Err(e) => {
             eprintln!("gameplay: moby table not built ({e:#}): no game tick");
@@ -1687,7 +1691,7 @@ fn death_reload(p: &mut Play, lv: &crate::level_load::LoadedLevel, state: Option
     // The class table as the load builds it (the loader ORs each instance's mode bits into it again).
     let mut classes = class_table(lv, &external_update_fn);
     let ship_ii = p.ship.map(|(_, ii)| ii);
-    let (table, statics, ship_id) = match moby_table(lv, &mut classes, ship_ii, state, p.level, Some(&p.svc.save)) {
+    let (table, statics, ship_id) = match moby_table(lv, &mut classes, ship_ii, state, p.level, Some(&p.svc.save), Some(p.missions.slot)) {
         Ok(t) => t,
         Err(e) => {
             eprintln!("gameplay: death reload: moby table not rebuilt ({e:#}): the old table stays");

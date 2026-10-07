@@ -692,11 +692,9 @@ pub struct LevelMissions {
 
 impl LevelMissions {
     /// A fresh load of level `level` whose save mission bytes are `save` (`0x14c050 + L·16`): the copy, the
-    /// live bytes, deaths cleared.
+    /// live bytes, deaths cleared. Only a full load takes the copy `slot` (0x15fc88); the death reload
+    /// (`LoadLevelCoreData(0, 1)`) keeps it, and `SetMissionDone` writes `done` (0x14c050) alone.
     pub fn fresh_load(level: u32, save: [u8; 16]) -> LevelMissions { LevelMissions { level, slot: save, done: save, deaths: [0; 16] } }
-
-    /// The death reload (`LoadLevelCoreData` with `param_2 = 1`): the copy is taken again, the deaths are kept.
-    pub fn death_reload(&self, save: [u8; 16]) -> LevelMissions { LevelMissions { level: self.level, slot: save, done: save, deaths: self.deaths } }
 
     /// `FUN_002319b0`'s count: `deaths[killer+0xb0]++` when the killer (0x1415d0) has a mission byte.
     pub fn hero_death(&mut self, killer_mission: Option<u8>) {
