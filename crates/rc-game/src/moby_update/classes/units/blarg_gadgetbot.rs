@@ -230,6 +230,7 @@ pub fn update(w: &mut World, id: MobyId) {
             if r & 0x41 != 0 {
                 let p0 = c::pos(w, id);
                 fx::death_explosion(w, 0.5, 13.0, Some(id), p0, -1);
+                if super::blarg_bot_pad::trace() { eprintln!("bots: tick {}: bot {id} knocked down at {:?}: back home to wait", w.counter, [p0[0], p0[1], p0[2]]); }
                 let home = c::pv4(w, id, pv::HOME);
                 c::set_pos(w, id, home);
                 set_state(w, id, 4);
@@ -853,6 +854,7 @@ fn merge(w: &mut World, id: MobyId) {
     if w.m(pad).pvars.len() >= 0x18 {
         let left = c::pi32(w, pad, 0x14);
         if 0 < left { c::set_pi32(w, pad, 0x14, left - 1); }
+        if super::blarg_bot_pad::trace() { eprintln!("bots: tick {}: bot {id} merged into pad {pad}: count left {}", w.counter, (left - 1).max(0)); }
         let snd = if c::pi32(w, pad, 0x14) == 0 { 1 } else { 0 };
         w.play_sound_as(snd, 0, pad, PAD);
     }

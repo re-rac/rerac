@@ -52,7 +52,17 @@ fn colour(i: usize) -> u32 { if i < 3 { 0x1080_8080 } else { 0x7080_8080 } }
 fn link(w: &World, o: i32) -> Option<MobyId> { usize::try_from(o).ok().filter(|&m| m < w.table.mobys.len()) }
 
 /// `0x307c48(m, link)` for each link, then 2.
+/// `RC_TRACE_BOTS=1`: the pads' counts and triggers and the gadgetbots' merges and knock-backs on stderr (dev).
+pub fn trace() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("RC_TRACE_BOTS").is_ok_and(|v| v.trim() == "1"))
+}
+
 fn trigger(w: &mut World, id: MobyId) {
+    if trace() {
+        let links: Vec<String> = (0..4).filter_map(|k| link(w, c::pi32(w, id, 4 * k))).map(|l| format!("{l} (class {} state {})", w.m(l).o_class, w.m(l).state)).collect();
+        eprintln!("bots: tick {}: pad {id} triggers (count left {}, mission {} done {}): {}", w.counter, c::pi32(w, id, 0x14), w.m(id).mission, w.mission_done(w.svc.level, w.m(id).mission) == 0xff, links.join(", "));
+    }
     for k in 0..4 {
         let Some(l) = link(w, c::pi32(w, id, 4 * k)) else { continue };
         match w.m(l).o_class {
