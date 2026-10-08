@@ -194,6 +194,7 @@ fn hero_env_lighting(state: Option<Res<FogState>>, play: Option<ResMut<crate::ga
 
 type MainCamera<'w, 's> = Query<'w, 's, (Entity, &'static Transform, Option<&'static UnderwaterTint>), With<FlyCam>>;
 
+#[allow(clippy::too_many_arguments)]
 fn update_fog_state(
     mut commands: Commands,
     state: Option<ResMut<FogState>>,
