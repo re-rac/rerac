@@ -23,6 +23,9 @@
     mesh_functions,
     view_transformations::{position_world_to_clip, position_world_to_view},
 }
+#ifdef DISPLAY_BLEND_MIX
+#import rerac::display_blend::gs_mix
+#endif
 
 struct MobyFog {
     color: vec4<f32>,
@@ -139,5 +142,10 @@ fn fragment(in: MetalVertexOutput) -> @location(0) vec4<f32> {
 #ifdef GS_ATEST_FAIL
     if (a_s >= f32(#{GS_AREF})) { discard; }
 #endif
+    // A moby drawn in moby order (gs_state `EffectTested` / `EffectLowAlpha`): on display bytes (crate::display_blend).
+#ifdef DISPLAY_BLEND_MIX
+    return gs_mix(round(rgb * 255.0), a_s);
+#else
     return vec4<f32>(srgb_to_linear(rgb), a_s / 128.0);
+#endif
 }

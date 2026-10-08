@@ -281,6 +281,17 @@ fn part_pass(part: &Part, p: GsPass) -> GsPass {
     }
 }
 
+/// A draw of an ordered moby ([`ExtraMobys::set_ordered`]): its display-blend version, so the whole moby is drawn in
+/// the effect pass in its band.
+fn ordered_pass(p: GsPass) -> GsPass {
+    match p {
+        GsPass::Opaque | GsPass::LateOpaque => GsPass::EffectOpaque,
+        GsPass::OpaqueTested { aref } | GsPass::LateTested { aref } => GsPass::EffectTested { aref },
+        GsPass::ColorOnlyLowAlpha { aref } => GsPass::EffectLowAlpha { aref },
+        p => p,
+    }
+}
+
 /// A shadow caster's Z-writing draw in both orders: `late` (the deferred moby, drawn after the shadow pass) and
 /// `early` (`MobyProc` drew the moby with the others: mode 0x400 off or no live shadow this frame, so other casters'
 /// shadows fall on it). Which one is used follows the moby ([`set_late`]).
@@ -312,7 +323,7 @@ impl Material for MobyMaterial {
     fn alpha_mode(&self) -> AlphaMode { self.pass.alpha_mode() }
     /// A caster's late draws first in Transparent3d ([`CASTER_BAND`]); `LateTested` is only a caster's here.
     fn depth_bias(&self) -> f32 {
-        let z_writing = matches!(self.pass, GsPass::LateOpaque | GsPass::LateTested { .. });
+        let z_writing = matches!(self.pass, GsPass::LateOpaque | GsPass::LateTested { .. } | GsPass::EffectOpaque | GsPass::EffectTested { .. });
         match self.order {
             Some(k) => order_bias(k, if z_writing { 0 } else { 1 }),
             None if z_writing => CASTER_BAND,
@@ -504,10 +515,9 @@ impl MatCache {
             let (image, texel) = self.images.entry(part.texture).or_insert_with(|| moby_image(level, part.texture, images)).clone();
             for base in blend.passes(texel, part.mult_alpha) {
                 if self.ordered {
-                    // In moby order: every Z-writing draw late (as a caster's), in the moby's band; a glow part's
-                    // colour-only half stays in the band too (not the display-blend effect pass, which draws after
-                    // everything: G-REN-028), blended in linear light.
-                    let pass = caster_pass(base);
+                    // In moby order: every draw on the display-blend effect pass (crate::display_blend), in the moby's
+                    // band, so the colour-only halves blend on display bytes and a later moby still covers them.
+                    let pass = ordered_pass(base);
                     let mat = self.material_in(part.texture, pass, Some(tag), &image, materials);
                     self.batches.insert((part.mesh.id(), mat.id()));
                     let mut e = commands.spawn((
@@ -1935,6 +1945,7 @@ impl ExtraMobys {
         for part in &metal {
             let (image, texel_alpha) = self.metal_images.entry(part.kind).or_insert_with(|| metal_image(level, part.kind, images)).clone();
             for pass in metal_passes(texel_alpha) {
+                let pass = if self.cache.ordered { ordered_pass(pass) } else { pass };
                 let mat = MobyMetalMaterial {
                     texture: image.clone(),
                     fog: crate::game_camera::fog_buffer(),
@@ -1955,6 +1966,7 @@ impl ExtraMobys {
                     Name::new(format!("{name} class {} metal {} {pass:?}", class.o_class, part.kind)),
                 ));
                 if let Some(t) = &tracked { ec.insert(t.clone()); }
+                if pass.state().display { ec.insert(crate::display_blend::DisplayEffect); }
                 let e = ec.id();
                 commands.queue(move |world: &mut World| {
                     let h = world.resource_mut::<Assets<MobyMetalMaterial>>().add(mat);

@@ -175,6 +175,11 @@ pub enum GsPass {
     /// `Opaque` drawn in Transparent3d: a shadow caster's opaque draws, which the game draws after the shadow pass
     /// (crate::moby_render `caster_pass`, crate::shadow_render).
     LateOpaque,
+    /// `Opaque` on display bytes (crate::display_blend): a moby drawn in moby order (crate::moby_render
+    /// `ExtraMobys::set_ordered`), whose later colour-only halves blend on display bytes in the same order.
+    EffectOpaque,
+    /// `OpaqueTested` on display bytes, likewise.
+    EffectTested { aref: u8 },
 }
 
 /// Which fragments a draw discards.
@@ -222,9 +227,11 @@ impl GsPass {
             GsPass::AdditiveNoZ | GsPass::EffectMix => (true, false, GreaterEqual, D::None),
             GsPass::EffectLowAlpha { aref } => (true, false, GreaterEqual, D::AtOrAbove(aref)),
             GsPass::LateOpaque => (false, true, GreaterEqual, D::None),
+            GsPass::EffectOpaque => (true, true, GreaterEqual, D::None),
+            GsPass::EffectTested { aref } => (true, true, GreaterEqual, D::Below(aref)),
         };
         let additive = matches!(self, GsPass::AdditiveNoZ);
-        let display = matches!(self, GsPass::AdditiveNoZ | GsPass::EffectMix | GsPass::EffectLowAlpha { .. });
+        let display = matches!(self, GsPass::AdditiveNoZ | GsPass::EffectMix | GsPass::EffectLowAlpha { .. } | GsPass::EffectOpaque | GsPass::EffectTested { .. });
         GsState { blend, additive, depth_write, depth_compare, discard, display }
     }
 
