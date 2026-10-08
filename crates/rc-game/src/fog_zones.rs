@@ -34,6 +34,15 @@ pub struct FogGlobals {
     pub far_intensity: f32,
 }
 
+/// The fog block `DoSpaceTransition` 0x2a68f8 writes into the view context (0x16d0d8..0x16d0f8) as it starts:
+/// FOGCOL (0, 0, 0x10), near 0, far 524288 (512 units), intensities 255 → 128. The transition's own loops (the
+/// cards, the movies, the flight) never run `UpdateFog`, so they draw with it until the next level's entry.
+pub const TRANSITION_FOG: FogGlobals = FogGlobals { color: [0, 0, 0x10], near_dist: 0.0, far_dist: 524_288.0, near_intensity: 255.0, far_intensity: 128.0 };
+
+/// The flight's fog: `EnterSpaceLoadingLoop` 0x2a5868 resets the view context (`InitViewContext` 0x219448: near 0,
+/// far 524288, intensities 255 → 0; FOGCOL untouched, the transition's) and its loop never runs `UpdateFog`.
+pub const FLIGHT_FOG: FogGlobals = FogGlobals { color: [0, 0, 0x10], near_dist: 0.0, far_dist: 524_288.0, near_intensity: 255.0, far_intensity: 0.0 };
+
 /// `0x16017c` (gp−0x6a84): the global particle far in 20.12 fixed point: 500 units normally ...
 pub const PARTICLE_FAR12: i32 = 0x1f_4000;
 /// ... and 64 units while underwater (`UpdateFog`).

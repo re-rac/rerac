@@ -279,8 +279,12 @@ fn draw_fx(
             }
         }
     }
-    let mut a = FxAssets { meshes: &mut meshes, images: &mut images, materials: &mut materials, fx: Some(&f.fx), fog };
+    // The planet picture shows without fog in the game [M: the original's flight frames show it in full colour, where
+    // the flight's fog (FLIGHT_FOG) at its ~500 units would darken it almost to FOGCOL].
+    let unfogged = TfragFog { color: fog.color.with_w(0.0), ..fog };
+    let mut a = FxAssets { meshes: &mut meshes, images: &mut images, materials: &mut materials, fx: Some(&f.fx), fog: unfogged };
     f.planet_slots.show(&mut commands, &mut vis, &mut a, planet, PLANET_BIAS, "flight planet");
+    a.fog = fog;
     f.slots.show(&mut commands, &mut vis, &mut a, groups, crate::fx_draw::LIST1_BIAS, "flight");
 }
 

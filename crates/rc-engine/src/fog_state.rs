@@ -201,6 +201,7 @@ fn update_fog_state(
     tie: Option<ResMut<crate::tie_lod::TieLodState>>,
     water: Option<Res<crate::water_render::WaterState>>,
     mut play: Option<ResMut<crate::gameplay::Play>>,
+    travel: Option<Res<crate::travel_render::Travel>>,
     cams: MainCamera,
 ) {
     let Some(mut state) = state else { return };
@@ -208,7 +209,9 @@ fn update_fog_state(
     // The Visibomb's missile view writes the level fog globals during the ticks (crate::visibomb_view).
     if let Some(p) = play.as_deref() { crate::visibomb_view::apply_fog(&p.svc.visibomb, &mut state.level, &mut state.underwater.flag, &mut state.visibomb); }
     // 1. UpdateFog (end of the previous frame's render): what this frame draws with.
-    let (view, far12) = fog_zones::update_fog(&state.level, state.underwater.flag, &state.look);
+    let (mut view, far12) = fog_zones::update_fog(&state.level, state.underwater.flag, &state.look);
+    // A level transition's loops do not run UpdateFog: its own fog block stays (fog_zones::TRANSITION_FOG / FLIGHT_FOG).
+    if let Some(f) = travel.as_deref().and_then(|t| t.transition_fog()) { view = f; }
     let view = LevelFog::from_globals(&view);
     if game_fog.fog != view || game_fog.particle_far12 != far12 { *game_fog = GameFog::new(view, far12); }
     if let Some(mut tie) = tie {

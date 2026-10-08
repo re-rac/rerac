@@ -190,6 +190,13 @@ impl Travel {
     /// The transition's black screen replaces the world view ([`TRAVEL_LAYER`], [`view_layers`]): crate::title_world
     /// gives the cameras back to it (until then the title world is the last image the transition's fades darken).
     pub(crate) fn blanked(&self) -> bool { self.blank }
+
+    /// The fog of a running level transition (`DoSpaceTransition`), whose loops never run `UpdateFog`: its own block
+    /// for the cards and movies, the reset view context's for the flight; None outside a transition (the level's).
+    pub(crate) fn transition_fog(&self) -> Option<rc_game::fog_zones::FogGlobals> {
+        use rc_game::fog_zones::{FLIGHT_FOG, TRANSITION_FOG};
+        self.tr.as_ref().map(|tr| if matches!(tr.state, StepState::Flight) { FLIGHT_FOG } else { TRANSITION_FOG })
+    }
 }
 
 /// Marks the hero's entities while mode 6 hides him.
