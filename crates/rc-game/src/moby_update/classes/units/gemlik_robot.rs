@@ -155,9 +155,10 @@ fn ring(w: &mut World, id: MobyId) {
     let (centre, normal, pos) = (c::pv4(w, id, o::CENTRE), c::pv4(w, id, o::NORMAL), c::pos(w, id));
     for j in 0..16 {
         let pt = ring_pt(w, id, j);
-        let mut d = c::sub(pt, centre);
-        d[2] = 0.0;
-        let mut q = c::add(pt, c::set_len3(d, 6.0 * DT));
+        // The game's VecSub / VecAdd / FastVecNormalize write x, y, z only: the point keeps its own fade (w), not
+        // the centre's (+0x1fc, the ring's timer).
+        let d = c::set_len3([pt[0] - centre[0], pt[1] - centre[1], 0.0, 0.0], 6.0 * DT);
+        let mut q = [pt[0] + d[0], pt[1] + d[1], pt[2] + d[2], pt[3]];
         let rel = c::sub(q, pos);
         let e = c::set_len3(normal, -c::dot3(rel, normal) + f32::from_bits(0x3eb3_3333));
         let a = [pt[0], pt[1], pt[2] + 1.0, pt[3]];

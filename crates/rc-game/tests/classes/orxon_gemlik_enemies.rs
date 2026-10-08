@@ -604,3 +604,34 @@ fn a_turret_without_its_rider_blows_up() {
     assert_eq!(&seen[0][..2], &[gt::st::ORPHAN, gt::st::DEAD]);
     assert!(lv.table.mobys[10].state >= 0x80);
 }
+
+// ---------------------------------------------------------------------------------------------------
+// U475: Gemlik's stompers 1262, the shockwave ring
+
+/// A stomper's ring rolls out for its whole life (`ticks(150)`, fading from 20 left) and is drawn: the points keep
+/// their own fade (w) — the game's VecSub / VecAdd write x, y, z only, and the centre's w is the ring's timer
+/// (+0x1fc), so taking it in faded the ring to nothing on its second tick (only the sparks were left).
+#[test]
+fn stomper_ring_rolls_out_and_is_drawn() {
+    use rc_game::moby_update::classes::units::gemlik_robot as gr;
+    let Some(mut lv) = load(13) else { eprintln!("skipped: no extracted/"); return };
+    let b = lv.of_class(1262)[0];
+    let (p, y) = (lv.table.mobys[b].position, lv.table.mobys[b].rotation[2]);
+    let hero = hero_at([p[0] + y.cos() * 7.0, p[1] + y.sin() * 7.0, p[2] + 0.1]);
+    lv.load_pass(&hero);
+    let row = units::row(gr::REFERENCE_LEVEL, gr::DRAW_FN).unwrap();
+    let fade = |lv: &Lv, j: usize| p::ff(&lv.table.mobys[b].pvars, 0x210 + 0x10 * j + 0xc);
+    let (mut launched, mut lit) = (None, 0);
+    for t in 0..300 {
+        lv.tick(&hero);
+        let pv = &lv.table.mobys[b].pvars;
+        if pv.len() < 0x440 || p::ff(pv, 0x1fc) == 0.0 { continue; }
+        launched.get_or_insert(t);
+        if (1..15).all(|j| fade(&lv, j) == 1.0) { lit += 1; }
+        let q = units::fx_quads(&lv.table, &lv.svc, row, b).expect("the ring's quads");
+        assert!((0..16).all(|j| (0.0..=1.0).contains(&fade(&lv, j))), "tick {t}: fades out of 0..1");
+        if t < launched.unwrap() + 100 { assert!(q.quads.iter().any(|q| q.rgba.iter().any(|c| c >> 24 != 0)), "tick {t}: the ring drawn"); }
+    }
+    eprintln!("stomper #{b}: ring from tick {launched:?}, fully live {lit} ticks");
+    assert!(launched.is_some() && lit >= 120, "the ring live {lit} ticks");
+}
