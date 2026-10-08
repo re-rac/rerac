@@ -276,6 +276,7 @@ impl HeroItems {
 /// slot loop 0x231088), after the transitions and the write-back.
 #[allow(clippy::too_many_arguments)]
 pub fn items_update(hero: &mut Hero, g: &mut ItemGlobals, table: &mut MobyTable, anim: &dyn AnimCtl, rng: &mut Rng, env: &ItemEnv, hits: &mut dyn HitSink) {
+    items_flags(hero);
     super::melee::jump_attack_shockwave(hero, table, env, hits);
     super::walloper::deliver_hits(hero, table, env, hits, rng);
     // 0x22f390 in HeroItemsUpdate, before the slots: the glove-holding layers 0x22e660, then the weapon arm's
@@ -299,6 +300,18 @@ pub fn items_update(hero: &mut Hero, g: &mut ItemGlobals, table: &mut MobyTable,
         }
     }
     slot_loop(hero, g, table, anim, rng, env, hits);
+}
+
+/// `HeroItemsUpdate` 0x231268's head, every tick before the slots: 0x13f658 = 1, the groups 0x15 / 0x16 or the water
+/// (`FUN_0022dea8`) → 0x1413fc = 0x1413f7 = 1 (no item use, the wrench); 0x1413fe (the wrench hidden,
+/// [`Hero::hand_hidden`]) = 1 in the water, the groups 0x15 / 0x16 / 3 (the ledge) or state 0x12, else 0.
+pub fn items_flags(hero: &mut Hero) {
+    let water = hero.in_water_groups();
+    if hero.f658 == 1 || matches!(hero.group, 0x15 | 0x16) || water {
+        hero.items.f13fc = 1;
+        hero.items.f13f7 = 1;
+    }
+    hero.items.f13fe = (water || matches!(hero.group, 0x15 | 0x16 | 3) || hero.state == 0x12) as u8;
 }
 
 /// `FUN_00231088`, one pass of the item slots' loop on its own (the body switch `SwitchCharacter` 0x231348 +2 runs it
@@ -675,4 +688,32 @@ pub fn update_hand_selected(hero: &mut Hero, g: &mut ItemGlobals, rng: &mut Rng,
     it.f13f6 = 0;
     if let Some(m) = it.slot.item.as_mut() { blend(m, env.data, 2, 0, 2); }
     it.slot.state = 3;
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `HeroItemsUpdate`'s head and `FUN_002487a8`: the wrench is hidden on a ledge (group 3) and in the water, and a
+    /// weapon is swapped for it there (0x1413f7); on foot neither; the gold bolt's 0x1413ff hides any item.
+    #[test]
+    fn the_wrench_hides_on_a_ledge_and_in_the_water() {
+        let mut h = Hero::new();
+        h.items.slot.id = item::WRENCH;
+        for (group, state, hidden) in [(0, 0, false), (3, 0x19, true), (0x11, 0x3a, true), (0x12, 0x3a, true), (0x15, 0, true), (0, 0x12, true), (0, 0x82, true)] {
+            (h.group, h.state, h.items.f13fe, h.items.f13f7) = (group, state, 0, 0);
+            items_flags(&mut h);
+            assert_eq!(h.hand_hidden(), hidden, "group {group:#x} state {state:#x}");
+        }
+        (h.group, h.state, h.items.f13f7) = (0x11, 0x3a, 0);
+        items_flags(&mut h);
+        assert_eq!((h.items.f13f7, h.items.f13fc), (1, 1), "in the water a weapon goes back to the wrench");
+        // Another item in the hand on a ledge: not hidden by 0x1413fe (the swap to the wrench does it next).
+        (h.group, h.state, h.items.slot.id) = (3, 0x19, 0x10);
+        items_flags(&mut h);
+        assert!(!h.hand_hidden());
+        h.f13ff = 1;
+        assert!(h.hand_hidden(), "the gold bolt's pickup hides any item");
+    }
 }

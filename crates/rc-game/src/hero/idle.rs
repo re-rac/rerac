@@ -581,6 +581,11 @@ impl Hero {
     /// `0x22ddd8(0)`: the hand item while the hand slot is ready (state 2), else −1.
     pub fn held_item(&self) -> i32 { if self.items.slot.state == 2 { self.items.slot.id } else { -1 } }
 
+    /// `FUN_002487a8`'s hand rule: the hand moby hidden (mode |= 0x41) while 0x1413fe holds with the wrench in the hand
+    /// slot (0x140408 = 8: the water, the ledge, [`super::items::items_flags`]) or while 0x1413ff holds (the gold
+    /// bolt's pickup).
+    pub fn hand_hidden(&self) -> bool { (self.items.f13fe != 0 && self.items.slot.id == 8) || self.f13ff != 0 }
+
     /// `GetClankModule(3)` (0x22ddd8(3)): the back item while slot 3 is ready (state 2), else −1.
     pub fn back_module(&self) -> i32 { if self.back_slot.slot.state == 2 { self.back_slot.slot.id } else { -1 } }
 
@@ -774,7 +779,7 @@ impl Hero {
     }
 
     /// `FUN_0022dea8`: in the water groups 0x11 / 0x12 or the states 0x6a / 0x82 / 0x76 / 0x75.
-    pub(super) fn in_water_groups(&self) -> bool { matches!(self.group, 0x11 | 0x12) || matches!(self.state, 0x6a | 0x82 | 0x75 | 0x76) }
+    pub fn in_water_groups(&self) -> bool { matches!(self.group, 0x11 | 0x12) || matches!(self.state, 0x6a | 0x82 | 0x75 | 0x76) }
 
     // --------------------------------------------------------------------------------------------
     // The idle transitions (0x242930 state 0, the part before StickTarget).
