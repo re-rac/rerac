@@ -1805,6 +1805,12 @@ fn death_reload(p: &mut Play, lv: &crate::level_load::LoadedLevel, state: Option
     // gone; a stale master left every new cluster still and its heal check reading another moby (nothing could be
     // picked up). The first cluster of the load pass takes it again, as the game's same-slot reload gives it.
     p.svc.pickups.master = None;
+    // `InitLevelRenderGlobals` reads the level fog 0x15f444..0x15f454 from the gameplay file again (`UpdateFog`) and
+    // zeroes the camera block 0x167100..0x1674a0 (the underwater flag 0x167494): a class's fog store (Rilgar's sewer
+    // fog 841, the Quartu shock fog) does not outlive a death, and the load pass's classes save the level's fog.
+    let tick = p.game.counter;
+    p.svc.water.store_fog(tick, lv.fog.globals());
+    p.svc.water.underwater_store = Some((tick, rc_game::water::world::UnderwaterStore::Off));
     // `InitLevelRenderGlobals` also zeroes 0x13f350..0x141660 (`FastMemSet(0x13f350, 0, 0x2310)`): of the words the
     // port keeps in the services, the Visibomb's missile 0x141330, the drones' block 0x141344..0x141388 and the
     // buried bolt cache's nearest 0x141390..98 (the others there are the hero's, rebuilt by the respawn).
