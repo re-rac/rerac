@@ -75,7 +75,7 @@ pub(crate) fn rigs() -> HashMap<i32, FlightRig> {
             let seqs = rc_formats::moby_anim::parse_sequences(s.class, &class).ok()?;
             let anim = rc_formats::moby_anim::MobyAnimClass::new(&class, seqs);
             let lists = crate::travel_render::ship_joint_lists(o_class as i16)?;
-            Some(FlightRig { anim, lists })
+            Some(FlightRig { anim, lists, scale: class.header.scale })
         };
         match one() {
             Some(r) => { out.insert(o_class, r); }

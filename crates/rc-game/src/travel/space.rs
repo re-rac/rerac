@@ -282,6 +282,9 @@ pub struct FlightDraw {
 pub struct FlightRig {
     pub anim: rc_formats::moby_anim::MobyAnimClass,
     pub lists: Vec<Vec<u8>>,
+    /// The class header's scale (+0x2c of the created moby): the transition lump's classes 531..533 are the flight's
+    /// own, so the ship has its scale on a level whose class table lacks the class (Orxon's ship is 532).
+    pub scale: f32,
 }
 
 /// The mode-6 state (0x13e050.., the scene globals 0x16cd.. while mode 6 uses them, 0x15f3fc / 0x15f400).
@@ -530,12 +533,14 @@ impl ShipMode {
             if let Some(id) = id {
                 let hl = w.hero_moby.and_then(|h| w.table.mobys.get(h)).map(|h| (h.light, h.ambient));
                 let b06 = w.classes.info(class as i16).map_or(0, |i| i.b06);
+                let rig_scale = self.flight.rigs.get(&class).filter(|_| w.classes.info(class as i16).is_none()).map(|r| r.scale);
                 let m = w.mm(id);
                 if b06 != 0 { m.b73 = 0x18; }
                 m.draw_dist = 0x1ff;
                 m.b72 = 0xff;
                 m.mode |= 6 | 1;
                 m.has_collision = false;
+                if let Some(sc) = rig_scale { m.scale = sc; }
                 match hl {
                     Some((l, a)) => (m.light, m.ambient) = (l, a),
                     None => (m.light, m.ambient) = (0, [0x38, 0x38, 0x38, 0]),
