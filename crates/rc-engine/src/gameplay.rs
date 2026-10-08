@@ -932,7 +932,7 @@ fn class_joint_data_where(lv: &crate::level_load::LoadedLevel, want: impl Fn(i16
         let name = format!("moby_class/{:04}", c.o_class);
         let blk = core.blocks.iter().find(|b| b.name == name).ok_or_else(|| anyhow!("no {name} block"))?;
         let blob = data.get(blk.offset..blk.offset + blk.size).ok_or_else(|| anyhow!("{name} out of range"))?;
-        let lists = (0..16).map_while(|l| rc_formats::gadget::joint_list(blob, &c.class.header, l).ok()).collect();
+        let lists = (0..256).map_while(|l| rc_formats::gadget::joint_list(blob, &c.class.header, l).ok()).collect();
         out.insert(c.o_class as i16, lists);
     }
     Ok(out)

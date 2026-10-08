@@ -680,8 +680,9 @@ impl ClassUpdate {
     pub fn needs_joint_lists(self) -> bool {
         match self {
             ClassUpdate::Unit(i) => units::PORTS[i as usize].classes.iter().any(|c| units::PORTS[i as usize].joints.contains(c)),
-            // (TalkingNpc, Visibomb: their manipulators' target joints, `crate::moby_update::manip`.)
-            _ => matches!(self, ClassUpdate::Flyer | ClassUpdate::PathEnemy | ClassUpdate::Gunship | ClassUpdate::GoldBolt | ClassUpdate::Mouse | ClassUpdate::TalkingNpc | ClassUpdate::Visibomb),
+            // (TalkingNpc, Visibomb: their manipulators' target joints, `crate::moby_update::manip`; Vendor: the menu's
+            // four arm manipulators on its joint lists 0x14..0x17, `menus::vendor::arm_manipulators`.)
+            _ => matches!(self, ClassUpdate::Flyer | ClassUpdate::PathEnemy | ClassUpdate::Gunship | ClassUpdate::GoldBolt | ClassUpdate::Mouse | ClassUpdate::TalkingNpc | ClassUpdate::Visibomb | ClassUpdate::Vendor),
         }
     }
 

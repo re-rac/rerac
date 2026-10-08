@@ -159,22 +159,27 @@ impl VendorLayout {
         for (i, t) in talk_keys.iter_mut().enumerate() {
             for (k, x) in t.iter_mut().enumerate() { *x = ov.i32(at(addr::TALK_KEYS) + 8 * i as u32 + 4 * k as u32)?; }
         }
+        // A record field the code reaches only from another field's address (`0x1c8da0 − 0x10`, `0x1c9490 ± 0x10`,
+        // `0x1c9db0 + 0x10`): placed by that field's mapping on the other levels.
+        let field = |a: u32, by: u32| if ov.maps(a) { at(a) } else { at(by).wrapping_add(a).wrapping_sub(by) };
+        let (panel_rot, holo_rot, holo_class, wholo_rot) =
+            (field(addr::PANEL_ROT, addr::PANEL_OFF), field(addr::HOLO_ROT, addr::HOLO_OFF), field(addr::HOLO_CLASS, addr::HOLO_OFF), field(addr::WHOLO_ROT, addr::WHOLO_POST));
         let n = ITEMS as u32;
         let panel = (0..n)
             .map(|i| {
-                let (r, o) = (at(addr::PANEL_ROT) + 0x30 * i, at(addr::PANEL_OFF) + 0x30 * i);
+                let (r, o) = (panel_rot + 0x30 * i, at(addr::PANEL_OFF) + 0x30 * i);
                 Some(PanelPlace { rot: v3(ov, r)?, offset: v3(ov, o)?, weapon_dz: f(ov, o + 0xc)? })
             })
             .collect::<Option<Vec<_>>>()?;
         let ammo_holo = (0..n)
             .map(|i| {
-                let (r, o, c) = (at(addr::HOLO_ROT) + 0x40 * i, at(addr::HOLO_OFF) + 0x40 * i, at(addr::HOLO_CLASS) + 0x40 * i);
+                let (r, o, c) = (holo_rot + 0x40 * i, at(addr::HOLO_OFF) + 0x40 * i, holo_class + 0x40 * i);
                 Some(AmmoHolo { rot: [f(ov, r)?, f(ov, r + 4)?], offset: v3(ov, o)?, class: ov.i32(c)? })
             })
             .collect::<Option<Vec<_>>>()?;
         let weapon_holo = (0..n)
             .map(|i| {
-                let (p, r, o) = (at(addr::WHOLO_POST) + 0x30 * i, at(addr::WHOLO_ROT) + 0x30 * i, at(addr::WHOLO_OFF) + 0x30 * i);
+                let (p, r, o) = (at(addr::WHOLO_POST) + 0x30 * i, wholo_rot + 0x30 * i, at(addr::WHOLO_OFF) + 0x30 * i);
                 Some(WeaponHolo { post: v3(ov, p)?, rot: [f(ov, r)?, f(ov, r + 4)?], offset: v3(ov, o)? })
             })
             .collect::<Option<Vec<_>>>()?;
@@ -198,5 +203,29 @@ impl VendorLayout {
             beam: cone(ov, addr::BEAM_VERTS, addr::BEAM_UV, addr::BEAM_RGBA, addr::BEAM_QUADS).unwrap_or_default(),
             demo,
         })
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every level's vendor reads the same placement tables as level 01's (Kerwan's lie 0x380 lower; the item and
+    /// hologram rotations and the ammo hologram's class are reached only from their neighbours' addresses).
+    #[test]
+    fn every_level_reads_level_01s_tables() {
+        let read = |l: u32| std::fs::read(rc_formats::test_data::level_dir(l).join("overlay.bin")).ok();
+        let Some(r) = read(1) else { return };
+        let reference = VendorLayout::load(&Overlay::parse(&r).unwrap()).expect("level 01 tables");
+        assert_eq!(reference.panel[0xf].rot, [0.0, -1.57, -3.0], "the Blaster's item panel rotation");
+        let mut compared = 0;
+        for level in (0..19).filter(|&l| l != 1) {
+            let Some(t) = read(level) else { continue };
+            let Some(l) = VendorLayout::load(&Overlay::relocated(&t, &r).unwrap()) else { continue };
+            compared += 1;
+            assert_eq!((&l.panel, &l.ammo_holo, &l.weapon_holo), (&reference.panel, &reference.ammo_holo, &reference.weapon_holo), "level {level:02}");
+        }
+        assert!(compared >= 10, "only {compared} levels have the tables");
     }
 }

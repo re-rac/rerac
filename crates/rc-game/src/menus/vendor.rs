@@ -272,11 +272,11 @@ pub const DEMO_STREAM: i32 = 0x2734;
 
 /// `OpenVendorMenu` 0x2ae1a0's four manipulators 0x166300 (0x40 bytes each, .bss) on the vendor's joint lists
 /// 0x14..0x17: (list, translation); quaternion identity, scale 1 (`AttachManipulator`); with fewer than 8 entries record
-/// 2's translation y (0x1663b4) = +0x681·(7 − n) and record 3's (0x1663f4) = −0x681·(7 − n), else 0: the arms that lay
-/// the monitors out for a short list.
+/// 2's translation y (0x1663b4) = +0x681·(7 − n) and record 3's (0x1663f4) = −0x681·(7 − n), else 0, then copied into
+/// records 0 (0x166334) and 1 (0x166374): the strip's ends pulled in for a short list.
 pub fn arm_manipulators(entries: usize) -> [(u8, [f32; 3]); 4] {
     let d = if entries < 8 { ((7 - entries as i32) * 0x681) as f32 } else { 0.0 };
-    [(0x14, [0.0; 3]), (0x15, [0.0; 3]), (0x16, [0.0, d, 0.0]), (0x17, [0.0, -d, 0.0])]
+    [(0x14, [0.0, d, 0.0]), (0x15, [0.0, -d, 0.0]), (0x16, [0.0, d, 0.0]), (0x17, [0.0, -d, 0.0])]
 }
 
 /// The popup moby (0x1ca960 + 0x400, class 0x471).

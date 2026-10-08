@@ -181,3 +181,13 @@ fn ticker_glyphs_are_half_bright_textured_quads() {
     assert_eq!(d[0], MenuDraw::FrameQuad { frame: 0, x: 16, y: 8, w: 18, h: 18, u: 18, v: 9, tw: 9, th: 9, rgba: LED_RGBA });
     assert_eq!(LED_RGBA, 0x8040_4040);
 }
+
+/// `OpenVendorMenu`'s arms: with fewer than 8 entries all four records pull the strip's ends in by 0x681 per missing
+/// entry (records 0 / 1 copy 2 / 3), and the vendor's own joint lists are loaded for them.
+#[test]
+fn a_short_list_pulls_in_all_four_arms() {
+    let d = (5 * 0x681) as f32;
+    assert_eq!(arm_manipulators(2), [(0x14, [0.0, d, 0.0]), (0x15, [0.0, -d, 0.0]), (0x16, [0.0, d, 0.0]), (0x17, [0.0, -d, 0.0])]);
+    assert!(arm_manipulators(8).iter().all(|(_, t)| *t == [0.0; 3]));
+    assert!(crate::moby_update::classes::ClassUpdate::Vendor.needs_joint_lists());
+}
