@@ -241,6 +241,8 @@ pub struct MobyMaterial {
     pub lods: Handle<ShaderBuffer>,
     /// This draw's GS state (crate::gs_state; same TEST_1 as tfrags, AREF 0x08 while fading).
     pub pass: GsPass,
+    /// Drawn in moby order ([`ExtraMobys::set_ordered`]): the moby's place in `DrawMobys`' list.
+    pub order: Option<u32>,
 }
 
 /// Transparent3d sort bands (`Material::depth_bias`, added to the view depth, which grows towards the camera): a
@@ -249,6 +251,14 @@ pub struct MobyMaterial {
 /// after them. The bands are further apart than any view depth (the far plane is 728 units).
 pub const CASTER_BAND: f32 = -30000.0;
 pub const CASTER_METAL_BAND: f32 = -20000.0;
+/// Ordered draws ([`MobyMaterial::order`]): moby k's band starts at `ORDER_BAND + k·ORDER_STEP`, its Z-writing draws
+/// first, its colour-only half `ORDER_STEP / 3` later, its shine `2·ORDER_STEP / 3` later; between the casters' metal
+/// and the view-depth-sorted draws (15 mobys fit; the actors of a scene stand well within a third of a step apart).
+pub const ORDER_BAND: f32 = -19000.0;
+pub const ORDER_STEP: f32 = 1200.0;
+
+/// The band of ordered moby `order`'s draws of `sub` (0 Z-writing, 1 colour-only / blended, 2 shine).
+fn order_bias(order: u32, sub: u32) -> f32 { ORDER_BAND + order.min(14) as f32 * ORDER_STEP + sub as f32 * (ORDER_STEP / 3.0) }
 
 /// A shadow caster's draw (docs/plan/shadows.md §6.3: a class with a shadow block is deferred by `MobyProc` and
 /// drawn after the shadow pass, so it is never darkened): its Z-writing draws move from Opaque3d / AlphaMask3d to
@@ -301,7 +311,14 @@ impl Material for MobyMaterial {
     fn fragment_shader() -> ShaderRef { SHADER_PATH.into() }
     fn alpha_mode(&self) -> AlphaMode { self.pass.alpha_mode() }
     /// A caster's late draws first in Transparent3d ([`CASTER_BAND`]); `LateTested` is only a caster's here.
-    fn depth_bias(&self) -> f32 { if matches!(self.pass, GsPass::LateOpaque | GsPass::LateTested { .. }) { CASTER_BAND } else { 0.0 } }
+    fn depth_bias(&self) -> f32 {
+        let z_writing = matches!(self.pass, GsPass::LateOpaque | GsPass::LateTested { .. });
+        match self.order {
+            Some(k) => order_bias(k, if z_writing { 0 } else { 1 }),
+            None if z_writing => CASTER_BAND,
+            None => 0.0,
+        }
+    }
     /// No culling: the GS draws both faces and the index stream's winding is inconsistent.
     fn specialize(
         _pipeline: &MaterialPipeline,
@@ -343,6 +360,8 @@ pub struct MobyMetalMaterial {
     pub pass: GsPass,
     /// The metal of a shadow caster: after the caster's own late draws ([`CASTER_METAL_BAND`]).
     pub caster: bool,
+    /// The metal of an ordered moby ([`MobyMaterial::order`]): after its own draws.
+    pub order: Option<u32>,
 }
 
 impl From<&MobyMetalMaterial> for GsPass {
@@ -353,7 +372,13 @@ impl Material for MobyMetalMaterial {
     fn vertex_shader() -> ShaderRef { METAL_SHADER_PATH.into() }
     fn fragment_shader() -> ShaderRef { METAL_SHADER_PATH.into() }
     fn alpha_mode(&self) -> AlphaMode { self.pass.alpha_mode() }
-    fn depth_bias(&self) -> f32 { if self.caster { CASTER_METAL_BAND } else { 0.0 } }
+    fn depth_bias(&self) -> f32 {
+        match self.order {
+            Some(k) => order_bias(k, 2),
+            None if self.caster => CASTER_METAL_BAND,
+            None => 0.0,
+        }
+    }
     fn specialize(
         _pipeline: &MaterialPipeline,
         descriptor: &mut RenderPipelineDescriptor,
@@ -446,13 +471,15 @@ struct MatProto {
 struct MatCache {
     proto: MatProto,
     images: HashMap<usize, (Handle<Image>, AlphaRange)>,
-    mats: HashMap<(usize, GsPass), Handle<MobyMaterial>>,
+    mats: HashMap<(usize, GsPass, Option<u32>), Handle<MobyMaterial>>,
+    /// Draw the tags (slots) in their order ([`ExtraMobys::set_ordered`]).
+    ordered: bool,
     /// Distinct (mesh, material) pairs spawned (the stats line's instanced draws).
     batches: HashSet<(AssetId<Mesh>, AssetId<MobyMaterial>)>,
 }
 
 impl MatCache {
-    fn new(proto: MatProto) -> Self { MatCache { proto, images: HashMap::new(), mats: HashMap::new(), batches: HashSet::new() } }
+    fn new(proto: MatProto) -> Self { MatCache { proto, images: HashMap::new(), mats: HashMap::new(), batches: HashSet::new(), ordered: false } }
 
     /// One entity per (part, GS pass of `blend`), tagged `tag`, at `transform` (only its translation matters: the
     /// Transparent3d sort key; the shader places the vertices from the record). A caster's Z-writing draws get both
@@ -476,6 +503,26 @@ impl MatCache {
         for part in parts {
             let (image, texel) = self.images.entry(part.texture).or_insert_with(|| moby_image(level, part.texture, images)).clone();
             for base in blend.passes(texel, part.mult_alpha) {
+                if self.ordered {
+                    // In moby order: every Z-writing draw late (as a caster's), in the moby's band; a glow part's
+                    // colour-only half stays in the band too (not the display-blend effect pass, which draws after
+                    // everything: G-REN-028), blended in linear light.
+                    let pass = caster_pass(base);
+                    let mat = self.material_in(part.texture, pass, Some(tag), &image, materials);
+                    self.batches.insert((part.mesh.id(), mat.id()));
+                    let mut e = commands.spawn((
+                        Mesh3d(part.mesh.clone()),
+                        MeshMaterial3d(mat),
+                        transform,
+                        MeshTag(tag),
+                        NoFrustumCulling,
+                        visibility,
+                        Name::new(format!("{name} tex {} {pass:?} order {tag}", part.texture as isize)),
+                    ));
+                    if pass.state().display { e.insert(crate::display_blend::DisplayEffect); }
+                    out.push(e.id());
+                    continue;
+                }
                 let pass = part_pass(part, base);
                 // The same draw not deferred: only a caster's Z-writing passes differ (caster_pass).
                 let early = if part.caster && caster_pass(base) != base { base } else { pass };
@@ -505,9 +552,14 @@ impl MatCache {
 
     /// The material of (texture, GS pass), made once.
     fn material(&mut self, texture: usize, pass: GsPass, image: &Handle<Image>, materials: &mut Assets<MobyMaterial>) -> Handle<MobyMaterial> {
+        self.material_in(texture, pass, None, image, materials)
+    }
+
+    /// [`Self::material`] for draw order `order` ([`MobyMaterial::order`]).
+    fn material_in(&mut self, texture: usize, pass: GsPass, order: Option<u32>, image: &Handle<Image>, materials: &mut Assets<MobyMaterial>) -> Handle<MobyMaterial> {
         let proto = &self.proto;
         self.mats
-            .entry((texture, pass))
+            .entry((texture, pass, order))
             .or_insert_with(|| {
                 materials.add(MobyMaterial {
                     texture: image.clone(),
@@ -518,6 +570,7 @@ impl MatCache {
                     cpu_colors: proto.cpu_colors.clone(),
                     lods: proto.lods.clone(),
                     pass,
+                    order,
                 })
             })
             .clone()
@@ -1068,6 +1121,7 @@ fn spawn_mobys(
                                 lods: lods.clone(),
                                 pass,
                                 caster: part.caster,
+                                order: None,
                             })
                         })
                         .clone();
@@ -1772,6 +1826,13 @@ impl ExtraMobys {
         out
     }
 
+    /// Draw this set's mobys in their slot order, as `DrawMobys` walks its list ([`MobyMaterial::order`]): every slot's
+    /// Z-writing draws late, then its colour-only half (TEST_1 0x5360b's As < AREF: RGB, no Z), then its shine, before
+    /// the next slot's. A later moby behind an earlier one's colour-only pixels then draws over them, as on the GS
+    /// (Rilgar's broadcast: Qwark 920 stands behind the TV 984's screen and shows untinted). For sets whose slots are
+    /// the game's draw order (the scene actors, crate::scene_render); spawn after calling it.
+    pub fn set_ordered(&mut self) { self.cache.ordered = true; }
+
     /// [`Self::spawn`] with the high-LOD entities and the metal entities apart.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_split(
@@ -1883,6 +1944,7 @@ impl ExtraMobys {
                     lods: self.lods.clone(),
                     pass,
                     caster: part.caster,
+                    order: self.cache.ordered.then_some(slot),
                 };
                 let mut ec = commands.spawn((
                     Mesh3d(part.mesh.clone()),

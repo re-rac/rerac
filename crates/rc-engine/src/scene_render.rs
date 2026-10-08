@@ -647,6 +647,8 @@ fn spawn_actors(
     }
     let n = specs.len();
     let mut extra = ExtraMobys::new(level, vec![0; n.max(1) * moby_render::EXTRA_RECORD_SIZE], crate::moby_anim::identity_palette(palette_len), buffers);
+    // The actors are dynamic mobys made in actor order, so `DrawMobys` draws them in it (ExtraMobys::set_ordered).
+    extra.set_ordered();
     for (k, (class, o_class, anim, slot, base, slots)) in specs.into_iter().enumerate() {
         let entities = match &class {
             Some(class) => extra.spawn(commands, level, class, k as u32, Transform::IDENTITY, &format!("scene actor {k}"), meshes, images, materials),
