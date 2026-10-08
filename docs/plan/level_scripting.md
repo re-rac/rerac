@@ -221,7 +221,7 @@ coding convenience, not a game system.
 | 1324 (02) | `help_aridia` | 10 hints; flag 0x14; record writes `H[0x10]`, `H[0x12]`, `H[0x76]` := 0xffff; pos copy; dune-jump state | the skill point 0x13d409 (G-SAV-007) |
 | 1342 (03) | `help_kerwan` | 14 hints incl. the cable help 0xbbf; flags 0x1a, 0x18; stats `M[3]`, `M[15]`, `M[16]` (cable used), `M[19]`; the Swingshot miss flag taken (`HeroFields::swing_help_clear`) | the skill point 0x13d40b (G-SAV-007) |
 | 1343 (04) | `help_eudora` | 9 hints incl. the crank tries; flags 0x1c..0x1f; stats `M[17]`, `M[24]`, `M[25]` | — |
-| 1347 (05) | `help_rilgar` | 9 hints; stats `H[0x25]`, `H[0x5e]`; `H[0x24]` / `H[0x44]` retired; `M[29]` reset; the swim / dive counters; pos copies | the pad activation `0x30c928` (G-SAV-003) |
+| 1347 (05) | `help_rilgar` | 9 hints; stats `H[0x25]`, `H[0x5e]`; `H[0x24]` / `H[0x44]` retired; `M[29]` reset; the swim / dive counters; pos copies | — (the pad activation `0x30c928` is `floor_switch::press`) |
 | 1348 (06) | `help_blarg` | 5 hints (the crossed records 0x2e / 0x2f kept); `H[0x28]` retired; flag 0x25 | — |
 | 1349 (08) | `help_batalia` | 4 hints; flag 0x2f; `H[0x70]` retired on magnetic walls; grind state | the skill point 0x13d413 (G-SAV-007) |
 | 1000 (09) | `help_gaspar` | the hint 9001 and its record (count on item 11, time / mask every tick) | the skill point 0x13d416 and its platform counter 0x1613c8 (G-SAV-007) |

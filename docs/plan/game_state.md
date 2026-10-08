@@ -227,6 +227,15 @@ never-again 0 throughout, so they come back after every death (probe: `work/scra
 station's checkpoint, 2 Helga's course checkpoint, 3 the train's infobot. The port's reload: `rc-engine` gameplay.rs
 `death_reload` (G-CLS-030); the same-tick read: `World::mission_done`.
 
+**The writers, all levels** (`rc-trace death-census` → `work/census/deaths.tsv`, 2026-10-08): every placed or ported
+class's reach to `SetDeathBits` (its `jal` sites) and to the functions that store into the persistent bits or the
+visit tables. 80 ports reach `SetDeathBits` (all record in the port, with as many death paths); the inline writers
+are the checkpoint record (`0x29ac10` and its level copies: the checkpoints, infobots, story directors), the floor
+switch press (`0x30c928`), the platforms' latch, the teleporter pads, the Novalis walls / rocks / collapsing
+platforms, the barriers' shut-down and the story classes' `kill_record` / `death_bits` stores, all ported. The one
+missing writer it found, Rilgar 1347's pad press, now calls `floor_switch::press`. The live comparison with the
+original: F10 (dev) / `RC_RESPAWN_PROBE_AT` and `work/scratch/respawn_probe.py` (docs/workflows/dev-switches.md).
+
 ## 7. Port plan — `crates/rc-game/src/game_state.rs`
 
 * **Format in `rc-formats`** (`save_game.rs`): `CHUNKS_GLOBAL: [(id, size); 47]`, `CHUNKS_LEVEL: [(id, size); 11]` as

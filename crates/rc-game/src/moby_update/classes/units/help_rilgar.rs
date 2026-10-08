@@ -16,7 +16,7 @@
 //! | 0x31c5d8 | global flag 0 (0x13d388) set, `H[0x22]` 0, group 0x16 → `(5001, 0x22)` | [`update`] |
 //! | 0x31c630 | `H[0x5e]` 0: state 10 in cuboid +0x34 / +0x38 → `H[0x5e]` bumped; swimming with the last grounded point in those cuboids → that point zeroed, +0x60 += 1; not swimming, +0x60 > 1 and Ratchet in them → `(5006, 0x5e)` | [`update`] |
 //! | 0x31c718 | `M[18]` and `H[0x4a]` 0, the Blaster (item 15) owned, in cuboid +0x48 with its ammo 0x13d464 ≥ 20 → `(20000, 0x4a)` | [`update`] |
-//! | 0x31c7e4 | the pad +0x54 (≠ −1), missions +0x58 and +0x20 done, and the first 5 ticks or Ratchet on a class 998 / 830 moby → the pad's activation `FUN_0030c928` (its state 2, command byte, glow 0x80208020, sound 0, the level's per-instance map / save bytes 0x1baea4 / 0x1bbb04, a spline point of 0x1b0930 cleared); +0x54 := −1 | +0x54 := −1: [`update`]; the activation: NOT ported (G-SAV-003: the per-instance save bytes) |
+//! | 0x31c7e4 | the pad +0x54 (≠ −1), missions +0x58 and +0x20 done, and the first 5 ticks or Ratchet on a class 998 / 830 moby → the pad's activation `FUN_0030c928` (its state 2, command byte, glow 0x80208020, sound 0, the level's per-instance map / save bytes 0x1baea4 / 0x1bbb04, a spline point of 0x1b0930 cleared); +0x54 := −1 | +0x54 := −1, the activation [`crate::moby_update::classes::floor_switch::press`]: [`update`] |
 //! | exit | +0x00..+0x0c := Ratchet's position; airborne ticks 0x13f65e = 0 → +0x10..+0x1c := it too | [`update`] |
 //! | no particle, flag write, other moby written (besides the pad's activation) | | n/a |
 
@@ -98,12 +98,38 @@ pub fn update(w: &mut World, id: MobyId) {
     let pad = pvi(w, id, 0x54);
     let on_pad = w.hero.ground_moby.and_then(|g| w.table.mobys.get(g)).is_some_and(|g| g.o_class == 0x3e6 || g.o_class == 0x33e);
     if pad != -1 && mission_done(w, pvi(w, id, 0x58)) && mission_done(w, pvi(w, id, 0x20)) && ((w.counter as i32) < 5 || on_pad) {
-        // G-SAV-003: the pad's activation 0x30c928 is not ported.
+        if let Some(m) = crate::moby_update::story::link(w, pad) { crate::moby_update::classes::floor_switch::press(w, m); }
         set_pvi(w, id, 0x54, -1);
     }
     let p = w.hero.pos.map(|x| x.0 as i32);
     for (k, v) in p.iter().enumerate() { set_pvi(w, id, 4 * k, *v); }
     if w.hero.air_ticks == 0 {
         for (k, v) in p.iter().enumerate() { set_pvi(w, id, 0x10 + 4 * k, *v); }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::moby_runtime::{Moby, MobyTable};
+
+    /// The first ticks with both missions done press the pad (`0x30c928`: its kill / never-again bytes, state 2) and
+    /// forget it.
+    #[test]
+    fn early_ticks_press_the_pad() {
+        let mut pv = vec![0u8; 0x70];
+        for off in [0x24, 0x2c, 0x34, 0x38, 0x40, 0x48, 0x50] { pv[off..off + 4].copy_from_slice(&(-1i32).to_le_bytes()); }
+        pv[0x54..0x58].copy_from_slice(&1i32.to_le_bytes());
+        let director = Moby { o_class: 1347, pvars: pv, ..Moby::default() };
+        let pad = Moby { o_class: 830, state: 1, mission: 0xff, spawn_id: 12, pvars: vec![0xff; 16], ..Moby::default() };
+        let mut t = MobyTable::new(vec![director, pad], 4);
+        let hero = crate::hero::Hero::new();
+        let mut rng = crate::rng::Rng::new();
+        let classes = crate::moby_update::ClassTable::default();
+        let mut svc = crate::moby_update::Services::new();
+        let mut w = World::new(&mut t, &hero, &mut rng, &classes, &mut svc, 0);
+        update(&mut w, 0);
+        assert_eq!((w.m(1).state, pvi(&w, 0, 0x54)), (2, -1));
+        assert_eq!((w.svc.save.killed.get(&12), w.svc.save.collected.get(&12)), (Some(&1), Some(&1)));
     }
 }

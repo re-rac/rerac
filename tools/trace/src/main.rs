@@ -71,6 +71,10 @@ Commands:
       code identity) and the shared functions it calls. Writes classes.tsv, units.tsv, shared.tsv and, with
       the tag table (default tools/ghidra/names/census_systems.tsv), unit_systems.tsv + systems.tsv to
       work/census/ (--out).
+  death-census [--out DIR] [--extracted DIR]
+      For every placed or ported moby class on levels 00-18: its call path to SetDeathBits and the functions it
+      reaches that form a persistent death-bit or visit-table address (docs/plan/game_state.md §6.1). Writes
+      deaths.tsv to work/census/ (--out).
   info --state <p2s>                  list savestate entries and version
   dump-ee <source> [--out FILE] [--entry NAME]   write EE RAM (or any savestate entry) to FILE
                                       (default work/trace/<savestate name>_ee.bin)
@@ -161,6 +165,14 @@ fn run() -> Result<i32> {
                 "class census: {} unported class-levels ({} placed, {} created instances), {} class-port units, {} shared functions -> {}",
                 s.classes, s.placed, s.created, s.units, s.shared, s.out.display()
             );
+            Ok(0)
+        }
+        "death-census" => {
+            let out = a.opt("--out")?.map(PathBuf::from).unwrap_or_else(|| rc_trace::work_dir().join("census"));
+            let extracted = a.extracted()?;
+            a.done()?;
+            let n = rc_trace::class_census::deaths(&extracted, &rc_trace::repo_root(), &rc_trace::work_dir(), &out)?;
+            println!("death census: {n} classes -> {}", out.join("deaths.tsv").display());
             Ok(0)
         }
         "overlay-diff" => {

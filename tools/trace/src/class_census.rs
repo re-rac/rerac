@@ -733,6 +733,135 @@ pub fn run(extracted: &Path, repo: &Path, work: &Path, out: &Path, tag_file: Opt
 }
 
 
+/// `SetDeathBits` (level 01), the save- and visit-bit store of a dying moby (docs/plan/game_state.md §6.1).
+const SET_DEATH_BITS: u32 = 0x26c250;
+/// The persistent death bits `0x14c190 + level·0x100` (save chunk 3005), all 19 levels.
+const PERSISTENT: std::ops::Range<u32> = 0x14c190..0x14c190 + 19 * 0x100;
+/// The level overlay's visit tables (death bits 0x1ba950 .. the checkpoint copy's end 0x1bc310, level-01 addresses)
+/// and their offset in every overlay (the 0xc60 clears of `FUN_0029abc0`).
+const VISIT: std::ops::Range<u32> = 0x1ba950..0x1bc310;
+const VISIT_OFF: [i32; 19] = [-0x480, 0, 0x180, -0x380, -0x300, 0, 0x300, -0x400, 0x380, -0x300, 0, 0x580, 0, -0x180, 0x280, 0x180, 0, 0x480, 0x580];
+
+/// Whether the address completed at word `i` is stored through: word `i` is a store, or it forms a register that a
+/// store within the next 24 words uses as its base (directly or through an `addu` / `daddu` with an index). A short
+/// straight-line scan; a register written by anything else drops out.
+fn stores_through(code: &[u32], i: usize) -> bool {
+    let store = |op: u32| matches!(op, 0x28 | 0x29 | 0x2b | 0x3f | 0x1f);
+    let w = code[i];
+    if store(w >> 26) { return true; }
+    let mut regs: u32 = 1 << (w >> 16 & 31);
+    for &w in code.iter().skip(i + 1).take(24) {
+        let (op, rs, rt, rd) = (w >> 26, w >> 21 & 31, w >> 16 & 31, w >> 11 & 31);
+        if store(op) && regs & 1 << rs != 0 { return true; }
+        match op {
+            0 if matches!(w & 63, 0x21 | 0x2d) => {
+                if regs & (1 << rs | 1 << rt) != 0 { regs |= 1 << rd } else { regs &= !(1 << rd) }
+            }
+            0 => regs &= !(1 << rd),
+            0x09 | 0x19 => if regs & 1 << rs != 0 { regs |= 1 << rt } else { regs &= !(1 << rt) },
+            0x20..=0x27 | 0x37 | 0x0a..=0x0f => regs &= !(1 << rt),
+            _ => {}
+        }
+        if regs == 0 { break; }
+    }
+    false
+}
+
+/// `death-census`: for every class of every level (placed or ported), how its update records a death: the call path
+/// to `SetDeathBits`, and the functions it reaches that form an address in the persistent death bits (`P`) or the
+/// visit tables (`V`, the inline kill / death-bit stores, and the readers of the same tables). Writes `deaths.tsv`.
+pub fn deaths(extracted: &Path, repo: &Path, work: &Path, out: &Path) -> Result<usize> {
+    let load = |l: u32| -> Option<Arc<LevelOverlay>> {
+        let b = std::fs::read(extracted.join(format!("levels/{l:02}/overlay.bin"))).ok()?;
+        LevelOverlay::parse(&b).ok().map(Arc::new)
+    };
+    let mut cache: HashMap<u32, Option<Arc<LevelOverlay>>> = HashMap::new();
+    for l in 0..19 { cache.insert(l, load(l)); }
+    let reference = |l: u32| cache.get(&l).cloned().flatten();
+    let l01 = reference(1).context("level 01 overlay")?;
+    let l01_names = names(work, "level01.elf");
+    let clusters = Clusters::load(&repo.join("tools/ghidra/names/clusters.tsv"));
+    let l01_graph = Graph::build(&l01);
+    let mut t = String::from("level\to_class\tplaced\tcreated\tport\tupdate\tset_death_bits\tsites\tinline\n");
+    let mut n = 0;
+    for level in 0..19u32 {
+        let Some(ov) = reference(level) else { continue };
+        let ports = LevelPorts::from_overlays(&ov, &reference, &OUTSIDE.map(|(a, _)| a));
+        let gp = rc_formats::test_data::gameplay(level).with_context(|| format!("level {level:02} gameplay"))?;
+        let instances = rc_formats::gameplay::parse_moby_instances(&gp)?;
+        let tests = rc_formats::moby_spawn::loader_spawns(&instances, &mut rc_formats::moby_spawn::SpawnSave::default());
+        let mut placed: BTreeMap<i32, (usize, usize)> = BTreeMap::new();
+        for (i, s) in instances.iter().zip(&tests) {
+            let e = placed.entry(i.o_class).or_default();
+            e.0 += 1;
+            if s.spawn { e.1 += 1; }
+        }
+        let graph = Graph::build(&ov);
+        let to_l01 = Relocation::new(&ov, &l01);
+        let sdb = Relocation::new(&l01, &ov).func(SET_DEATH_BITS);
+        let lnames = names(work, &format!("level{level:02}.elf"));
+        let name = |f: u32| -> String {
+            let (k, _) = key_of(level, f, &ov, &to_l01, &clusters, &l01_graph);
+            let nm = k.strip_prefix("L01:").and_then(|h| u32::from_str_radix(h, 16).ok()).and_then(|a| l01_names.get(&a)).or_else(|| lnames.get(&f));
+            match nm { Some(nm) if !nm.starts_with("FUN_") => format!("{f:x}({nm})"), _ => format!("{f:x}") }
+        };
+        let d = VISIT_OFF[level as usize];
+        let visit = (VISIT.start as i32 + d) as u32..(VISIT.end as i32 + d) as u32;
+        // Functions forming a death-table address.
+        let mut inline: HashMap<u32, BTreeSet<&str>> = HashMap::new();
+        for &f in &graph.starts {
+            let Some(code) = graph.extent.get(&f).and_then(|&k| ov.code(f, k)) else { continue };
+            for (i, a) in address_refs(code) {
+                let w = if stores_through(code, i) { "w" } else { "r" };
+                if PERSISTENT.contains(&a) { inline.entry(f).or_default().insert(if w == "w" { "Pw" } else { "Pr" }); }
+                if visit.contains(&a) { inline.entry(f).or_default().insert(if w == "w" { "Vw" } else { "Vr" }); }
+            }
+        }
+        let classes_of_update: BTreeSet<u32> = ov.vtbl().iter().map(|e| e.update).collect();
+        for e in ov.vtbl() {
+            if e.update == 0 || e.o_class == 0 { continue; }
+            let c = e.o_class as i16;
+            let port = ports.get(c).map(|u| format!("{u:?}")).unwrap_or_default();
+            let (pl, cr) = placed.get(&e.o_class).copied().unwrap_or_default();
+            if pl == 0 && port.is_empty() { continue; }
+            // Breadth-first over the update's reach (another class's update is not entered).
+            let mut parent: HashMap<u32, u32> = HashMap::from([(e.update, e.update)]);
+            let mut q = std::collections::VecDeque::from([e.update]);
+            while let Some(f) = q.pop_front() {
+                for &(c2, _) in graph.callees.get(&f).into_iter().flatten() {
+                    if c2 < OVERLAY_BASE || parent.contains_key(&c2) || (classes_of_update.contains(&c2) && c2 != e.update) { continue; }
+                    parent.insert(c2, f);
+                    if Some(c2) != sdb { q.push_back(c2); }
+                }
+            }
+            let path = |mut f: u32| -> String {
+                let mut p = vec![name(f)];
+                while parent[&f] != f { f = parent[&f]; p.push(name(f)); }
+                p.reverse();
+                p.join(" > ")
+            };
+            let via = sdb.filter(|s| parent.contains_key(s)).map(&path).unwrap_or_default();
+            // The `jal SetDeathBits` sites in the reach, by function.
+            let jal = sdb.map(|s| 0x0c00_0000 | s >> 2);
+            let mut sites: Vec<String> = parent
+                .keys()
+                .filter_map(|&f| {
+                    let n = graph.extent.get(&f).and_then(|&k| ov.code(f, k))?.iter().filter(|&&w| Some(w) == jal).count();
+                    (n > 0).then(|| format!("{}×{n}", name(f)))
+                })
+                .collect();
+            sites.sort();
+            let mut inl: Vec<String> = parent.keys().filter_map(|f| inline.get(f).map(|k| format!("{}[{}]", path(*f), k.iter().copied().collect::<Vec<_>>().join("")))).collect();
+            inl.sort();
+            t += &format!("{level:02}\t{}\t{pl}\t{cr}\t{port}\t{:x}\t{via}\t{}\t{}\n", e.o_class, e.update, sites.join(" "), inl.join(" ; "));
+            n += 1;
+        }
+    }
+    std::fs::create_dir_all(out)?;
+    crate::write_output(&out.join("deaths.tsv"), t)?;
+    Ok(n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
