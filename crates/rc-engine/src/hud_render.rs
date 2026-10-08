@@ -125,6 +125,8 @@ pub struct Prim {
     pub nearest: bool,    /// Port-only: clipped to the 512×416 screen even in a 16:9 frame (crate::display): the page menus, whose unused
     /// panels lie off the screen. Other primitives with the full screen's scissor reach the frame's edges there.
     pub boxed: bool,
+    /// The texel coordinates are in 1/16 texels (the GS's UV precision): sub-texel scrolls (the planet globe).
+    pub uv16: bool,
 }
 
 impl Prim {
@@ -206,7 +208,7 @@ impl Hud2d {
     pub fn reset_scissor(&mut self) { self.scissor = FULL_SCISSOR; }
 
     fn push(&mut self, tex: Tex, pos: [[i32; 2]; 4], uv: [[i32; 2]; 4], rgba: u32) {
-        self.prims.push(Prim { tex, pos, uv, rgba, scissor: self.scissor, repeat: false, nearest: false, boxed: false });
+        self.prims.push(Prim { tex, pos, uv, rgba, scissor: self.scissor, repeat: false, nearest: false, boxed: false, uv16: false });
     }
 
     /// `HudSprite(frame, x, y, w, h, alpha)` and its rotated variants.
@@ -1028,7 +1030,8 @@ fn build_mesh(prims: &[Prim], fine: &[(usize, [[i32; 2]; 4])], add: &[usize], fr
                 Some(q) => [wide_x(q[k][0] as f32 / 16.0), q[k][1] as f32 / 16.0, 0.0],
                 None => [wide_x(p.pos[k][0] as f32), p.pos[k][1] as f32, 0.0],
             });
-            uv.push([p.uv[k][0] as f32, p.uv[k][1] as f32]);
+            let k16 = if p.uv16 { 1.0 / 16.0 } else { 1.0 };
+            uv.push([p.uv[k][0] as f32 * k16, p.uv[k][1] as f32 * k16]);
             rgba.push(p.rgba);
             tex.push(t);
             sc.push([s[0], s[1], s[2], s[3]]);

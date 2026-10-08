@@ -228,6 +228,7 @@ pub fn draw(m: &mut PageMenu, w: u32, a: &MenuAssets, gs: &GameState, out: &mut 
             uv: [[0, 0], [u1, 0], [0, v1], [u1, v1]],
             rgba: 0x8080_8080,
             repeat: true,
+            uv16: false,
         });
     }
     if let Some(tex) = p.picture.clone() {
@@ -240,6 +241,7 @@ pub fn draw(m: &mut PageMenu, w: u32, a: &MenuAssets, gs: &GameState, out: &mut 
             uv: [[0, 0], [512, 0], [0, 512], [512, 512]],
             rgba: 0x8080_8080,
             repeat: false,
+            uv16: false,
         });
     }
     draw_markers(p, a, gs, (left, top, right, bottom), dx, dy, out);
@@ -272,6 +274,7 @@ pub fn rotated(frame: usize, cx: f32, cy: f32, w: f32, h: f32, angle: f32, tw: i
         uv: [[0, 0], [tw, 0], [0, th], [tw, th]],
         rgba: 0x8080_8080,
         repeat: false,
+        uv16: false,
     }
 }
 
@@ -316,13 +319,14 @@ pub fn globe_draw(m: &PageMenu, w: u32, vsync: u32, out: &mut Vec<MenuDraw>) -> 
     let layer = |k: usize, x: i32, y: i32, w16: i32, h16: i32, u16: i32, repeat: bool, out: &mut Vec<MenuDraw>| {
         let Some(tex) = p.layers[k].clone() else { return };
         let (a, b) = (to_panel(x, y), to_panel(x + w16, y + h16));
-        let (u0, u1) = (u16 / 16, u16 / 16 + 128);
+        let (u0, u1) = (u16, u16 + 128 * 16);
         out.push(MenuDraw::Quad {
             tex: QuadTex::Image(super::super::ImageSrc::Pixels { key: key | k as u64, tex }),
             pos: [[a[0], a[1]], [b[0], a[1]], [a[0], b[1]], [b[0], b[1]]],
-            uv: [[u0, 0], [u1, 0], [u0, 128], [u1, 128]],
+            uv: [[u0, 0], [u1, 0], [u0, 128 * 16], [u1, 128 * 16]],
             rgba: 0x8080_8080,
             repeat,
+            uv16: true,
         });
     };
     let (t16w, t16h) = (tw * 16, th * 16);
@@ -663,6 +667,7 @@ fn draw_markers(p: &MapPage, a: &MenuAssets, gs: &GameState, rect: (i32, i32, i3
                 uv: [[0, 0], [tw, 0], [0, th], [tw, th]],
                 rgba: 0x8080_8080,
                 repeat: false,
+                uv16: false,
             });
         } else {
             let (mut ang, mut w, mut h) = (k.rot, zs * 256.0, zs * 256.0);

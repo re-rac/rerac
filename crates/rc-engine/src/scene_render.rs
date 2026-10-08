@@ -1035,6 +1035,7 @@ fn ring_prim(r: &rc_game::moby_update::classes::units::trespasser_lock::RingPrim
         repeat: r.repeat,
         nearest: false,
         boxed: false,
+        uv16: false,
     }
 }
 

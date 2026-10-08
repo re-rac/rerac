@@ -182,7 +182,8 @@ pub enum MenuDraw {
     Image { src: ImageSrc, x: i32, y: i32, w: i32, h: i32, u: i32, v: i32, tw: i32, th: i32, rgba: u32 },
     /// A textured quad with free corners (panel pixels, order top-left, top-right, bottom-left, bottom-right) and texel
     /// coordinates: the map page's grid (CLAMP_1 = REPEAT), its picture and the rotated sprites (`fun_00200600`).
-    Quad { tex: QuadTex, pos: [[i32; 2]; 4], uv: [[i32; 2]; 4], rgba: u32, repeat: bool },
+    /// `uv16`: `uv` in 1/16 texels (the GS's UV precision; the globe's scroll moves 1/16 texel a frame).
+    Quad { tex: QuadTex, pos: [[i32; 2]; 4], uv: [[i32; 2]; 4], rgba: u32, repeat: bool, uv16: bool },
 }
 
 /// A [`MenuDraw::Quad`]'s texture.

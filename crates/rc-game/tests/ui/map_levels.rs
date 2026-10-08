@@ -271,6 +271,15 @@ fn map_page_on_novalis() {
     let quads: Vec<&QuadTex> = draws.iter().filter_map(|d| match d { MenuDraw::Quad { tex, .. } => Some(tex), _ => None }).collect();
     let images = quads.iter().filter(|t| matches!(t, QuadTex::Image(_))).count();
     assert_eq!(images, 4, "the map picture and the globe's three layers");
+    // The globe's scroll moves 1/16 texel a frame (GS UV precision), not a whole texel every 16 frames.
+    let globe_u = |vsync: u32| -> Vec<i32> {
+        let mut out = Vec::new();
+        for &w in m.widgets.keys() { rc_game::menus::pause::map_page::globe_draw(&m, w, vsync, &mut out); }
+        out.iter().filter_map(|d| match d { MenuDraw::Quad { uv, uv16: true, repeat: true, .. } => Some(uv[0][0]), _ => None }).collect()
+    };
+    let (u0, u1) = (globe_u(100), globe_u(101));
+    assert!(!u0.is_empty(), "the planet layer scrolls");
+    assert_eq!(u1.iter().zip(&u0).map(|(b, a)| b - a).collect::<Vec<_>>(), vec![1; u0.len()], "{u0:?} {u1:?}");
     let shown = m.map.markers.iter().filter(|k| k.shown && k.icon != 0).count();
     assert!(quads.iter().filter(|t| matches!(t, QuadTex::Frame(_))).count() >= 2 + shown, "grid, markers and arrow");
     let labelled = m.map.markers.iter().filter(|k| k.shown && k.label != 0).count();

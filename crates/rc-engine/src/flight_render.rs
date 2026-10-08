@@ -345,6 +345,7 @@ pub(crate) fn hud_prims(f: &mut FlightRender, h: &mut crate::hud_render::Hud2d, 
             repeat: false,
             nearest: false,
             boxed: false,
+            uv16: false,
         });
     }
 }

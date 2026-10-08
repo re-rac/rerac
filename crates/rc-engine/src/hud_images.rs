@@ -117,5 +117,6 @@ pub fn prim(slot: usize, x: i32, y: i32, w: i32, h: i32, u: i32, v: i32, tw: i32
         repeat: false,
         nearest: false,
         boxed: false,
+        uv16: false,
     }
 }

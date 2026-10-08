@@ -1640,7 +1640,7 @@ fn convert(
                 } else {
                     [[ax, ay], [ax + 1, ay], [bx, by], [bx + 1, by]]
                 };
-                h.prims.push(Prim { tex: Tex::None, pos, uv: [[0, 0]; 4], rgba: *rgba, scissor: full, repeat: false, nearest: false, boxed: false });
+                h.prims.push(Prim { tex: Tex::None, pos, uv: [[0, 0]; 4], rgba: *rgba, scissor: full, repeat: false, nearest: false, boxed: false, uv16: false });
             }
             MenuDraw::SpriteUv { frame, x0, y0, x1, y1, u0, v0, u1, v1, alpha, repeat_u } => {
                 let rgba = ((*alpha as u32) & 0xff) << 24 | 0x007f_7f7f;
@@ -1648,7 +1648,7 @@ fn convert(
                 let (ua, ub, va, vb) = (u0 / 16, u1 / 16, v0 / 16, v1 / 16);
                 let tw = h.frame_sizes.get(*frame).map_or(0, |s| s.0);
                 let mut quad = |xa: i32, xb: i32, ua: i32, ub: i32| {
-                    h.prims.push(Prim { tex: Tex::Frame(*frame), pos: [[xa, py0], [xb, py0], [xa, py1], [xb, py1]], uv: [[ua, va], [ub, va], [ua, vb], [ub, vb]], rgba, scissor: full, repeat: false, nearest: false, boxed: false });
+                    h.prims.push(Prim { tex: Tex::Frame(*frame), pos: [[xa, py0], [xb, py0], [xa, py1], [xb, py1]], uv: [[ua, va], [ub, va], [ua, vb], [ub, vb]], rgba, scissor: full, repeat: false, nearest: false, boxed: false, uv16: false });
                 };
                 if *repeat_u && tw > 0 && ub - ua == tw {
                     // CLAMP_1 = REPEAT: split at the texture's wrap.
@@ -1663,7 +1663,7 @@ fn convert(
             MenuDraw::FrameQuad { frame, x, y, w, h: ph, u, v, tw, th, rgba } => {
                 let (xa, ya, xb, yb) = (x + ox, y + oy, x + w + ox, y + ph + oy);
                 let (ub, vb) = (u + tw, v + th);
-                h.prims.push(Prim { tex: Tex::Frame(*frame), pos: [[xa, ya], [xb, ya], [xa, yb], [xb, yb]], uv: [[*u, *v], [ub, *v], [*u, vb], [ub, vb]], rgba: *rgba, scissor: full, repeat: false, nearest: false, boxed: false });
+                h.prims.push(Prim { tex: Tex::Frame(*frame), pos: [[xa, ya], [xb, ya], [xa, yb], [xb, yb]], uv: [[*u, *v], [ub, *v], [*u, vb], [ub, vb]], rgba: *rgba, scissor: full, repeat: false, nearest: false, boxed: false, uv16: false });
             }
             MenuDraw::Snapshot => snapshot = true,
             // The menu layer's clear colour until the snapshot arrives, then in the snapshot's bytes.
@@ -1682,14 +1682,14 @@ fn convert(
             MenuDraw::Image { src, x, y, w, h: ph, u, v, tw, th, rgba } => {
                 if let Some(slot) = pictures(src) { h.prims.push(crate::hud_images::prim(slot, x + ox, y + oy, *w, *ph, *u, *v, *tw, *th, *rgba)); }
             }
-            MenuDraw::Quad { tex, pos, uv, rgba, repeat } => {
+            MenuDraw::Quad { tex, pos, uv, rgba, repeat, uv16 } => {
                 let tex = match tex {
                     rc_game::menus::QuadTex::Frame(f) => Some(Tex::Frame(*f)),
                     rc_game::menus::QuadTex::Image(src) => pictures(src).map(Tex::Dyn),
                 };
                 if let Some(tex) = tex {
                     let pos = pos.map(|[x, y]| [x + ox, y + oy]);
-                    h.prims.push(Prim { tex, pos, uv: *uv, rgba: *rgba, scissor: full, repeat: *repeat, nearest: false, boxed: false });
+                    h.prims.push(Prim { tex, pos, uv: *uv, rgba: *rgba, scissor: full, repeat: *repeat, nearest: false, boxed: false, uv16: *uv16 });
                 }
             }
             MenuDraw::Static(s) => {
@@ -1711,7 +1711,7 @@ pub(crate) fn static_prim(s: &StaticDraw, ox: i32, oy: i32) -> Prim {
     };
     let (x0, y0, x1, y1) = (s.x + ox, s.y + oy, s.x + s.w + ox, s.y + s.h + oy);
     let (u0, v0, u1, v1) = (s.u, s.v, s.u + s.tw, s.v + s.th);
-    Prim { tex, pos: [[x0, y0], [x1, y0], [x0, y1], [x1, y1]], uv: [[u0, v0], [u1, v0], [u0, v1], [u1, v1]], rgba: s.rgba, scissor: [0, W - 1, 0, H - 1], repeat: true, nearest: false, boxed: false }
+    Prim { tex, pos: [[x0, y0], [x1, y0], [x0, y1], [x1, y1]], uv: [[u0, v0], [u1, v0], [u0, v1], [u1, v1]], rgba: s.rgba, scissor: [0, W - 1, 0, H - 1], repeat: true, nearest: false, boxed: false, uv16: false }
 }
 
 // ---- Snapshot, render world (module docs, "Snapshot") ----

@@ -27,14 +27,14 @@ pub fn prims(play: &crate::gameplay::Play) -> Vec<Prim> {
         };
         let q = marker_corners(m, c);
         let pos = q.map(|v| [v[0].round() as i32, v[1].round() as i32]);
-        out.push(Prim { tex: Tex::Fx(m.fx), pos, uv: MARKER_UV, rgba: m.rgba, scissor: [0, crate::hud_render::W - 1, 0, crate::hud_render::H - 1], repeat: false, nearest: false, boxed: false });
+        out.push(Prim { tex: Tex::Fx(m.fx), pos, uv: MARKER_UV, rgba: m.rgba, scissor: [0, crate::hud_render::W - 1, 0, crate::hud_render::H - 1], repeat: false, nearest: false, boxed: false, uv16: false });
     }
     // The classes' screen sprites of that tick (the Veldin boss beam's flash 1898, `0x2fb690`).
     for s in play.svc.screen_sprites.iter().filter(|s| s.tick == tick) {
         let Some(c) = project_tan(eye, rows, s.at, play.svc.view_tan_x) else { continue };
         let q = screen_sprite_corners(c, s.half);
         let pos = q.map(|v| [v[0].round() as i32, v[1].round() as i32]);
-        out.push(Prim { tex: Tex::Fx(s.fx as usize), pos, uv: s.uv, rgba: s.rgba, scissor: [0, crate::hud_render::W - 1, 0, crate::hud_render::H - 1], repeat: false, nearest: false, boxed: false });
+        out.push(Prim { tex: Tex::Fx(s.fx as usize), pos, uv: s.uv, rgba: s.rgba, scissor: [0, crate::hud_render::W - 1, 0, crate::hud_render::H - 1], repeat: false, nearest: false, boxed: false, uv16: false });
     }
     out
 }

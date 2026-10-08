@@ -188,7 +188,7 @@ fn screen_prims(sd: &ScreenDraw, glyphs: &[rc_formats::font::GlyphTable; 3], fra
     let mut local: Vec<Prim> = Vec::new();
     if !canvas {
         // The target's clear (FUN_00223470 black, copied with ALPHA 0x64 = replace): opaque black.
-        local.push(Prim { tex: Tex::None, pos: [[0, 0], [screens::TARGET.0, 0], [0, screens::TARGET.1], [screens::TARGET.0, screens::TARGET.1]], uv: [[0, 0]; 4], rgba: 0x8000_0000, scissor: [0, 0, 0, 0], repeat: false, nearest: false, boxed: false });
+        local.push(Prim { tex: Tex::None, pos: [[0, 0], [screens::TARGET.0, 0], [0, screens::TARGET.1], [screens::TARGET.0, screens::TARGET.1]], uv: [[0, 0]; 4], rgba: 0x8000_0000, scissor: [0, 0, 0, 0], repeat: false, nearest: false, boxed: false, uv16: false });
     }
     for d in &sd.content {
         match d {
@@ -196,13 +196,13 @@ fn screen_prims(sd: &ScreenDraw, glyphs: &[rc_formats::font::GlyphTable; 3], fra
             MenuDraw::Rect { x0, y0, x1, y1, rgba } => h.rect(y0 - 1, y1 - 1, x0 - 1, x1 - 1, *rgba),
             MenuDraw::FrameQuad { frame, x, y, w, h: qh, u, v, tw, th, rgba } => {
                 let (x1, y1, u1, v1) = (x + w, y + qh, u + tw, v + th);
-                h.prims.push(Prim { tex: Tex::Frame(*frame), pos: [[*x, *y], [x1, *y], [*x, y1], [x1, y1]], uv: [[*u, *v], [u1, *v], [*u, v1], [u1, v1]], rgba: *rgba, scissor: [0, 0, 0, 0], repeat: false, nearest: false, boxed: false });
+                h.prims.push(Prim { tex: Tex::Frame(*frame), pos: [[*x, *y], [x1, *y], [*x, y1], [x1, y1]], uv: [[*u, *v], [u1, *v], [*u, v1], [u1, v1]], rgba: *rgba, scissor: [0, 0, 0, 0], repeat: false, nearest: false, boxed: false, uv16: false });
             }
             MenuDraw::SpriteUv { frame, x0, y0, x1, y1, u0, v0, u1, v1, alpha, .. } => {
                 let rgba = ((*alpha as u32) & 0xff) << 24 | 0x007f_7f7f;
                 let (px0, py0, px1, py1) = (x0 / 16, y0 / 16, x1 / 16, y1 / 16);
                 let (ua, ub, va, vb) = (u0 / 16, u1 / 16, v0 / 16, v1 / 16);
-                h.prims.push(Prim { tex: Tex::Frame(*frame), pos: [[px0, py0], [px1, py0], [px0, py1], [px1, py1]], uv: [[ua, va], [ub, va], [ua, vb], [ub, vb]], rgba, scissor: [0, 0, 0, 0], repeat: false, nearest: false, boxed: false });
+                h.prims.push(Prim { tex: Tex::Frame(*frame), pos: [[px0, py0], [px1, py0], [px0, py1], [px1, py1]], uv: [[ua, va], [ub, va], [ua, vb], [ub, vb]], rgba, scissor: [0, 0, 0, 0], repeat: false, nearest: false, boxed: false, uv16: false });
             }
             _ => {}
         }
@@ -281,7 +281,7 @@ fn draw(
                 let Some(pts) = pts else { continue };
                 let pos = [0, 1, 2, 3].map(|k| [pts[k][0].round() as i32, pts[k][1].round() as i32]);
                 // After the screens and their static (the static layer's last pass).
-                statics[2].push(Prim { tex: Tex::Fx(screens::GLASS_FX), pos, uv: [[0, 0], [gw, 0], [0, vh], [gw, vh]], rgba: 0x8080_8080, scissor: [0, 511, 0, 415], repeat: false, nearest: false, boxed: false });
+                statics[2].push(Prim { tex: Tex::Fx(screens::GLASS_FX), pos, uv: [[0, 0], [gw, 0], [0, vh], [gw, vh]], rgba: 0x8080_8080, scissor: [0, 511, 0, 415], repeat: false, nearest: false, boxed: false, uv16: false });
             }
         }
         if !prims.is_empty() {
