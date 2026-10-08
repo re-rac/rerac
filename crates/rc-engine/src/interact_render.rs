@@ -238,6 +238,16 @@ fn play_sounds(play: &mut Play, audio: Option<&mut crate::audio_out::AudioOut>, 
     }
 }
 
+/// Every frame, whatever the mode: a `PromptRelease` of the last tick empties the prompt's slot at once. The ship's △
+/// releases it in the tick whose take-off leaves mode 0 before [`after_tick`] would run.
+pub fn feed_release(play: &Play, feed: &mut crate::hud_render::HudFeed) {
+    let released = play.svc.interact.prompt.released;
+    if feed.prompt_released != released {
+        feed.prompt_released = released;
+        feed.prompt = false;
+    }
+}
+
 /// After a mode-0 tick: the hand-offs and the prompt (module docs).
 #[allow(clippy::too_many_arguments)]
 pub fn after_tick(

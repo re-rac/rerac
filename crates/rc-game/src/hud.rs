@@ -288,6 +288,8 @@ impl Request {
     pub const MORPH: Request = Request { slot: 4, flags: 0, icon: meters::ICON_MORPH, element: Element::Morph, max: 10000 };
     /// The Suck Cannon's (`0x303000`).
     pub const SUCK_CANNON: Request = Request { slot: 4, flags: 0, icon: meters::ICON_TANK, element: Element::SuckCannon, max: 5 };
+    /// `PromptTick` 0x278eb8's slot-12 request (the context prompt).
+    pub const PROMPT: Request = Request { slot: 12, flags: 0, icon: 0, element: Element::Prompt, max: 0 };
     /// The bolt alert's (`HudBoltAlertShow` 0x227d90).
     pub const BOLT_ALERT: Request = Request { slot: 7, flags: 0, icon: meters::ICON_ALERT, element: Element::BoltAlert, max: 1 };
     /// Giant Clank's energy (`HudWeaponShow` 0x24f9c0 in body 2).
@@ -610,6 +612,21 @@ impl HudState {
         true
     }
 
+    /// `PromptRelease` 0x279070's slot part: the prompt's slot gets the empty request at once ([`HudState::release`]),
+    /// whether or not the HUD ticks this frame (the take-off hides it, the planet page freezes it). True when it was up.
+    pub fn release_prompt(&mut self) -> bool {
+        self.prompt_show = false;
+        self.handle_of(&Request::PROMPT).is_some_and(|h| self.release(h))
+    }
+
+    /// This frame's draws without a tick (on a copy: the draws advance the banner and help box).
+    pub fn draws_now(&self) -> Vec<Draw> {
+        let mut c = self.clone();
+        let mut out = Vec::new();
+        c.draw(&mut out);
+        out
+    }
+
     /// The calls the game made since the last HUD tick ([`calls`]), in order.
     pub fn apply_calls(&mut self, calls: &[Call]) {
         for c in calls {
@@ -871,7 +888,7 @@ impl HudState {
         self.frame_calls();
         // PromptTick 0x278eb8's slot part (and NpcTalkUpdate's): slot 12 requested, or kept up for 10 ticks.
         if self.prompt_show {
-            let h = self.queue(12, 0, Element::Prompt, 0);
+            let h = self.queue_req(Request::PROMPT);
             self.keep_up(h, scale_ticks(10));
         }
         // The vendor's bolt counter (OpenVendorMenu: slot 2 | 0x10; VendorExit: flags 0).
@@ -1879,6 +1896,20 @@ mod tests {
         h.apply_calls(&[Call::Data(7, 0), Call::Release(r)]);
         assert_eq!(h.slots[6].element, Element::Empty);
         for _ in 0..10 { assert!(h.tick(inputs(4, 0)).is_empty(), "nothing left on screen"); }
+    }
+
+    /// `PromptRelease` (the ship's △) empties the prompt's slot at once, without a tick: the take-off hides the HUD and
+    /// the planet page freezes it, so the prompt stayed behind the Galactic Map.
+    #[test]
+    fn released_prompt_leaves_without_a_tick() {
+        let mut h = HudState::new(assets());
+        h.set_prompt(true, b"Enter ship");
+        for _ in 0..30 { h.tick(inputs(4, 0)); }
+        assert!(!h.draws_now().is_empty(), "the prompt is up");
+        assert!(h.release_prompt());
+        assert_eq!(h.slots[12].element, Element::Empty);
+        assert!(h.draws_now().is_empty(), "nothing left on screen");
+        for _ in 0..10 { assert!(h.tick(inputs(4, 0)).is_empty(), "and it does not come back"); }
     }
 
     #[test]

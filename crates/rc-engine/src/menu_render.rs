@@ -857,6 +857,7 @@ fn menu_frame(
         }
         _ => {}
     }
+    crate::interact_render::feed_release(&play, &mut feed);
     // The "use" system after a gameplay tick: the vendor's hand-off, the prompt for the HUD.
     if mode == Mode::Gameplay && mm.state.mode == Mode::Gameplay {
         crate::interact_render::feed_idle(&mut feed);

@@ -522,6 +522,8 @@ struct HudRuntime {
     cine_banner_seq: u32,
     /// The last [`HudFeed::reset`] applied.
     reset: u32,
+    /// The last [`HudFeed::prompt_released`] applied.
+    prompt_released: u32,
     /// The last game-side HUD call applied (`rc_game::hud::Calls::since`, `Services::hud`).
     calls_cursor: Option<u64>,
     /// The calls not applied yet (kept while the HUD loop is frozen: the page menus, scenes).
@@ -580,6 +582,8 @@ pub struct HudFeed {
     pub weapon: Option<Option<(u16, i32, i32)>>,
     /// Bumped by `FUN_0024fb00` callers (the vendor's open): every HUD slot is emptied at once.
     pub reset: u32,
+    /// `rc_game::moby_update::interact::Prompt::released`: the prompt's slot emptied at once on a change.
+    pub prompt_released: u32,
     /// The slot calls the engine-side callers made this frame (the quick select's opening and `PageMenuClose`: health and
     /// bolts kept up, `rc_game::hud::Call::ShowHealthBolts`); applied and cleared before the HUD's next tick.
     pub calls: Vec<rc_game::hud::Call>,
@@ -745,6 +749,7 @@ fn setup(
         banner_seq: 0,
         cine_banner_seq: 0,
         reset: 0,
+        prompt_released: 0,
         calls_cursor: None,
         pending: Vec::new(),
         fx_cuts: Default::default(),
@@ -834,6 +839,10 @@ fn tick_and_build(
         rt.state.reset_slots();
     }
     rt.state.set_prompt(feed.prompt, &feed.prompt_text);
+    if feed.prompt_released != rt.prompt_released {
+        rt.prompt_released = feed.prompt_released;
+        if rt.state.release_prompt() { rt.draws = rt.state.draws_now(); }
+    }
     rt.state.bolts_pinned = feed.bolts_pinned;
     let target = ticks.0;
     if hook.freeze || scene.hide_hud { rt.ticks_done = target; }

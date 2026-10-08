@@ -77,6 +77,8 @@ pub struct Prompt {
     pub msg: i32,
     /// 0x17e9b0.
     pub text: Vec<u8>,
+    /// Bumped by every [`Prompt::release`] that freed slot 12: the HUD drops the element at once (the engine's feed).
+    pub released: u32,
 }
 
 /// `PromptSetText` 0x24cdb0 into `buf`.
@@ -122,6 +124,7 @@ impl Prompt {
         if self.owner != owner || !slot_up { return false; }
         self.timer = 0;
         self.owner = 0;
+        self.released = self.released.wrapping_add(1);
         true
     }
 
