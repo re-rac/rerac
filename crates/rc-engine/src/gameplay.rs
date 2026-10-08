@@ -1123,6 +1123,7 @@ fn setup(
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<MobyMaterial>>,
     mut buffers: ResMut<Assets<ShaderBuffer>>,
+    travel: Option<Res<crate::travel_render::Travel>>,
 ) {
     // Once per level (crate::level_switch: a runtime level change runs the set-up again).
     if generation.is_changed() { *done = false; }
@@ -1233,6 +1234,9 @@ fn setup(
     let mut svc = Services::new();
     svc.level = level_index;
     svc.death_z = lv.death_z;
+    // `entry` 0x259c40 stores game mode 6 before the load pass (`LoadLevelCoreData`): the classes' first update sees
+    // it (Umbris' director 436 waits in state 0 for mode 0, so its arrival scene follows the landing).
+    if travel.as_ref().is_some_and(|t| t.entry_follows()) { svc.game_mode = 6; }
     // The ship block (rc_game::travel): the loader's ship 0x13e030, its index 0x13e056, the fly-away's path and camera
     // cuboids (level settings +0x3c..+0x44), Ratchet's landing spot; the ship's joint lists (the canopy glass).
     svc.travel = rc_game::travel::ShipGlobals {

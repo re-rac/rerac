@@ -219,6 +219,15 @@ impl Plugin for TravelPlugin {
     }
 }
 
+impl Travel {
+    /// The level being set up runs `entry` before its first tick ([`pre_tick`]: after a level change, or the
+    /// `RC_LANDING=1` boot). `entry` stores game mode 6 (0x15f5c4) before `LoadLevelCoreData`'s load pass; its
+    /// `ShipLandingStart` then keeps 6 (the landing) or stores 0.
+    pub(crate) fn entry_follows(&self) -> bool {
+        !crate::saves::front_end_active() && ((self.entry_pending && self.tr.is_some()) || (self.boot_entry && self.tr.is_none()))
+    }
+}
+
 /// A level change drops the actors (their entities are gone) and arms the new level's `entry`.
 fn level_unload(mut t: ResMut<Travel>, mut active: ResMut<ActiveScene>) {
     active.space_actors.clear();
