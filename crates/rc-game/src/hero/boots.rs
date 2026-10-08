@@ -35,7 +35,8 @@
 //! 0x248ad8): 1 in 0x3f / 0x70 / 0x71, or in idle 0 with fewer than 4 air ticks on surface 2 with the boots, else
 //! 0x13f658. In mode 1 gravity pulls along −normal (0x248b68), the ground probe runs along the gravity direction
 //! 0x13f5e0 = −normal, TurnTo turns in the hero's own frame, SetPlanarVel follows the tilted facing, the step
-//! snap moves along the normal and the post-move straightening aligns his up axis with the floor (0x236358). The
+//! snap moves along the normal, the capsule's sphere sits 0.6 up his own z axis (0x233940 → 0x248ea8) and the
+//! post-move straightening aligns his up axis with the floor (0x236358). The
 //! ground physics' magnetic branch ([`ground_magnet`]) replaces the wall check and gravity.
 //! * **0x3f** Magneboots walk (group 1, anim 0x5b): 2 ↔ 0x3f on 0x13f658; speed 2..3.5 u/s toward the stick
 //!   inside ±70° of the facing; crouch → 4, ✕ → 0x71, falls off (5 air ticks above 0.8) → 6, off the magnetic

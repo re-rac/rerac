@@ -743,7 +743,13 @@ impl Hero {
             } else if self.gravity_mode == 0 && self.f548 == 0 {
                 off[2] = self.cap_bottom;
             } else if self.gravity_mode == 1 || self.f548 != 0 || self.group == 0x15 {
-                off[2] = off[2] + Pf::b(0x3f19_999a);
+                // `0x248ea8(0.6)`: up the world z in mode 0, in modes 1 / 2 up the moby's own z axis (+0x40),
+                // so on a tilted magnetic floor the sphere stays 0.6 off it.
+                if matches!(self.gravity_mode, 1 | 2) {
+                    off = vadd(off, mul_rows4(&self.rows, [Pf::ZERO, Pf::ZERO, Pf::b(0x3f19_999a), Pf::ZERO]));
+                } else {
+                    off[2] = off[2] + Pf::b(0x3f19_999a);
+                }
             } else {
                 off[2] = off[2] - (-self.cap_bottom);
             }

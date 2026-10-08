@@ -101,3 +101,29 @@ fn orxon_magnetic_walkway() {
     assert!(plain.iter().all(|r| r.1 == 0 && r.2 == 0 && r.0 != 0x3f));
     assert!(plain[42..70].iter().any(|r| r.0 == 2));
 }
+
+/// Orxon's magnetic spiral (x 300..315, y 229..251, z 44..72): the walk climbs the bend onto the wall and over the
+/// ceiling, and standing still at the bends he stays put. The capsule's sphere sits 0.6 up the hero's own z axis
+/// in gravity modes 1 / 2 (`HeroCapsulePasses` 0x233940 → `0x248ea8`); lifted along the world z, on the 54° bend
+/// it dug into the floor, the push-out held him 0.05 above it (walking in place in the air) and slid him along
+/// when idle.
+#[test]
+fn orxon_magnetic_spiral() {
+    let Some(lv) = level_data(10) else { eprintln!("skipped: no extracted/levels/10"); return };
+    let at = [307.0, 240.0, 57.0];
+    let yaw = 1.139_874_6;
+    let walk = |stop: u32| move |t: u32| if (30..stop).contains(&t) { PadInput::neutral().stick(0.0, -1.0) } else { PadInput::neutral() };
+    let recs = run(&lv, at, yaw, true, 760, walk(760));
+    let top = recs.iter().map(|r| r.3[2]).fold(f32::MIN, f32::max);
+    eprintln!("spiral: top z {top}, end {:?}", recs.last().unwrap().3);
+    assert!(top > 71.5, "over the ceiling: top z {top}");
+    assert!(recs[40..].iter().all(|r| r.0 == 0x3f && r.1 == 1), "the Magneboots walk throughout");
+    // Stopped at the 54° bend, on the wall and on the ceiling: no drift.
+    for stop in [230, 300, 440, 760] {
+        let recs = run(&lv, at, yaw, true, stop + 300, walk(stop));
+        let (a, b) = (recs[stop as usize + 60].3, recs.last().unwrap().3);
+        let d = ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
+        assert!(d < 0.05, "stopped at tick {stop}: drift {d}");
+        assert_eq!((recs.last().unwrap().0, recs.last().unwrap().1), (0, 1));
+    }
+}
