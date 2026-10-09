@@ -276,8 +276,11 @@ pub fn ring_quads(table: &MobyTable, svc: &Services, id: MobyId) -> Option<FxQua
         let inner_k = 0.96 - band * 0.03;
         let mut in_prev = [p[0] - rb * inner_k, p[1], top];
         let mut out_prev = [p[0] - rb, p[1], p[2]];
-        let mut a = -2.827_433_6f32;
-        while a < PI {
+        // The angle steps in the PS2's `add.s` (round toward zero): IEEE rounding lands the 19th step on π and the loop
+        // ends one sector short, leaving a gap in the ring.
+        let mut ap = Pf::b(0xc034_f4ac);
+        while ap < Pf::b(0x4049_0fdb) {
+            let a = ap.to_f32();
             let (cs, sn) = (a.cos(), a.sin());
             let inner = [p[0] + rb * inner_k * cs, p[1] + rb * inner_k * sn, top];
             let outer = [p[0] + rb * cs, p[1] + rb * sn, p[2]];
@@ -285,7 +288,7 @@ pub fn ring_quads(table: &MobyTable, svc: &Services, id: MobyId) -> Option<FxQua
             quads.push(FxQuad { corners: [[in_prev[0], in_prev[1], p[2] - 5.0], [inner[0], inner[1], p[2] - 5.0], out_prev, outer], st, rgba: [rgba; 4] });
             in_prev = inner;
             out_prev = outer;
-            a += 0.314_159_27;
+            ap += Pf::b(0x3ea0_d97c);
         }
         band += 0.1;
         grey = (grey.wrapping_sub(0xb)) & 0xff;
@@ -513,7 +516,9 @@ pub fn tongue_step(w: &mut World, id: MobyId, mouth: V) -> f32 {
     let mut best = 1000.0f32;
     for i in 1..10 {
         let seg = c::sub(t.nodes[i], t.nodes[i - 1]);
-        let axis = cross(dir, seg);
+        // `FastVecCross(axis, dir, seg)` with the rotation turning `seg` toward `dir`, as the Suck Cannon's vortex
+        // (`hero::suck_vortex`, the same code): right-handed here, that is the axis `seg × dir`.
+        let axis = cross(seg, dir);
         let a = (c::dot3(seg, dir) / (c::len3(seg) * 2.8)).clamp(-1.0, 1.0).asin();
         let target = HALF_PI - a;
         let mut vel = t.bend[i];
