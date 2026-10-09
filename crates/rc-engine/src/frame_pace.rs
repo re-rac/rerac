@@ -16,7 +16,7 @@
 //!   The wait sleeps to 0.3 ms before the deadline, then yields until it (the yield loop costs CPU: keep it short).
 //!
 //! `RC_FRAME_CAP=0` (or `RC_NOVSYNC=1`, which measures headroom) turns the limiter off; frame-exact runs
-//! (`crate::determinism`) keep their own one tick per update.
+//! (`crate::determinism`) keep their own one tick per update, without the limiter unless `RC_FRAME_CAP=1`.
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
@@ -46,7 +46,14 @@ fn env_is(name: &str, v: &str) -> bool { std::env::var(name).is_ok_and(|x| x.tri
 
 impl Plugin for FramePacePlugin {
     fn build(&self, app: &mut App) {
-        if crate::determinism::deterministic() { return; }
+        if crate::determinism::deterministic() {
+            // Frame-exact runs keep their one tick per update; `RC_FRAME_CAP=1` still limits them to 60 frames a second
+            // (a capture run otherwise renders as fast as the machine allows).
+            if env_is("RC_FRAME_CAP", "1") {
+                app.insert_resource(Pace { limit: true, last: None, acc: 0.0, next: None, period: None }).add_systems(Last, wait);
+            }
+            return;
+        }
         let limit = !env_is("RC_FRAME_CAP", "0") && !env_is("RC_NOVSYNC", "1");
         app.insert_resource(Pace { limit, last: None, acc: 0.0, next: None, period: None })
             .insert_resource(TimeUpdateStrategy::FixedTimesteps(1))
