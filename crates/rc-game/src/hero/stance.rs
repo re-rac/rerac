@@ -5,7 +5,8 @@
 //!   follow_camera's). Entry: the stance sequence `0x226f10(1)` over 18 ticks unless it already plays (or a
 //!   weapon is out, 0x1413fa). Physics: the ground case 0x23713c ([`Hero::phys_ground`]). Transitions: R1 / R2
 //!   held → the crouch sequence 0xd, else the stance sequence (blend 8); L1 / L2 held, or the wrench (class 0x47)
-//!   in a non-zero state in the hand, keeps the stance; released: R1 / R2 → crouch 4, else idle 0 without an anim
+//!   in a non-zero state in the hand, keeps the stance; released: in a body its idle (`0x227638`: Clank 0x43, Giant
+//!   Clank 0x5a, the disguise 0x53), else R1 / R2 → crouch 4, else idle 0 without an anim
 //!   change and the stance sequence blended in over 8 when it is not already playing.
 //! * **0x1e** — the same stance set by mobys (four classes; 0x1415d4 = 0x51, blend 5, no `play` test); releases
 //!   to idle the same way (`0x16cc00 = 0`, a camera word, is not modelled).
@@ -211,8 +212,9 @@ pub(super) fn transitions(h: &mut Hero, c: &mut Ctx) {
             // The wrench (class 0x47) mid-swing in the hand keeps the stance.
             let busy = h.items.slot.item.as_ref().is_some_and(|m| m.o_class == 0x47 && m.mstate != 0);
             if held & button::STRAFE != 0 || busy { return; }
+            // In a body (0x1413f4 ≠ 0): the per-body idle `0x227638` (Clank 0x43, Giant Clank 0x5a, the disguise 0x53).
             if h.mode != 0 {
-                if h.mode == 3 { h.set_state(c, 0x53, true); }
+                super::bodies::body_idle(h, c);
                 return;
             }
             if held & button::CROUCH != 0 {
@@ -283,4 +285,29 @@ fn release_to_idle(h: &mut Hero, c: &mut Ctx) {
     h.set_state(c, 0, false);
     let s = h.stance_seq();
     if c.anim.view().seq_b != s { h.set_anim(c.anim, c.rng, blend(8), s, 0); }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::hero::bodies::{body, clank, giant};
+    use crate::hero::testkit::{floor, Runner};
+    use crate::pad::{button, PadInput};
+
+    /// L1 in a body's idle takes the look stance 1; released, the per-body idle `0x227638` (the old port left a body
+    /// in 1 for good: Clank stuck in first person).
+    #[test]
+    fn a_body_leaves_the_look_stance_for_its_idle() {
+        for (mode, idle) in [(body::CLANK, clank::IDLE), (body::GIANT, giant::IDLE)] {
+            let coll = floor(100.0, 100, 106, 100, 106);
+            let mut r = Runner::new([410.0, 410.0, 100.0], 0.0);
+            r.hero.mode = mode;
+            r.hero.state = idle;
+            r.run(&coll, PadInput::neutral(), 3);
+            assert_eq!(r.hero.state, idle, "body {mode}: idle");
+            r.run(&coll, PadInput::neutral().press(button::L1), 5);
+            assert_eq!(r.hero.state, 1, "body {mode}: the look stance");
+            r.run(&coll, PadInput::neutral(), 3);
+            assert_eq!(r.hero.state, idle, "body {mode}: back to its idle");
+        }
+    }
 }
