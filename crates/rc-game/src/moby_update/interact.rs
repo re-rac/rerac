@@ -366,7 +366,9 @@ impl TalkTables {
                 }
             }
         }
-        let (ranges_at, tables_at) = (ranges_at?, tables_at?);
+        // Levels without NPC talk (Umbris, Gaspar) have no `NpcTalkRegister`: no node lists, but the records and
+        // ranges are there all the same (the vendor's ammo list reads the prices, the pickups the max ammo).
+        let ranges_at = ranges_at?;
         let give_banners = give_banner_table(ov);
         let base: Vec<i32> = (0..20).map(|i| ov.i32(ranges_at + 4 * i)).collect::<Option<_>>()?;
         let rec_at = ranges_at.checked_sub((SHOP_RECORDS * 0x18) as u32)?;
@@ -375,7 +377,7 @@ impl TalkTables {
         // Sanity: the Blaster (15) costs 2500, its ammo 1 bolt.
         if shop.price(15) != 2500 || shop.ammo_price(15) != 1 { return None; }
         let n = *base.last()? as usize + 1;
-        let ptrs: Vec<u32> = (0..n).map(|i| ov.u32(tables_at + 4 * i as u32).unwrap_or(0)).collect();
+        let ptrs: Vec<u32> = (0..n).map(|i| tables_at.and_then(|t| ov.u32(t + 4 * i as u32)).unwrap_or(0)).collect();
         let mut sorted: Vec<u32> = ptrs.iter().copied().filter(|&a| a != 0).collect();
         sorted.sort_unstable();
         sorted.dedup();

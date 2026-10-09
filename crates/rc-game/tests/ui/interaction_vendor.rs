@@ -365,3 +365,20 @@ fn novalis_vendor_is_deterministic() {
     assert_eq!(a.purchases, b.purchases);
     assert_eq!(a.state.global.quick_select, b.state.global.quick_select);
 }
+
+/// Every level's overlay yields the price records, also the levels without NPC talk (Umbris, Gaspar: no
+/// `NpcTalkRegister`): the vendor's ammo list reads its prices there.
+#[test]
+fn every_level_loads_the_price_records() {
+    let root = rc_formats::test_data::root();
+    let mut missing = Vec::new();
+    for lv in 0..19 {
+        let Ok(bytes) = std::fs::read(root.join(format!("levels/{lv:02}/overlay.bin"))) else { return };
+        let ov = Overlay::parse(&bytes).unwrap();
+        match TalkTables::load(&ov) {
+            Some(t) if t.shop.ammo_price(15) == 1 => {}
+            _ => missing.push(lv),
+        }
+    }
+    assert!(missing.is_empty(), "no price records on levels {missing:?}");
+}
