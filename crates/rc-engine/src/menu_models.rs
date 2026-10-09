@@ -15,8 +15,10 @@
 //! lit with the menu light, the menu view folded into their model matrices (`C_main · C_menu⁻¹ · model`: the canvas
 //! camera carries the main transform, like crate::menu_render's frame mobys).
 //!
-//! * 3D Ratchet: class 0 at camera + (4, 0, −0.6), turned by π (`FUN_00297ad0`), on his idle sequence 0 [L: the
-//!   game streams per-item animations, `fun_002265d8` with the table 0x1b9870, not ported]; Clank and the pending
+//! * 3D Ratchet: class 0 at camera + (4, 0, −0.6), turned by π (`FUN_00297ad0`), animated by the stream player
+//!   (`rc_game::menus::pause::model_anim`: each new hand / head / feet item's animations from the global `ratchet_seqs`
+//!   lumps, appended to his class from its sequence count on; the `hud_seqs` lumps installed into the item classes;
+//!   the props, [`Role::Prop`]; [`start_job`], [`hand_update`]); Clank and the pending
 //!   pack on the back list (the Heli-Pack's class 607 spins its rotor sequence 6 eight times, then folds to sequence 1:
 //!   `LoadHandGadget` and the callback 0x224fc0, [`back_update`]); the pending
 //!   hand item on its attach list (sequence 1); the pending head item and boots posed from his joints
@@ -37,11 +39,12 @@ use bevy::render::storage::ShaderBuffer;
 use bevy::transform::TransformSystems;
 use rc_formats::gadget;
 use rc_formats::moby::LevelMobyClass;
-use rc_formats::moby_anim::{self, AnimState, MobyAnimClass, Rows};
+use rc_formats::moby_anim::{self, AnimState, MobyAnimClass, MobySequence, Rows};
 use rc_formats::moby_light::{self, V4};
 use rc_game::hero::worn;
 use rc_game::menus::pause::frame;
 use rc_game::menus::pause::gadgets::GadgetsView;
+use rc_game::menus::pause::model_anim::{Player, Start, Tables};
 
 /// The page's 3D widgets as the last menu frame drew them (written by crate::menu_render) and the menu frame count.
 #[derive(Resource, Default, Debug)]
@@ -62,6 +65,12 @@ const SONIC_O_CLASS: i16 = 0x1b1;
 /// index of the joint list each sits on in [`HERO_LISTS`] (0x1e → 8, 0x1d → 7).
 const EXTRA_CLASSES: [i16; 3] = [0x197, 0x266, 0x26a];
 const EXTRA_LISTS: [usize; 3] = [8, 7, 7];
+/// The props' classes ([`Role::Prop`]: one part per prop a job can make; class 186 makes three at once).
+const PROP_CLASSES: [i16; 8] = [657, 74, 186, 186, 186, 203, 270, 634];
+/// The global lumps the 3D Ratchet's animations stream: `ratchet_seqs` (Ratchet's) and `hud_seqs` (the install records').
+const RATCHET_SEQS: usize = 28;
+const HUD_SEQS: usize = 20;
+
 /// The 3D Ratchet's offset from the menu camera (`FUN_00297ad0`: x + 4, z − 0.6) and yaw π.
 const MODEL_OFFSET: [f32; 3] = [4.0, 0.0, -0.6];
 
@@ -86,6 +95,8 @@ enum Role {
     /// The 3D Ratchet's Persuader (0x197), Map-o-Matic (0x266) and Bolt Grabber (0x26a) (`LoadHandGadget` with their
     /// items owned; update `fun_002250f0`: at his joint list 0x1e (the Persuader) or 0x1d).
     Extra,
+    /// The 3D Ratchet's animation props (`rc_game::menus::pause::model_anim`: made at his place, on their sequence).
+    Prop,
 }
 
 struct Part {
@@ -115,6 +126,16 @@ struct PreviewRt {
     /// The canvases of the 3D Ratchet, the item preview, the ammo model, the gold bolt and the Helpdesk girl.
     canvases: [CanvasId; 5],
     last_frame: u64,
+    /// The 3D Ratchet's animations (`rc_game::menus::pause::model_anim`): the level's tables, the player, the
+    /// `hud_seqs` lumps, Ratchet's class sequence count (the streamed entries' base), whether the widget is up, the
+    /// classes of the hand / head / feet mobys made and the prop parts in use.
+    tables: Tables,
+    player: Player,
+    hud: Vec<Option<MobySequence>>,
+    base: i32,
+    model_open: bool,
+    made: [i16; 3],
+    props: [Option<usize>; 3],
 }
 
 /// The 3D Ratchet's back item callback `0x224fc0`, its animation part, then `MobyAnimAdvance`: when the last advance
@@ -181,7 +202,15 @@ fn setup(
         }
     };
     let level_class = |o: i32| m.classes.iter().position(|c| c.o_class == o).map(|ci| (m.classes[ci].clone(), m.anim[ci].clone()));
-    let Some((ratchet, ratchet_anim)) = level_class(gadget::RATCHET_O_CLASS) else { return };
+    let Some((ratchet, mut ratchet_anim)) = level_class(gadget::RATCHET_O_CLASS) else { return };
+    // The streamed `ratchet_seqs` entries become Ratchet's sequences from his class count on (the game's slots
+    // `base + e`, filled as the stream player needs them; the port has them all).
+    let base = ratchet.class.header.sequence_count as usize;
+    let streamed = global_sequences("ratchet_seqs", RATCHET_SEQS);
+    if ratchet_anim.sequences.len() < base + streamed.len() { ratchet_anim.sequences.resize(base + streamed.len(), None); }
+    for (e, q) in streamed.into_iter().enumerate() {
+        if q.is_some() { ratchet_anim.sequences[base + e] = q; }
+    }
     let chains: Vec<(usize, Vec<u8>)> =
         HERO_LISTS.iter().enumerate().filter_map(|(i, &l)| gadget::joint_list(&ratchet_blob, &ratchet.class.header, l).ok().map(|(a, _)| (i, a))).collect();
     // Every class the widgets can show: the level's (Ratchet, Clank, packs, head items, boots, the drone 0x1df) and
@@ -214,6 +243,10 @@ fn setup(
     for o in EXTRA_CLASSES {
         if let Some((c, a)) = level_class(o as i32) { specs.push((Role::Extra, c, a, 0)); }
     }
+    // The props of the 3D Ratchet's animations (`spawn_hand_gadget_moby`: only when the level has the class).
+    for o in PROP_CLASSES {
+        if let Some((c, a)) = level_class(o as i32) { specs.push((Role::Prop, c, a, 0)); }
+    }
     // The ammo pickups' classes (item definitions +0x3a; `SpawnHandGadgetMoby` makes one only when the level has the
     // class) and the gold bolt 0x46e.
     for o in [226, 204, 222, 1006, 214, 225, 213, 223, 1438, 1447, 1449] {
@@ -235,6 +268,8 @@ fn setup(
         });
         palette_len += slots;
     }
+    // The prop of class 0x4a is made three times as large (`*(moby + 0x2c) *= 3`).
+    for p in parts.iter_mut().filter(|p| p.role == Role::Prop && p.o_class == rc_game::menus::pause::model_anim::BIG_PROP) { p.scale *= 3.0; }
     let records = vec![0u8; parts.len() * moby_render::EXTRA_RECORD_SIZE];
     let mut extra = ExtraMobys::new(lv, records, crate::moby_anim::identity_palette(palette_len), &mut buffers);
     for (k, (p, (_, class, _, layer))) in parts.iter_mut().zip(&specs).enumerate() {
@@ -261,7 +296,74 @@ fn setup(
     });
     let menu_cam = Transform::from_translation(crate::tfrag_render::game_to_bevy(frame::CAMERA_POS)).looking_to(Vec3::X, Vec3::Y).to_matrix();
     println!("menu models: {} parts ({} palette slots) on four canvases over the HUD", parts.len(), palette_len);
-    commands.insert_resource(PreviewRt { parts, extra, chains, bank, menu_cam, canvases: ids, last_frame: 0 });
+    let tables = Tables::read(&ov).unwrap_or_default();
+    let hud = global_sequences("hud_seqs", HUD_SEQS);
+    commands.insert_resource(PreviewRt {
+        parts, extra, chains, bank, menu_cam, canvases: ids, last_frame: 0, player: Player::enter(tables.clone()), tables, hud, base: base as i32,
+        model_open: false, made: [-1; 3], props: [None; 3],
+    });
+}
+
+/// The global lumps `dir/NNN.bin` as sequences (WAD-decompressed, `fun_0020b618`; one sequence at offset 0, its
+/// pointers relative to it, `relocate_asset_entry_pointers`); a lump that does not read or parse is None.
+fn global_sequences(dir: &str, n: usize) -> Vec<Option<MobySequence>> {
+    let root = crate::level_load::extracted_root();
+    (0..n)
+        .map(|k| {
+            let raw = crate::disc_source::read(&root, &format!("global/{dir}/{k:03}.bin")).ok()?;
+            let d = if rc_formats::wad::is_wad(&raw) { rc_formats::wad::decompress(&raw).ok()? } else { raw };
+            moby_anim::parse_sequence(&d, 0).map_err(|e| eprintln!("menu models: {dir} {k}: {e:#}")).ok()
+        })
+        .collect()
+}
+
+/// A started job of the 3D Ratchet's stream player (`FUN_00299a78`'s tail, `rc_game::menus::pause::model_anim`): the
+/// class sequence slots emptied and filled (every part of the class: the game's class is shared), Ratchet blended
+/// (`MobyAnimBlendEx(seq, 0, 10, 5)`: flag 4 takes the snapshot even without a blend running), the hand or head moby,
+/// the props made anew (cut to their sequence, then blended over 10 ticks).
+fn start_job(rt: &mut PreviewRt, ri: usize, hand: Option<usize>, head: Option<usize>, s: &Start) {
+    for &(c, q) in &s.uninstall {
+        for p in rt.parts.iter_mut().filter(|p| p.o_class == c) {
+            if let Some(x) = p.anim.sequences.get_mut(q as usize) { *x = None; }
+        }
+    }
+    for &(k, c, q) in &s.install {
+        let Some(seq) = rt.hud.get(k).cloned().flatten() else { continue };
+        for p in rt.parts.iter_mut().filter(|p| p.o_class == c) {
+            if p.anim.sequences.len() <= q as usize { p.anim.sequences.resize(q as usize + 1, None); }
+            p.anim.sequences[q as usize] = Some(seq.clone());
+        }
+    }
+    let blend = |p: &mut Part, seq: u8| { moby_anim::set_sequence_ex(&mut p.state, &p.anim, seq, 0, 10, &mut p.snap, true); };
+    blend(&mut rt.parts[ri], s.ratchet_seq);
+    if s.head {
+        if let Some(h) = head { blend(&mut rt.parts[h], s.item_seq); }
+        if let Some(h) = hand {
+            let p = &mut rt.parts[h];
+            moby_anim::hard_cut(&mut p.state, &p.anim, 1, 0);
+        }
+    } else if let Some(h) = hand {
+        blend(&mut rt.parts[h], s.item_seq);
+    }
+    rt.props = [None; 3];
+    for (slot, pr) in s.props.iter().enumerate() {
+        let Some((c, q)) = *pr else { continue };
+        let taken = rt.props;
+        let Some(k) = rt.parts.iter().enumerate().position(|(k, p)| p.role == Role::Prop && p.o_class == c && !taken.contains(&Some(k))) else { continue };
+        let p = &mut rt.parts[k];
+        p.state = AnimState::spawn(&p.anim);
+        p.snap = None;
+        moby_anim::hard_cut(&mut p.state, &p.anim, q, 0);
+        moby_anim::set_sequence(&mut p.state, &p.anim, q, 0, 10, &mut p.snap);
+        rt.props[slot] = Some(k);
+    }
+}
+
+/// The 3D Ratchet's hand item callback `HandItemUpdate` 0x298578, its animation part, then `MobyAnimAdvance`: a wrap
+/// off sequence 1 goes back to 1 (`MobyAnimBlend(1, 0, 0)`).
+fn hand_update(p: &mut Part) {
+    if p.state.flags & 2 != 0 && p.state.seq_b != 1 { moby_anim::set_sequence(&mut p.state, &p.anim, 1, 0, 0, &mut p.snap); }
+    moby_anim::advance(&mut p.state, &p.anim);
 }
 
 /// The Helpdesk girl's class with the three sequences of `post_credits_helpdesk_girl_seq` (TOC 0x1610) in its slots
@@ -348,17 +450,53 @@ fn update(
         let rows = moby_light::rotation_rows([0.0, 0.0, std::f32::consts::PI]);
         let pos = [0, 1, 2].map(|k| frame::CAMERA_POS[k] + MODEL_OFFSET[k]);
         let Some(ri) = rt.parts.iter().position(|p| p.role == Role::Ratchet) else { return };
-        {
+        // The widget's enter `FUN_00297ad0`: Ratchet made anew (on his spawn sequence; his update is empty, the moby
+        // loop advances him), the stream player reset.
+        if !rt.model_open {
+            rt.model_open = true;
+            rt.player = Player::enter(rt.tables.clone());
+            rt.made = [-1; 3];
+            rt.props = [None; 3];
             let r = &mut rt.parts[ri];
-            if r.cut_for != 0 {
-                moby_anim::hard_cut(&mut r.state, &r.anim, 0, 0);
-                r.cut_for = 0;
-            }
-            for _ in 0..steps { moby_anim::advance(&mut r.state, &r.anim); }
+            r.state = AnimState::spawn(&r.anim);
+            r.snap = None;
         }
-        let (rstate, ranim, rscale) = (rt.parts[ri].state, rt.parts[ri].anim.clone(), rt.parts[ri].scale);
+        // `LoadHandGadget`: the hand, head and feet mobys made this frame (their class changed; a new moby starts on its
+        // spawn state); the last one's item queues its animations.
+        let items = [mv.equip[0], mv.equip[2], mv.equip[1]];
+        let roles = [Role::Hand, Role::Head, Role::BootL];
+        let mut made = -1;
+        for k in 0..3 {
+            let c = class_of(items[k]).map_or(-1, |c| c.0);
+            if c == rt.made[k] { continue; }
+            rt.made[k] = c;
+            if c == -1 { continue; }
+            made = items[k];
+            if let Some(p) = rt.parts.iter_mut().find(|p| p.role == roles[k] && p.o_class == c) {
+                p.state = AnimState::spawn(&p.anim);
+                p.snap = None;
+            }
+        }
+        rt.player.queue_item(made, rt.base);
+        let part_of = |rt: &PreviewRt, role: Role| want(role).and_then(|c| rt.parts.iter().position(|p| p.role == role && p.o_class == c));
+        let (hand, head) = (part_of(rt, Role::Hand), part_of(rt, Role::Head));
+        let slot_of = |item: i32| defs.map_or(-1, |d| d.def(item).slot);
+        for _ in 0..steps {
+            // `FUN_00299a78` with Ratchet's last advance, then the mobys' updates and the moby loop's advance (Ratchet's
+            // and the props' updates are empty).
+            let wrapped = rt.parts[ri].state.flags & 2 != 0;
+            if let Some(s) = rt.player.tick(wrapped, items, slot_of) { start_job(rt, ri, hand, head, &s); }
+            let r = &mut rt.parts[ri];
+            moby_anim::advance(&mut r.state, &r.anim);
+            if let Some(h) = hand { hand_update(&mut rt.parts[h]); }
+            for k in rt.props.into_iter().flatten() {
+                let p = &mut rt.parts[k];
+                moby_anim::advance(&mut p.state, &p.anim);
+            }
+        }
+        let (rstate, ranim, rscale, rsnap) = (rt.parts[ri].state, rt.parts[ri].anim.clone(), rt.parts[ri].scale, rt.parts[ri].snap.clone());
         let chains: Vec<&[u8]> = rt.chains.iter().map(|c| c.1.as_slice()).collect();
-        let ps = moby_anim::evaluate_chains(&ranim, &rstate, None, &chains);
+        let ps = moby_anim::evaluate_chains(&ranim, &rstate, rsnap.as_ref(), &chains);
         let ws: Vec<(usize, Rows)> = rt.chains.iter().zip(&ps).map(|(c, p)| (c.0, moby_anim::attach_matrix(p, &rows, pos, rscale))).collect();
         let w_of = |list: usize, normalise: bool| -> Option<([V4; 3], [f32; 3])> {
             let &(_, w) = ws.iter().find(|(l, _)| *l == list)?;
@@ -366,7 +504,11 @@ fn update(
             if normalise { moby_anim::normalise_columns(&mut r); }
             Some((r, [w[3][0], w[3][1], w[3][2]]))
         };
-        placed[ri] = Some(Placed { rows, pos, pose: moby_anim::evaluate_with_snapshot(&ranim, &rstate, None) });
+        placed[ri] = Some(Placed { rows, pos, pose: moby_anim::evaluate_with_snapshot(&ranim, &rstate, rsnap.as_ref()) });
+        for k in rt.props.into_iter().flatten() {
+            let p = &rt.parts[k];
+            placed[k] = Some(Placed { rows, pos, pose: moby_anim::evaluate_with_snapshot(&p.anim, &p.state, p.snap.as_ref()) });
+        }
         let hand_attach = class_of(mv.equip[0]).map_or(0, |c| c.1.max(0) as usize);
         for (k, p) in rt.parts.iter_mut().enumerate() {
             if matches!(p.role, Role::Ratchet | Role::Item | Role::ItemClank) || (p.role != Role::Extra && want(p.role) != Some(p.o_class)) { continue; }
@@ -388,7 +530,12 @@ fn update(
                     let Some((r, at)) = w_of(BACK_ATTACH, true) else { continue };
                     placed[k] = Some(Placed { rows: r, pos: at, pose: moby_anim::evaluate_with_snapshot(&p.anim, &p.state, p.snap.as_ref()) });
                 }
-                Role::Clank | Role::Hand => {
+                Role::Hand => {
+                    // Its animation runs with the stream player above (`hand_update`).
+                    let Some((r, at)) = w_of(hand_attach, hand_attach != 6) else { continue };
+                    placed[k] = Some(Placed { rows: r, pos: at, pose: moby_anim::evaluate_with_snapshot(&p.anim, &p.state, p.snap.as_ref()) });
+                }
+                Role::Clank => {
                     let seq = 1;
                     let key = seq as i32 * 1000 + p.o_class as i32;
                     if p.cut_for != key {
@@ -398,8 +545,7 @@ fn update(
                         p.cut_for = key;
                     }
                     for _ in 0..steps { moby_anim::advance(&mut p.state, &p.anim); }
-                    let (list, norm) = if p.role == Role::Hand { (hand_attach, hand_attach != 6) } else { (BACK_ATTACH, true) };
-                    let Some((r, at)) = w_of(list, norm) else { continue };
+                    let Some((r, at)) = w_of(BACK_ATTACH, true) else { continue };
                     placed[k] = Some(Placed { rows: r, pos: at, pose: moby_anim::evaluate_with_snapshot(&p.anim, &p.state, None) });
                 }
                 Role::Extra => {
@@ -422,12 +568,15 @@ fn update(
                         _ => (&worn::HEAD_JOINTS, 0, worn::HEAD_ATTACH),
                     };
                     let Some((r, at)) = w_of(list, false) else { continue };
-                    let Some(f) = worn::pose_from_host(&ranim, &rstate, None, &p.anim, joints, extra) else { continue };
+                    let Some(f) = worn::pose_from_host(&ranim, &rstate, rsnap.as_ref(), &p.anim, joints, extra) else { continue };
                     placed[k] = Some(Placed { rows: r, pos: at, pose: moby_anim::evaluate_with_snapshot(&p.anim, &worn::posed_state(), Some(&f)) });
                 }
                 _ => {}
             }
         }
+    } else {
+        // The widget's leave: the next opening enters anew.
+        rt.model_open = false;
     }
     // The item preview.
     if let Some(pv) = view.preview {

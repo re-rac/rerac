@@ -31,6 +31,7 @@ pub mod frame;
 pub mod gadgets;
 pub mod map_page;
 pub mod media;
+pub mod model_anim;
 mod options;
 pub mod pages;
 pub mod planet_select;
