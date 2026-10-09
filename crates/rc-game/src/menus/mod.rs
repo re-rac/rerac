@@ -92,6 +92,7 @@ pub const DATA_LABELS: &[u32] = &[
     0x1c22c0, pause::PLANET_POINTS_BASE, 0x15f650, quick_select::GP_BASE, quick_select::DPAD_DEFAULTS, pause::frame::CORNER_LISTS_ADDR,
     pause::frame::LIGHT_DIR_ADDR, pause::frame::LIGHT_COLOR_ADDR, 0x160270, 0x160274, 0x160278, 0x16027c, 0x160318, 0x160328,
     pause::gadgets::PREVIEW_TABLE, pause::gadgets::CELL_W, pause::gadgets::CELL_H, crate::help::LOG_IDS,
+    pause::model_anim::TABLE_ADDR, pause::model_anim::INSTALLS_ADDR,
     pause::pages::data::WEAPON_CELLS, pause::pages::data::GADGET_ITEMS[0], pause::pages::data::GADGET_ITEMS[1],
     pause::pages::data::GADGET_ITEMS[2], pause::pages::data::GADGET_ITEMS[3], pause::pages::data::WEAPON_TEXTS,
     pause::pages::data::GADGET_TEXTS_A, pause::pages::data::GADGET_TEXTS_B, pause::pages::data::MOVES_HELI,

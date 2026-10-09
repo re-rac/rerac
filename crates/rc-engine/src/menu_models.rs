@@ -531,9 +531,18 @@ fn update(
                     placed[k] = Some(Placed { rows: r, pos: at, pose: moby_anim::evaluate_with_snapshot(&p.anim, &p.state, p.snap.as_ref()) });
                 }
                 Role::Hand => {
-                    // Its animation runs with the stream player above (`hand_update`).
+                    // Its animation runs with the stream player above (`hand_update`). A glove (`HandItemUpdate`: its
+                    // definition's +0x18 word 0, no column normalisation) is posed from Ratchet's hand
+                    // (`HeroItemPoseFromRatchet` with the joint table 0x17aa40, rc_game::hero::items::glove_frame).
                     let Some((r, at)) = w_of(hand_attach, hand_attach != 6) else { continue };
-                    placed[k] = Some(Placed { rows: r, pos: at, pose: moby_anim::evaluate_with_snapshot(&p.anim, &p.state, p.snap.as_ref()) });
+                    let pose = if rc_game::hero::items::is_glove(mv.equip[0]) {
+                        let Some(f) = moby_anim::snapshot(&ranim, &rstate, rsnap.as_ref()) else { continue };
+                        let g = rc_game::hero::items::glove_frame(&f, &p.anim, &rc_game::hero::items::GLOVE_JOINTS);
+                        moby_anim::evaluate_with_snapshot(&p.anim, &worn::posed_state(), Some(&g))
+                    } else {
+                        moby_anim::evaluate_with_snapshot(&p.anim, &p.state, p.snap.as_ref())
+                    };
+                    placed[k] = Some(Placed { rows: r, pos: at, pose });
                 }
                 Role::Clank => {
                     let seq = 1;

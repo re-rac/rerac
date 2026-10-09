@@ -40,6 +40,7 @@ pub struct Tables {
 impl Tables {
     /// From a level's overlay (relocated against level01's); `None` when it does not hold them.
     pub fn read(ov: &crate::menus::Overlay) -> Option<Tables> {
+        if !ov.maps(TABLE_ADDR) || !ov.maps(INSTALLS_ADDR) { return None; }
         let (t, i) = (ov.at(TABLE_ADDR), ov.at(INSTALLS_ADDR));
         let rows = (0..ROWS).map(|r| (0..12u32).map(|k| ov.i32(t + 0x30 * r + 4 * k)).collect::<Option<Vec<_>>>().map(|v| std::array::from_fn(|k| v[k]))).collect::<Option<Vec<_>>>()?;
         let installs = (0..RECORDS).map(|k| Some((ov.i32(i + 8 * k)? as i16, ov.i32(i + 8 * k + 4)? as u8))).collect::<Option<Vec<_>>>()?;
@@ -216,11 +217,16 @@ mod tests {
 
     fn level01() -> Tables { Tables { rows: TABLE.to_vec(), installs: INSTALLS.to_vec() } }
 
+    /// Every level's overlay holds level01's table and records, each at its own address (the relocation's data map).
     #[test]
-    fn the_tables_read_from_level01s_overlay() {
-        let Ok(bytes) = std::fs::read(rc_formats::test_data::level_dir(1).join("overlay.bin")) else { eprintln!("skipped: no extracted/"); return };
-        let ov = crate::menus::Overlay::parse(&bytes).unwrap();
-        assert_eq!(Tables::read(&ov), Some(level01()));
+    fn the_tables_read_on_every_level() {
+        let overlay = |l: u32| std::fs::read(rc_formats::test_data::level_dir(l).join("overlay.bin")).ok();
+        let Some(reference) = overlay(1) else { eprintln!("skipped: no extracted/"); return };
+        assert_eq!(Tables::read(&crate::menus::Overlay::parse(&reference).unwrap()), Some(level01()));
+        for l in 2..19 {
+            let Some(b) = overlay(l) else { continue };
+            assert_eq!(Tables::read(&crate::menus::Overlay::relocated(&b, &reference).unwrap()), Some(level01()), "level {l}");
+        }
     }
 
     #[test]
