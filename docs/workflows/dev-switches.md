@@ -50,6 +50,7 @@ module that reads it: `grep -rn '"RC_' crates/` lists them all.
 | `RC_DUMP_TICKS` | `n,m,…`: in frame-exact mode, update k runs the k-th entry's game ticks, cycled (`1,0` = a 120 Hz display, `2` = 30 Hz; dev only, for real-time pacing repros) |
 | `RC_NOVSYNC` | `1`: present without vsync, so `fps:` measures headroom |
 | `RC_FRAME_CAP` | `0`: no 60 fps limiter (`crate::frame_pace`; also off with `RC_NOVSYNC=1`); ticks then follow the wall clock |
+| `RC_RENDER_DIAG` | `1`: Bevy's per-pass render timings (CPU only on Metal) every 5 s, and the number of views rendered |
 | `RC_MOBY_DUMP_AT` | `<tick>`: print the **F9** moby dump once at that gameplay tick (headless runs); `RC_MOBY_DUMP_RADIUS` = its distance from the hero (default 12) |
 | `RC_RESPAWN_PROBE_AT` | `<tick>`: print the respawn state once at that gameplay tick, as **F10** does in dev builds (the format of `work/scratch/respawn_probe.py`, which reads the same tables from a running PCSX2 over PINE: compare the two line by line) |
 | `RC_TRACE_RESPAWN` | `1`: at every death reload, the spawn test's verdict for each Kerwan trooper (574) with the bits that decided it, and a line whenever a trooper blows up or is deleted (`respawn trace:`) |

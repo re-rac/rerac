@@ -217,6 +217,16 @@ fn main() -> anyhow::Result<()> {
     .add_systems(Startup, setup_camera)
     .add_systems(level_switch::LevelStartup, setup)
     .add_systems(Update, report_fps);
+    // RC_RENDER_DIAG=1: Bevy's per-pass render timings (CPU only on Metal) and the views rendered, logged every 5 s.
+    if std::env::var("RC_RENDER_DIAG").is_ok_and(|v| v.trim() == "1") {
+        app.add_plugins((
+            bevy::render::diagnostic::RenderDiagnosticsPlugin,
+            bevy::diagnostic::LogDiagnosticsPlugin { wait_duration: std::time::Duration::from_secs(5), ..default() },
+        ));
+        if let Some(r) = app.get_sub_app_mut(bevy::render::RenderApp) {
+            r.add_systems(bevy::render::Render, count_views.in_set(bevy::render::RenderSystems::Cleanup));
+        }
+    }
 
     if let Some(path) = std::env::var_os("RC_SCREENSHOT").filter(|_| determinism::screenshot_frame().is_none()) {
         let secs = std::env::var("RC_SCREENSHOT_DELAY").ok().and_then(|s| s.parse().ok()).unwrap_or(3.0);
@@ -297,6 +307,12 @@ fn setup_camera(mut commands: Commands, level: Res<Level>) {
 fn parse_cam(s: &str) -> Option<([f32; 3], [f32; 3])> {
     let v: Vec<f32> = s.split(',').map(|x| x.trim().parse().ok()).collect::<Option<_>>()?;
     (v.len() == 6).then(|| ([v[0], v[1], v[2]], [v[3], v[4], v[5]]))
+}
+
+/// RC_RENDER_DIAG: the views (cameras) the render world drew this frame, every 300 frames.
+fn count_views(views: Query<&bevy::render::view::ExtractedView>, mut n: Local<u32>) {
+    *n += 1;
+    if (*n).is_multiple_of(300) { println!("render: {} views", views.iter().count()); }
 }
 
 /// Drawn frames per second over 5 s of wall-clock time (the game clock advances by whole ticks: crate::frame_pace).
