@@ -1413,7 +1413,10 @@ fn hits(w: &mut World, id: MobyId) {
         hits_tail(w, id);
         return;
     }
-    let mut h = w.get_hit(id, 0x33_0000, false);
+    let h = w.get_hit(id, 0x33_0000, false);
+    let rr = damage::resolve(w, id, h, pv::D, 0, 4);
+    // The record as the resolver left it (the damage zeroed in a kind's cooldown), then this class's rewrite.
+    let mut h = rr.hit;
     if let Some(r) = h.as_mut() {
         if 0.0 < f32::from_bits(r.damage.0) {
             match r.h2a {
@@ -1423,7 +1426,6 @@ fn hits(w: &mut World, id: MobyId) {
             }
         }
     }
-    let rr = damage::resolve(w, id, h, pv::D, 0, 4);
     let mut out = rr.out5;
     if let Some(r) = h {
         let a = r.attacker.map(|a| w.m(a).o_class);

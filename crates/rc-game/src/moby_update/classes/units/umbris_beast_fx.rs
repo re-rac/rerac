@@ -26,7 +26,7 @@
 //! | `0x318e98` / `0x318e30` | release: the scroll halved, sound 10, the drips flung off (speed from their node); fade: every node's fade −4 (at most 0x40), the draw while any is left | [`tongue_release`], [`tongue_fade`] |
 //! | `0x317910` | the tube: FX 0x15 additive, nine segments of 20 quads, the fades as alpha (0..0x40; the root 0x20, the tip 0), the ST scrolling | [`tongue_quads`] |
 //! | `0x3131b0` | the beam from +0x110 at its length (+0x16c; the head at 0.8 of it); three strips (1 / 0.7 / 0.4 wide, colours 0x20000080 / 0x28008080 / 0x30b0ffff); the hit (the line, else a 0.5 sphere at the end; damage 1.000123, flags 0x30000) | [`beam_quads`], [`frame`] |
-//! | `0x312dc8` / `0x312948` | the shimmer: a dome of radius 5.8 from joint list 9 (5 lower) of 16 × n quads, the arc by the shimmer, FX 0x3c, the colour the flash | [`shimmer_quads`] |
+//! | `0x312dc8` / `0x312948` | the shimmer: a sphere of radius 5.8 round joint list 9 of 16 strips × n quads, each strip starting at the point 5 below it, the arc by the shimmer, FX 0x3c, the colour the flash; ALPHA 0x29 (`Cs + Cd·0xa0/0x80`, the vertex alpha 0) drawn as the additive 0x48 at As 0x80 (`Cs + Cd`: the port's effects have no FIX brightening of the frame) | [`shimmer_quads`] |
 //! | `0x312420` | the ground line: the head +0x140 wobbling in x, from joint list 2 30 out, its probe (flags 2) setting the end's height; on the ground a fire (type 58) there and four along from the last end; the quad FX 0x3b from the joint to the end | [`ground_quads`], [`frame`] |
 
 use super::{FxQuad, FxQuads};
@@ -927,10 +927,10 @@ pub fn shimmer_quads(table: &MobyTable, svc: &Services, id: MobyId) -> Option<Fx
     let flash = m.pvars[bp::SHIMMER_FLASH] as u32;
     let arc = if 0.8 <= sh { PI } else { ((sh * 3.043_418) / 0.8 + 0.098_174_77).min(PI) };
     let radius = f32::from_bits(0x40b9_999a);
-    let col = (flash | flash << 8 | flash << 16) | 0x40_4040;
+    let col = (flash | flash << 8 | flash << 16) | 0x8040_4040;
     let t = svc.units.umbris_beast.counter as f32;
-    let cen = svc.units.umbris_beast.shimmer_at;
-    let centre = [cen[0], cen[1], cen[2] - (radius - 0.8), 0.0];
+    let centre = svc.units.umbris_beast.shimmer_at;
+    let low = [centre[0], centre[1], centre[2] - (radius - 0.8)];
     let s0 = (t * -0.01).fract();
     let t0 = (t * -0.02).fract();
     let st = [[s0, t0], [s0 + 1.0, t0], [s0, t0 + 1.0], [s0 + 1.0, t0 + 1.0]];
@@ -939,7 +939,7 @@ pub fn shimmer_quads(table: &MobyTable, svc: &Services, id: MobyId) -> Option<Fx
     let mut a = -2.748_893_7f32;
     while a < PI {
         let mut el = step - HALF_PI;
-        let mut prev: Option<([f32; 3], [f32; 3])> = None;
+        let mut prev = (low, low);
         let start = |el: f32| -> ([f32; 3], [f32; 3]) {
             let az = crate::moby_update::classes::flyer::wrap_frac(a + t * 0.02);
             let pa = fx::polar(radius, az, el);
@@ -949,8 +949,8 @@ pub fn shimmer_quads(table: &MobyTable, svc: &Services, id: MobyId) -> Option<Fx
         };
         while el <= arc - HALF_PI {
             let cur = start(el);
-            if let Some((pa, pb)) = prev { quads.push(FxQuad { corners: [pa, pb, cur.0, cur.1], st, rgba: [col; 4] }); }
-            prev = Some(cur);
+            quads.push(FxQuad { corners: [prev.0, prev.1, cur.0, cur.1], st, rgba: [col; 4] });
+            prev = cur;
             el += step;
         }
         a += std::f32::consts::FRAC_PI_8;
