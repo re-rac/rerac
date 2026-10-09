@@ -59,7 +59,7 @@ pub fn hits(w: &mut World, id: MobyId) {
         let r = damage::resolve(w, id, hit, pv::RECORD, 0, 4);
         if matches!(r.reaction, 1 | 2) { set_pf(w, id, pv::RECORD, 0.0); }
         if 1 < r.out5 {
-            let dmg = hit.map_or(0.0, |h| f32::from_bits(h.damage.0));
+            let dmg = r.damage;
             let health = pf(w, id, pv::RECORD);
             if health <= dmg {
                 set_pf(w, id, pv::RECORD, 0.0);

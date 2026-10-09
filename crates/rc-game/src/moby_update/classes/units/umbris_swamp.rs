@@ -212,7 +212,7 @@ fn hits(w: &mut World, id: MobyId) {
             _ => {}
         }
         if 1 < r.out5 {
-            let dmg = h.map_or(0.0, |h| f32::from_bits(h.damage.0));
+            let dmg = r.damage;
             if c::pf(w, id, D) <= dmg {
                 c::set_pf(w, id, D, 0.0);
                 w.mm(id).mode &= !mode::TARGETABLE;

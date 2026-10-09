@@ -46,11 +46,11 @@ pub fn update(w: &mut World, id: MobyId) {
     }
     if w.m(id).pvars.len() < FLASH + 0x10 { return; }
     let hit = w.get_hit(id, 0x1_0000, false);
-    damage::resolve(w, id, hit, RECORD, 0, 4);
+    let res = damage::resolve(w, id, hit, RECORD, 0, 4);
     match w.m(id).state {
         0 => w.mm(id).state = 1,
         1 => {
-            if let Some(h) = hit {
+            if let Some(h) = res.hit {
                 let dmg = h.damage.to_f32();
                 let hp = c::pf(w, id, RECORD);
                 if hp < dmg {

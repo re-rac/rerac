@@ -56,7 +56,7 @@ fn hits(w: &mut World, id: MobyId) -> bool {
     let res = damage::resolve(w, id, hit, o::D, 0, 4);
     if matches!(res.reaction, 1 | 2) { c::set_pf(w, id, o::D, 0.0); }
     let mut down = false;
-    if let Some(h) = hit.filter(|_| 1 < res.out5) {
+    if let Some(h) = res.hit.filter(|_| 1 < res.out5) {
         let dmg = h.damage.to_f32();
         let hp = c::pf(w, id, o::D);
         if hp <= dmg {

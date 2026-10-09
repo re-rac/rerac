@@ -83,7 +83,7 @@ pub fn update(w: &mut World, id: MobyId) {
     if matches!(r.reaction, 1 | 2) { c::set_pf(w, id, pv::RECORD, 0.0); }
     let own_shot = hit.and_then(|h| h.attacker).is_some_and(|a| w.table.mobys.get(a).is_some_and(|m| m.o_class == SHOT_CLASSES[0]));
     if r.out5 > 1 && !own_shot {
-        let dmg = hit.map_or(0.0, |h| h.damage.to_f32());
+        let dmg = r.damage;
         let hp = c::pf(w, id, pv::RECORD);
         if hp <= dmg {
             set_death_bits(w, id, 0, -1);

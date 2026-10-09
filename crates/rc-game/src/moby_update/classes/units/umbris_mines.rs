@@ -339,7 +339,7 @@ pub fn leader_update(w: &mut World, id: MobyId) {
         let r = damage::resolve(w, id, h, D, 0, 4);
         if r.reaction == 1 || r.reaction == 2 { c::set_pf(w, id, D, 0.0); }
         if 1 < r.out5 {
-            let dmg = h.map_or(0.0, |h| f32::from_bits(h.damage.0));
+            let dmg = r.damage;
             if c::pf(w, id, D) <= dmg {
                 c::set_pf(w, id, D, 0.0);
                 let g = c::pi32(w, id, 0x74);

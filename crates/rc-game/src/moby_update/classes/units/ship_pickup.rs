@@ -324,7 +324,7 @@ fn chute_hits(w: &mut World, id: MobyId) {
         let r = c::damage::resolve(w, id, hit, RECORD, 0, 4);
         if matches!(r.reaction, 1 | 2) { c::set_pf(w, id, RECORD, 0.0); }
         if 1 < r.out5 {
-            let dmg = hit.map_or(0.0, |h| h.damage.to_f32());
+            let dmg = r.damage;
             if c::pf(w, id, RECORD) <= dmg {
                 c::set_pf(w, id, RECORD, 0.0);
                 w.mm(id).mode &= !mode::TARGETABLE;

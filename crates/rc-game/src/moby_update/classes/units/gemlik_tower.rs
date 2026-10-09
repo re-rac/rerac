@@ -152,7 +152,7 @@ fn hits(w: &mut World, id: MobyId) {
         let res = damage::resolve(w, id, hit, o::D, 0, 4);
         if matches!(res.reaction, 1 | 2) { c::set_pf(w, id, o::D, 0.0); }
         if 1 < res.out5 {
-            let Some(h) = hit else {
+            let Some(h) = res.hit else {
                 w.mm(id).hit_slot = 0xff;
                 flash::update(w, id, o::F);
                 return;
