@@ -78,8 +78,11 @@ pub fn update(w: &mut World, id: MobyId) {
     let o2 = w.hero.owned.has(O2_MASK);
     // Last tick's body word, not `World::body`: the hand-over this class queued in the load pass is made during the
     // landing's space scene, which leaves Clank in the scene state 100; the port relies on the first tick's second
-    // `SwitchCharacter` to give him his idle state.
-    let clank_now = w.hero.mode == crate::hero::bodies::body::CLANK;
+    // `SwitchCharacter` to give him his idle state. A death reload's switch back into Clank counts too: the game makes
+    // it in `0x29adc8` before any class runs, the port on the next tick (`Bodies::restore`); without it this class
+    // would hand Clank the hero again and teleport him to its start, over the checkpoint's respawn.
+    let clank = crate::hero::bodies::body::CLANK;
+    let clank_now = w.hero.mode == clank || w.hero.bodies.restore.is_some_and(|r| r.0 == clank);
     let visited = w.svc.save.collected.get(&sid).is_some_and(|&b| b != 0) || w.svc.save.death.contains(&(level, sid));
     if visited {
         if o2 {
