@@ -429,7 +429,7 @@ fn prologue(w: &mut World, id: MobyId) -> bool {
                 }
                 w.mm(id).mode &= 0xefff;
                 c::set_pf(w, id, pv::K + knock::k::GRAVITY, DT2 * 20.0);
-                if w.hero.mode == 2 {
+                if w.body() == 2 {
                     w.mm(id).anim.speed = 0.5;
                     c::set_pf(w, id, pv::K + knock::k::SPEED, DT * 24.0);
                     c::set_pf(w, id, pv::K + knock::k::UP, DT * 8.0);
@@ -693,7 +693,7 @@ pub fn shot_update(w: &mut World, id: MobyId) {
     let next = c::add(me, v);
     let back = c::add(c::scale(v, -2.0), me);
     let mut dmg = 1.0;
-    if w.hero.mode == 2 && w.rng.randi(5) != 0 { dmg = 0.0; }
+    if w.body() == 2 && w.rng.randi(5) != 0 { dmg = 0.0; }
     let tmpl = HitTemplate { dir: sv::pv(v), attacker: Some(id), flags: 0x1_0003, damage: Pf::f(dmg), w20: 1, h1a: w.m(id).o_class as u16, ..Default::default() };
     let owner = link(w, id, shot::OWNER);
     let hit = sv::line_hit_in(w.table, w.svc, w.classes, w.coll, sv::pv([back[0], back[1], back[2], 1.0]), sv::pv([next[0], next[1], next[2], 1.0]), 0x10, Some(id), &tmpl);

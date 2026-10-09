@@ -154,7 +154,7 @@ fn wave(w: &mut World, id: MobyId) {
     let (o, n, me) = (c::pv4(w, id, pv::ORIGIN), c::pv4(w, id, pv::NORMAL), c::pos(w, id));
     for i in 0..16 {
         let p0 = point(w, id, i);
-        let sp = if w.hero.mode == 1 { WAVE_SPEED * c::DT * 0.5 } else { WAVE_SPEED * c::DT };
+        let sp = if w.body() == 1 { WAVE_SPEED * c::DT * 0.5 } else { WAVE_SPEED * c::DT };
         let out = c::set_len3([p0[0] - o[0], p0[1] - o[1], 0.0, 0.0], sp);
         let mut q = [p0[0] + out[0], p0[1] + out[1], p0[2], p0[3]];
         let d = c::dot3(c::sub(q, me), n);
@@ -258,7 +258,7 @@ fn swing(w: &mut World, id: MobyId, up: f32, clank_slow: bool) {
     let p0 = c::pos(w, id);
     let b = [p0[0], p0[1], p0[2] + up, p0[3]];
     let key = c::ground::key_time(w, id);
-    if clank_slow && w.hero.mode == 1 && key < 9.0 { w.mm(id).anim.speed = CLANK_SWING; }
+    if clank_slow && w.body() == 1 && key < 9.0 { w.mm(id).anim.speed = CLANK_SWING; }
     if (9.0..=15.0).contains(&key) {
         let yaw = c::yaw(w, id);
         let o_class = w.m(id).o_class;

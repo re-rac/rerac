@@ -378,7 +378,7 @@ fn idle(w: &mut World, id: MobyId, hero: c::V) {
         w.play_sound(1, 0, id);
         return;
     }
-    let on = w.hero.ground_moby == Some(id) && w.hero.air_ticks == 0 && w.hero.mode == 0;
+    let on = w.hero.ground_moby == Some(id) && w.hero.air_ticks == 0 && w.body() == 0;
     if !on { return; }
     let pos = w.m(id).position;
     let at = [pos[0], pos[1], pos[2] + 2.0, pos[3]];

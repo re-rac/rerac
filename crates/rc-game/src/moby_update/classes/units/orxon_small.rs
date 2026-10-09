@@ -340,7 +340,7 @@ const SWING: f32 = f32::from_bits(0x3fb2_b8c2);
 /// Level10 `0x2e9648`: the bridge (module doc).
 pub fn bridge_update(w: &mut World, id: MobyId) {
     story::pvars(w, id, 0x14);
-    let on_foot = w.hero.mode == 0;
+    let on_foot = w.body() == 0;
     let latch = latched(w, id);
     let lower = |w: &mut World| {
         let y = c::add_rot(w.m(id).rotation[1], -SWING);
@@ -399,7 +399,7 @@ fn freeze(w: &mut World, id: MobyId, on: bool) {
 /// Level10 `0x2e9990`: the sliding block (module doc).
 pub fn block_update(w: &mut World, id: MobyId) {
     story::pvars(w, id, 0x20);
-    let on_foot = w.hero.mode == 0;
+    let on_foot = w.body() == 0;
     let latch = latched(w, id);
     let back = |w: &World, k: f32| -> V {
         let a = c::add_rot(w.m(id).rotation[2], std::f32::consts::PI);

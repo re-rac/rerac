@@ -87,7 +87,7 @@ pub fn update(w: &mut World, id: MobyId) {
             let kind = if pi(w, 0x30) == 0 { 0 } else { 2 };
             cinematic::camera_script2(w, kind);
             // FUN_002405a0: back to idle (0x53 when he is in mode 3).
-            match w.hero.mode {
+            match w.body() {
                 0 => cinematic::hero_state(w, 0, true),
                 3 => cinematic::hero_state(w, 0x53, true),
                 _ => {}

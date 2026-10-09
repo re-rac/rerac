@@ -153,7 +153,7 @@ pub fn update(w: &mut World, id: MobyId) {
     if w.m(id).pvars.len() < 0x80 { w.mm(id).pvars.resize(0x80, 0); }
     let hand_glove = w.hero.items.slot.item.as_ref().is_some_and(|m| m.o_class == GLOVE_CLASS);
     let st = w.m(id).state;
-    if (!hand_glove && st == HELD) || (w.hero.mode != 0 && st == HELD) {
+    if (!hand_glove && st == HELD) || (w.body() != 0 && st == HELD) {
         w.delete_moby(id);
         return;
     }

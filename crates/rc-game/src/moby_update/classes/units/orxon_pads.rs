@@ -73,7 +73,7 @@ pub fn update(w: &mut World, id: MobyId) {
         w.svc.units.set_word(TIMER_KEY, 0);
         w.mm(id).state = 1;
     }
-    if w.hero.mode == 1 {
+    if w.body() == 1 {
         if let Some(dest) = link(w, id) {
             let p = c::pos(w, id);
             let h = w.hero_point();

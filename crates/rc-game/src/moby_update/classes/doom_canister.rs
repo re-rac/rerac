@@ -166,7 +166,7 @@ fn step(w: &mut World, id: MobyId) {
                 c::set_pi32(w, id, pv::PUFF_T, t4);
                 if w.hero.f13f5 == 0 { glow(w, id); }
             }
-            if w.hero.mode == 0 && glove_in_hand(w) { return; }
+            if w.body() == 0 && glove_in_hand(w) { return; }
             w.delete_moby(id);
         }
         FLYING => fly(w, id),

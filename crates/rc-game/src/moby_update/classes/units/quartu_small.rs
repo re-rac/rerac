@@ -266,7 +266,7 @@ pub fn gate_update(w: &mut World, id: MobyId) {
             if giant { w.svc.units.set_word(GATE_WORD, 0); }
             let link = c::pi32(w, id, 0x24);
             if link == -1 {
-                if w.in_cuboid(hero, c::pi32(w, id, 0x10)) && (!giant || w.hero.mode == 2) { w.mm(id).state = 2; }
+                if w.in_cuboid(hero, c::pi32(w, id, 0x10)) && (!giant || w.body() == 2) { w.mm(id).state = 2; }
             } else {
                 let gone = usize::try_from(link).ok().filter(|&m| m < w.table.mobys.len()).is_none_or(|m| w.m(m).state >= 0xfd);
                 if gone && w.svc.units.word(super::quartu_alarm::lw::PLAYING) == 0 {
@@ -315,7 +315,7 @@ pub fn gate_update(w: &mut World, id: MobyId) {
         }
         5 => {
             if !unlocked16(w) {
-                if w.hero.mode != 2 {
+                if w.body() != 2 {
                     w.mm(id).state = 1;
                     w.mm(id).position[2] = home_z;
                     w.svc.units.set_word(GATE_WORD, 0);
@@ -392,7 +392,7 @@ pub fn dispenser_update(w: &mut World, id: MobyId) {
             }
         }
         1 => {
-            if story::flag(w, FLAG_DISPENSER) != 0 && c::dist2(super::hero_pos(w), c::pos(w, id)) < 3.0 && w.hero.mode == 0 {
+            if story::flag(w, FLAG_DISPENSER) != 0 && c::dist2(super::hero_pos(w), c::pos(w, id)) < 3.0 && w.body() == 0 {
                 // 0x2f78b8: the fly-by camera record +0x00 armed (camera class 19).
                 let rec = c::pi32(w, id, 0x00);
                 crate::cinematic::flyby_arm(w, rec);

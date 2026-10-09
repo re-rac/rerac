@@ -523,7 +523,7 @@ fn hits(w: &mut World, id: MobyId) -> bool {
         c::set_pi32(w, id, pv::TGT, f as i32 + 1);
         let p = w.m(f).position;
         c::set_pv4(w, id, pv::TGT_REC, p);
-    } else if w.hero.mode == 1 {
+    } else if w.body() == 1 {
         if (w.counter % 8) as i16 == c::pi16(w, id, pv::PHASE) {
             let pick = gadgetbot(w, id, sight);
             c::set_pi32(w, id, pv::TGT, pick.map_or(0, |m| m as i32 + 1));

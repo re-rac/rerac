@@ -216,7 +216,7 @@ pub fn update(w: &mut World, id: MobyId) {
         return;
     }
     let st = w.m(id).state;
-    if (!glove_in_hand(w) || w.hero.mode != 0) && st == HELD {
+    if (!glove_in_hand(w) || w.body() != 0) && st == HELD {
         w.delete_moby(id);
         return;
     }

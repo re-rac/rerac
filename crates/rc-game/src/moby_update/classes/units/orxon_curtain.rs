@@ -84,7 +84,7 @@ const COLOURS: (u32, u32) = (0x7fc0_4070, 0x00ff_0000);
 const FADE: usize = 0x38;
 const LEN: usize = 0x3c;
 
-fn gone(w: &World) -> bool { w.svc.level == 10 && w.hero.mode == 1 }
+fn gone(w: &World) -> bool { w.svc.level == 10 && w.body() == 1 }
 
 fn timer_off(layer: usize, strand: usize) -> usize { TIMERS + layer * 0x78 + strand * 4 }
 fn point_off(base: usize, layer: usize, strand: usize, pt: usize) -> usize { base + layer * LAYER + strand * STRAND + pt * POINT }

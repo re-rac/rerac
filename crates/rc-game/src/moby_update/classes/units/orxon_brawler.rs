@@ -167,7 +167,7 @@ fn blend(w: &mut World, id: MobyId, s: u8, n: i32) {
     }
 }
 fn kind(w: &World, id: MobyId) -> i32 { c::pi32(w, id, pv::TGT_KIND) }
-fn clank(w: &World) -> bool { w.hero.mode == 1 }
+fn clank(w: &World) -> bool { w.body() == 1 }
 fn tgt_moby(w: &World, id: MobyId) -> Option<MobyId> { usize::try_from(c::pi32(w, id, pv::TGT_MOBY) - 1).ok().filter(|&m| m < w.table.mobys.len()) }
 fn tgt_pos(w: &World, id: MobyId) -> c::V { tgt_moby(w, id).map_or_else(|| hero_pos(w), |m| w.m(m).position) }
 fn tgt_gadgebot(w: &World, id: MobyId) -> bool { tgt_moby(w, id).is_some_and(|m| w.m(m).o_class == k::GADGEBOT) }

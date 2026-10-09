@@ -102,7 +102,7 @@ fn idle(w: &mut World, id: MobyId, n: i32) {
 fn react(w: &mut World, id: MobyId) {
     if w.rng.randi(3) == 0 {
         seq(w, id, 2);
-    } else if w.hero.mode == DISGUISED {
+    } else if w.body() == DISGUISED {
         set_st(w, id, 6);
         seq(w, id, 7);
     } else {
@@ -343,7 +343,7 @@ pub fn update(w: &mut World, id: MobyId) {
             c::set_pf(w, id, o::YAW_V, v);
             if DT * 0.087_266_46 < v.abs() { seq(w, id, if v < 0.0 { 4 } else { 5 }); } else { seq(w, id, 3); }
             w.mm(id).anim.speed = f32::from_bits(0x3fd9_999a);
-            if sees(w, id) == 2 && (c::dec_timer_pvar_s16(w, id, o::LOOK_T) != 0 || w.hero.mode != DISGUISED) {
+            if sees(w, id) == 2 && (c::dec_timer_pvar_s16(w, id, o::LOOK_T) != 0 || w.body() != DISGUISED) {
                 react(w, id);
                 return;
             }

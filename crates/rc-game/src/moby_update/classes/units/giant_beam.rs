@@ -180,7 +180,7 @@ pub fn update(w: &mut World, id: MobyId) {
 
 fn charge(w: &mut World, id: MobyId) {
     let held = p::i16(&w.m(id).pvars, pv::HELD) != 0;
-    if held && w.hero.mode == crate::hero::bodies::body::GIANT {
+    if held && w.body() == crate::hero::bodies::body::GIANT {
         let mut t = p::i32(&w.m(id).pvars, pv::CHARGE);
         if t == 0 {
             w.svc.units.set_word(scr::FLASH, 1);
@@ -285,7 +285,7 @@ fn fly(w: &mut World, id: MobyId) {
         if let Some(b) = global(w) { w.delete_moby(b); }
         set_global(w, None);
     };
-    if w.ticks(60) < t || w.hero.mode != crate::hero::bodies::body::GIANT {
+    if w.ticks(60) < t || w.body() != crate::hero::bodies::body::GIANT {
         gone(w);
         return;
     }

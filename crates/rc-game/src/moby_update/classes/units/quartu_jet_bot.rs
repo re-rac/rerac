@@ -290,7 +290,7 @@ pub fn update(w: &mut World, id: MobyId) {
     senses(w, id);
     if w.m(id).state >= 0xfd { return; }
     let s = w.m(id).state;
-    if s != 0 && s != 0x40 && w.hero.mode != CLANK {
+    if s != 0 && s != 0x40 && w.body() != CLANK {
         let m = w.mm(id);
         m.has_collision = false;
         m.mode |= 0x41;
@@ -336,14 +336,14 @@ pub fn update(w: &mut World, id: MobyId) {
             } else {
                 (true, true)
             };
-            if show && w.hero.mode == CLANK {
+            if show && w.body() == CLANK {
                 let coll = super::class_collision(w, w.m(id).o_class);
                 let m = w.mm(id);
                 m.mode = m.mode & 0xffbe | mode::TARGETABLE;
                 m.has_collision = coll;
             }
             if proceed && kind(w, id) != 2 && c::pi32(w, id, o::INTRO) != -1 {
-                if w.hero.mode != CLANK || w.m(id).mode & mode::TARGETABLE == 0 { return tail(w, id, flying); }
+                if w.body() != CLANK || w.m(id).mode & mode::TARGETABLE == 0 { return tail(w, id, flying); }
                 let area = c::pi32(w, id, o::AREA);
                 if area == -1 || in_poly(w, area, super::hero_pos(w)) {
                     w.mm(id).state = 2;
@@ -477,7 +477,7 @@ pub fn update(w: &mut World, id: MobyId) {
             w.svc.save.collected.remove(&sid);
             w.svc.save.death.remove(&(lvl, sid));
             w.svc.save.death_level.remove(&sid);
-            if w.hero.mode != CLANK { w.mm(id).state = 0; }
+            if w.body() != CLANK { w.mm(id).state = 0; }
         }
         _ => {}
     }

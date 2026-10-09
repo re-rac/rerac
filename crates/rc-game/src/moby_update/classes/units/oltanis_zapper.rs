@@ -170,7 +170,7 @@ fn show(w: &mut World, id: MobyId) {
     m.has_collision = coll;
 }
 fn death_bits(w: &mut World, id: MobyId) {
-    let fl = if w.hero.mode == 2 { 0x200 } else { 0 };
+    let fl = if w.body() == 2 { 0x200 } else { 0 };
     set_death_bits(w, id, fl, -1);
 }
 
@@ -179,7 +179,7 @@ pub fn update(w: &mut World, id: MobyId) {
     story::pvars(w, id, o::SIZE);
     manip::big_head(w, 2.5, id, 2, id, o::NA);
     if c::pi32(w, id, o::CLANK) != 0 {
-        if w.hero.mode != 2 {
+        if w.body() != 2 {
             let m = w.mm(id);
             m.has_collision = false;
             m.mode |= 0x41;

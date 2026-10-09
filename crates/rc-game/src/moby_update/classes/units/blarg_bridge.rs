@@ -159,7 +159,7 @@ pub fn update(w: &mut World, id: MobyId) {
             place(w, id);
         }
         1 => {
-            if w.hero.mode != 1 || !w.hero.owned.has(HYDRODISPLACER) || w.svc.game_mode != 0 { return; }
+            if w.body() != 1 || !w.hero.owned.has(HYDRODISPLACER) || w.svc.game_mode != 0 { return; }
             crate::cinematic::set_fade(w, 1.0);
             w.mm(id).state = 3;
             c::set_pf(w, id, 0x6c, f32::from_bits(0xbc23_d70a));

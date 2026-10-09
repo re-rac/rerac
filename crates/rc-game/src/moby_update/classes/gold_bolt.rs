@@ -301,7 +301,7 @@ fn idle(w: &mut World, id: MobyId) {
     if ((pos[0] - hero[0]).powi(2) + (pos[1] - hero[1]).powi(2)).sqrt() >= 3.0 { return; }
     if (pos[2] - hero[2]).abs() >= 2.0 { return; }
     if w.hero.health == 0 { return; }
-    let hmode = w.hero.mode;
+    let hmode = w.body();
     if hmode != 0 && hmode != 3 { return; }
     if p::i16(&w.m(id).pvars, pv::NO_CUTAWAY) != 0 {
         award(w, id);
@@ -323,7 +323,7 @@ fn start_cutaway(w: &mut World, id: MobyId) {
     let fade = w.ticks(10);
     cinematic::fade_to_black(w, fade);
     // Ratchet in the Hologuise (body 3): out of it first (the level's leave copy, `FUN_00231450` on level 01).
-    if w.hero.mode == crate::hero::bodies::body::DISGUISE { crate::hero::bodies::queue_leave(w); }
+    if w.body() == crate::hero::bodies::body::DISGUISE { crate::hero::bodies::queue_leave(w); }
     cinematic::hero_teleport(w, at, face, HOLD, false);
     w.play_sound(0, 0, id);
     // The camera: 1.25 ahead of the spot, 4 to its left, 1 up, looking across (yaw − π/2); snap (mode 1).

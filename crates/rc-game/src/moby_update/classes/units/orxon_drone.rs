@@ -162,7 +162,7 @@ fn hits(w: &mut World, id: MobyId) {
     w.mm(id).hit_slot = 0xff;
     flash::update(w, id, pvo::FLASH);
     let area = c::pi32(w, id, pvo::AREA);
-    if w.hero.mode == 1 {
+    if w.body() == 1 {
         let t = clank_target(w, id, 100.0);
         set_tmoby(w, id, t);
         match t {
@@ -206,7 +206,7 @@ fn face(w: &mut World, id: MobyId, toward: V, aim: V, max: f32) {
 /// The aim point and whether a line reaches the target (module doc).
 fn aim(w: &mut World, id: MobyId, t: MobyId) -> (V, bool) {
     let mut a = w.m(t).position;
-    if w.hero.mode == 1 {
+    if w.body() == 1 {
         if Some(t) == w.hero_moby {
             let k = w.ticks(0x14) as f32;
             let hv = hero_disp(w);
@@ -316,7 +316,7 @@ pub fn update(w: &mut World, id: MobyId) {
                 if w.m(id).anim.seq_b != 1 { blend(w, id, 1, 0x14); }
                 w.mm(id).mode &= !0x41;
                 w.mm(id).has_collision = super::class_collision(w, 1229);
-                if w.svc.help.idle() && w.hero.mode == 0 && !w.inventory.owned(11) { w.svc.help.request(0x2715, 0x5c); }
+                if w.svc.help.idle() && w.body() == 0 && !w.inventory.owned(11) { w.svc.help.request(0x2715, 0x5c); }
             }
         }
         2 => {
@@ -472,7 +472,7 @@ pub fn shot_update(w: &mut World, id: MobyId) {
         1 => {
             let target = usize::try_from(c::pi32(w, id, 0x14) - 1).ok().filter(|&m| m < w.table.mobys.len());
             if target.is_none_or(|t| matches!(w.m(t).state, 0xfe | 0xfd)) { w.mm(id).state = 2; }
-            let mode = w.hero.mode;
+            let mode = w.body();
             if let Some(t) = target.filter(|&t| (1..=2).contains(&mode) && Some(t) == w.hero_moby) { home(w, id, t, mode); }
             spark(w, id);
             let old = c::pos(w, id);

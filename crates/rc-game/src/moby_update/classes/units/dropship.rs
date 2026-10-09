@@ -269,7 +269,7 @@ pub fn update(w: &mut World, id: MobyId) {
             c::set_pf(w, id, pv::BASE, b);
             let r = w.m(id).rotation[0] + DT * 0.2617994;
             w.mm(id).rotation[0] = r;
-            if c::dec_timer_pvar_i32(w, id, pv::FALL) != 0 || w.hero.mode == 2 {
+            if c::dec_timer_pvar_i32(w, id, pv::FALL) != 0 || w.body() == 2 {
                 let me = c::pos(w, id);
                 let b = fx::Beam { damage_r: 0.0, damage: 0.0, flash: 4.0, flash2: 2.5, flash_dist: 9.0, scale: 2.0, light: 0.0, streaks: 20, sparks: 12, puffs: 8, debris: 0, sound: -1, shake: false };
                 fx::beam_explosion(w, &b, Some(id), me);
@@ -354,10 +354,10 @@ fn prologue(w: &mut World, id: MobyId) -> bool {
         let h = c::pf(w, id, pv::D) - res.damage;
         c::set_pf(w, id, pv::D, h);
         let mut reaction = res.reaction as i32;
-        if h <= 0.0 || (w.hero.mode == 2 && 2.0 <= res.damage) { reaction = 1; }
+        if h <= 0.0 || (w.body() == 2 && 2.0 <= res.damage) { reaction = 1; }
         if (1..3).contains(&reaction) {
             w.play_sound(3, 0, id);
-            if w.hero.mode != 2 { w.play_sound(2, 0, id); }
+            if w.body() != 2 { w.play_sound(2, 0, id); }
             for k in 0..4 {
                 if let Some(r) = rider(w, id, k) { w.delete_moby(r); }
             }
@@ -460,7 +460,7 @@ pub fn shot_update(w: &mut World, id: MobyId) {
     };
     let hit = w.line(sv::pv([me[0], me[1], me[2], 1.0]), sv::pv([next[0], next[1], next[2], 1.0]), 0, Some(id));
     if hit.is_some() || c::len3(d) < speed {
-        if w.hero.mode == 2 { attack::sphere_hit(w, 2.0, 2.0, 1.0, id, me, 3, 0, 1, 0); }
+        if w.body() == 2 { attack::sphere_hit(w, 2.0, 2.0, 1.0, id, me, 3, 0, 1, 0); }
         w.play_sound_as(4, 0, id, 0x54c);
         let b = fx::Beam { damage_r: 4.0, damage: 4.0, flash: 4.0, flash2: 2.0, flash_dist: 9.0, scale: 1.0, light: 15.0, streaks: 10, sparks: 3, puffs: 16, debris: 0, sound: -1, shake: true };
         fx::beam_explosion(w, &b, Some(id), me);

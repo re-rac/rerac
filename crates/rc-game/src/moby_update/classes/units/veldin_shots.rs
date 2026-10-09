@@ -204,7 +204,7 @@ fn burst(w: &mut World, id: MobyId) {
     let b = fx::Beam { damage_r: r, damage: 1.0, flash: if big { 4.0 } else { 2.0 }, flash2: if big { 2.0 } else { 1.0 }, flash_dist: 9.0, scale: if big { 2.0 } else { 0.75 }, light: 5.0, streaks: 0x14, sparks: 6, puffs: 0x20, debris: 0, sound: 1, shake: false };
     let p = c::pos(w, id);
     fx::beam_explosion(w, &b, Some(id), p);
-    if r != 0.0 && w.hero.mode == 2 { attack::sphere_hit(w, 2.0, 3.0, 1.0, id, p, 2, 0, 1, 0); }
+    if r != 0.0 && w.body() == 2 { attack::sphere_hit(w, 2.0, 3.0, 1.0, id, p, 2, 0, 1, 0); }
 }
 
 /// Level18 0x2d5050 (module doc).

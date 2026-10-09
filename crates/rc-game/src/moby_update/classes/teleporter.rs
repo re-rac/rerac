@@ -159,7 +159,7 @@ pub fn update(w: &mut World, id: MobyId) {
             }
             let mission = pi(w, id, 8);
             if mission >= 0 && w.mission_done(level, mission as u8) != 0xff { return; }
-            if pi(w, id, 0) == -1 || w.hero.mode == 2 || w.hero.ground_moby != Some(id) || w.hero.air_ticks != 0 { return; }
+            if pi(w, id, 0) == -1 || w.body() == 2 || w.hero.ground_moby != Some(id) || w.hero.air_ticks != 0 { return; }
             prompt(w, id);
             if !w.svc.interact.triangle() { return; }
             w.play_sound(0, 0, id);

@@ -201,7 +201,7 @@ fn pre(w: &mut World, id: MobyId) -> Option<target::Target> {
                     knock::start(w, id, k, a, 5, 1, 0);
                     c::set_pf(w, id, k + knock::k::KEY_APEX, 11.0);
                     c::set_pf(w, id, k + knock::k::KEY_LAND, 18.0);
-                    let fl = if w.hero.mode == 2 { 0x200 } else { 0 };
+                    let fl = if w.body() == 2 { 0x200 } else { 0 };
                     set_death_bits(w, id, fl, -1);
                     w.mm(id).has_collision = false;
                     set_state(w, id, st::DYING);
@@ -234,7 +234,7 @@ fn pre(w: &mut World, id: MobyId) -> Option<target::Target> {
     let hp = crate::moby_update::classes::units::hero_pos(w);
     if 40.0 < c::dist2(c::pos(w, id), hp) { return None; }
     if c::pi32(w, id, pv::GIANT_ONLY) != 0 {
-        if w.hero.mode != 2 {
+        if w.body() != 2 {
             let m = w.mm(id);
             m.update_dist = 0xff;
             m.has_collision = false;

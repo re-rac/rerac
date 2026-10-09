@@ -222,7 +222,7 @@ pub fn update(w: &mut World, id: MobyId) {
         if !hide || st != 0 { m.mode &= !0x41; } else { m.mode |= 0x41; }
     }
     let glove = glove_in_hand(w);
-    if (!glove || w.hero.mode != 0) && st == 0 {
+    if (!glove || w.body() != 0) && st == 0 {
         w.delete_moby(id);
         return;
     }

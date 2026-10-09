@@ -143,7 +143,7 @@ pub fn update(w: &mut World, id: MobyId) {
                 at[2] += BOB * ph.cos();
                 let k = (PULSE * c::pf(w, id, 0x28).cos()) as i32;
                 let rgba = 0x2000_0000u32 | (((k / 3 + 0xd) as u32) << 16) | (((k / 2 + 0x78) as u32) << 8) | (k + 0x96) as u32;
-                if w.hero.mode == 1 { digits(w, id, at, rgba); }
+                if w.body() == 1 { digits(w, id, at, rgba); }
             }
             let left = c::pi32(w, id, 0x14);
             let mission = w.m(id).mission as i32;

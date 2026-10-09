@@ -149,7 +149,7 @@ pub fn update(w: &mut World, id: MobyId) {
             c::set_pi32(w, id, 0x88, -1);
             w.mm(id).state = if flag == 0 { 1 } else { 3 };
             if let Some(s) = shaft(w, id) { w.mm(id).position[2] = s.centre()[2] + shaft_height(&s); }
-            match w.hero.mode {
+            match w.body() {
                 body::RATCHET => {
                     if let Some(k) = clank {
                         let m = w.mm(k);
@@ -165,7 +165,7 @@ pub fn update(w: &mut World, id: MobyId) {
         }
         1 => {
             if !w.in_cuboid([hero[0], hero[1], hero[2]], c::pi32(w, id, 0x70)) {
-                if w.hero.mode == body::CLANK && w.hero.bodies.class == crate::hero::bodies::CLANK_CLASS {
+                if w.body() == body::CLANK && w.hero.bodies.class == crate::hero::bodies::CLANK_CLASS {
                     w.mm(id).state = 3;
                     c::set_pi32(w, id, 0x84, 1);
                 }
@@ -181,7 +181,7 @@ pub fn update(w: &mut World, id: MobyId) {
         3 | 4 => {
             if dec(w, id, 0x90) != 0 && w.in_cuboid([hero[0], hero[1], hero[2]], c::pi32(w, id, 0x70)) {
                 let side = c::pi32(w, id, 0x84);
-                let msg = if w.hero.mode == body::CLANK { 0x1781 } else if !o2 { 0x177e } else if side == 0 { 0x1789 } else { 0x1785 };
+                let msg = if w.body() == body::CLANK { 0x1781 } else if !o2 { 0x177e } else if side == 0 { 0x1789 } else { 0x1785 };
                 let lease = w.svc.interact.try_prompt(9, msg);
                 if w.hero.loop_in.pad.pressed & crate::pad::button::TRIANGLE != 0 && w.hero.state != 100 && lease != 0 {
                     w.hero_fields_mut().jump_lockout = ticks(w, 60) as i16;
@@ -189,7 +189,7 @@ pub fn update(w: &mut World, id: MobyId) {
                     c::set_pi32(w, id, 0x90, t);
                     let fade = ticks(w, 16);
                     crate::cinematic::fade_to_black(w, fade);
-                    if w.hero.mode == body::CLANK {
+                    if w.body() == body::CLANK {
                         field_open(w, l64);
                         field_open(w, l68);
                         field_lower(w, l60);

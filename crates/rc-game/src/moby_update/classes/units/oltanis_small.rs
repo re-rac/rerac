@@ -70,7 +70,7 @@ pub const STAIRS_CLASSES: [i16; 1] = [1395];
 /// Level14 `0x2d96e0`: 250 (module doc).
 pub fn hatch_update(w: &mut World, id: MobyId) {
     story::pvars(w, id, 0x10);
-    let coll = if w.hero.mode == 2 { false } else { super::class_collision(w, w.m(id).o_class) };
+    let coll = if w.body() == 2 { false } else { super::class_collision(w, w.m(id).o_class) };
     w.mm(id).has_collision = coll;
     let cut = |w: &mut World, id: MobyId, s: u8| c::hard_cut(w, id, s, 0);
     let done = w.m(id).anim.flags & 2 != 0;

@@ -102,7 +102,7 @@ pub fn update(w: &mut World, id: MobyId) {
     let own = w.m(id).o_class;
     crate::moby_update::manip::scene_big_head(w, &[own], 1, f32::from_bits(0x4030_0000));
     let Some(giant) = link(w, id, pv::GIANT) else { return };
-    if w.hero.mode != body::GIANT { hide(w, giant); }
+    if w.body() != body::GIANT { hide(w, giant); }
     if w.m(id).state == 9 {
         w.mm(id).update_dist = 0;
         hide(w, id);
@@ -164,7 +164,7 @@ pub fn update(w: &mut World, id: MobyId) {
             }
         }
         3 => {
-            if w.hero.mode == body::GIANT {
+            if w.body() == body::GIANT {
                 if let Some(g) = link(w, id, pv::GONE) {
                     let s = w.m(g).state;
                     if s != 0xfe && s != 0xfd {

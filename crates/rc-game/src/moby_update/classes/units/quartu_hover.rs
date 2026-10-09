@@ -241,7 +241,7 @@ pub fn update(w: &mut World, id: MobyId) {
         set_ptr(w, id, o::RIDER, r);
     }
     let s0 = w.m(id).state;
-    if s0 != 0 && s0 != 0x40 && c::pi32(w, id, o::CLANK) != 0 && w.hero.mode != 2 {
+    if s0 != 0 && s0 != 0x40 && c::pi32(w, id, o::CLANK) != 0 && w.body() != 2 {
         hide(w, id);
         w.mm(id).state = 1;
         return;
@@ -436,7 +436,7 @@ pub fn update(w: &mut World, id: MobyId) {
             w.svc.save.collected.remove(&sid);
             w.svc.save.death.remove(&(lvl, sid));
             w.svc.save.death_level.remove(&sid);
-            if w.hero.mode == 2 { return; }
+            if w.body() == 2 { return; }
             let hz = c::pf(w, id, o::HOME_Z);
             let m = w.mm(id);
             m.state = 0;

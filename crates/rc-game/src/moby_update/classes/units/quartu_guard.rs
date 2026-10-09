@@ -357,7 +357,7 @@ pub fn senses(w: &mut World, id: MobyId, culled: bool) {
     let hit = w.get_hit(id, 0x33_0000, false);
     let res = damage::resolve(w, id, hit, o::D, 0, 4);
     if res.out5 != 1 && st(w, id) != 0x17 {
-        if w.hero.mode == 0 { tell_group(w, id); }
+        if w.body() == 0 { tell_group(w, id); }
         let hp = c::pf(w, id, o::D) - res.damage;
         c::set_pf(w, id, o::D, hp);
         let mut reaction = res.reaction;
@@ -441,7 +441,7 @@ pub fn senses(w: &mut World, id: MobyId, culled: bool) {
         if alert == 1 {
             let v = c::pu8(w, id, o::LOST) + 1;
             c::set_pu8(w, id, o::DOUBT, v);
-        } else if w.hero.mode == DISGUISED {
+        } else if w.body() == DISGUISED {
             if 1 < c::pu8(w, id, o::DOUBT) { c::set_pu8(w, id, o::LOST, 1); }
         } else {
             c::set_pu8(w, id, o::DOUBT, 0);
@@ -452,12 +452,12 @@ pub fn senses(w: &mut World, id: MobyId, culled: bool) {
             c::set_pu8(w, id, o::LOOKS, 0);
             c::set_pi32(w, id, o::ALERT, 2);
             c::set_pi16(w, id, o::WARY, 0);
-        } else if ((c::pi16(w, id, o::TOLD) == 0 || c::pu8(w, id, o::LOST) != 0) && w.hero.mode == DISGUISED)
+        } else if ((c::pi16(w, id, o::TOLD) == 0 || c::pu8(w, id, o::LOST) != 0) && w.body() == DISGUISED)
             || (c::pu8(w, id, o::DOUBT) != 0 && c::pi32(w, id, o::ALERT) != 1)
         {
             c::set_pi32(w, id, o::ALERT, 2);
             c::set_pi16(w, id, o::WARY, 1);
-        } else if w.hero.mode != DISGUISED && c::pi32(w, id, o::ALERT) != 2 {
+        } else if w.body() != DISGUISED && c::pi32(w, id, o::ALERT) != 2 {
             c::set_pu8(w, id, o::LOST, 0);
         }
         if w.svc.game_mode == 2 { c::set_pi32(w, id, o::ALERT, 2); }

@@ -76,7 +76,7 @@ pub fn update(w: &mut World, id: MobyId) {
     }
     let sid = w.m(id).spawn_id;
     let o2 = w.hero.owned.has(O2_MASK);
-    let clank_now = w.hero.mode == crate::hero::bodies::body::CLANK;
+    let clank_now = w.body() == crate::hero::bodies::body::CLANK;
     let visited = w.svc.save.collected.get(&sid).is_some_and(|&b| b != 0) || w.svc.save.death.contains(&(level, sid));
     if visited {
         if o2 {

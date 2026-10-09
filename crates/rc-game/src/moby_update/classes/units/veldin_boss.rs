@@ -996,7 +996,7 @@ fn states(w: &mut World, id: MobyId, tgt: Option<MobyId>) -> bool {
 fn wait(w: &mut World, id: MobyId) {
     let h = hero(w);
     let giant = c::pi32(w, id, pv::GIANT);
-    if crate::moby_update::triggers::point_in_cuboid(&w.svc.volumes, [h[0], h[1], h[2]], giant) && w.hero.mode == 2 {
+    if crate::moby_update::triggers::point_in_cuboid(&w.svc.volumes, [h[0], h[1], h[2]], giant) && w.body() == 2 {
         set_state(w, id, 7);
         vanish(w, id);
         cinematic::start_scene(w, 0, false);
@@ -1065,7 +1065,7 @@ fn clank_round(w: &mut World, id: MobyId) {
     steer(w, id);
     if c::pf(w, id, pv::HEALTH) <= 301.0 {
         // 0x1413d0 is the body moby while in a body (0x13fdd4).
-        if w.hero.mode != 0 {
+        if w.body() != 0 {
             if let Some(b) = w.hero.bodies.moby {
                 let m = w.mm(b);
                 m.has_collision = false;

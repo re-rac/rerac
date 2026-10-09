@@ -169,7 +169,7 @@ pub fn update(w: &mut World, id: MobyId) {
         if w.m(r).state < 0x80 { crate::moby_update::manip::big_head(w, f32::from_bits(0x402c_cccd), r, 0, id, pvo::HEAD); }
     }
     intake(w, id);
-    let giant = w.hero.mode == 2;
+    let giant = w.body() == 2;
     let s = super::class_scale(w, 326);
     w.mm(id).scale = if giant { s * 0.5 } else { s };
     if let Some(r) = rider(w, id) {

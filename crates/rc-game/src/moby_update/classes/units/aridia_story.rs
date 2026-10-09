@@ -362,7 +362,7 @@ pub fn item_scene_update(w: &mut World, id: MobyId) {
         }
         3 => {
             if w.svc.game_mode == 2 { return; }
-            if w.hero.mode == 0 {
+            if w.body() == 0 {
                 interact::give_item(w, item, true);
             } else {
                 interact::give_item(w, item, false);

@@ -74,7 +74,7 @@ pub fn update(w: &mut World, id: MobyId) {
             for k in 0..PER_LIST {
                 let c = pi32(w, id, 4 * k);
                 if !inside(w, c) { continue; }
-                if w.hero.mode == 0 {
+                if w.body() == 0 {
                     if state != DEATH_FALL {
                         w.hero_fields_mut().call(HeroCall::SetState { id: DEATH_FALL, play: true });
                         state = DEATH_FALL;

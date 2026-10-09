@@ -283,7 +283,7 @@ fn minigame(w: &mut World, id: MobyId) {
         w.mm(id).state = 1;
         cinematic::camera_script2(w, 1);
         // `0x22ea90`: body 0 → `SetState(0, 1)`, body 3 → `SetState(0x53, 1)`.
-        match w.hero.mode {
+        match w.body() {
             0 => cinematic::hero_state(w, 0, true),
             3 => cinematic::hero_state(w, 0x53, true),
             _ => {}

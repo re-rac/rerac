@@ -212,7 +212,7 @@ pub fn sphere_gap(w: &World, a: MobyId, b: MobyId) -> f32 {
 }
 
 /// Max health as the pickups read it: 0x15eda0, or 4 when Clank is the body (0x1413f4 = 1).
-pub fn max_health(w: &World) -> i32 { if w.hero.mode == 1 { 4 } else { w.svc.counters.max_hp } }
+pub fn max_health(w: &World) -> i32 { if w.body() == 1 { 4 } else { w.svc.counters.max_hp } }
 
 /// `0x2daf10(pos, item, amount, a3)`: an item pickup moby of `item`'s pickup class (none for a class ≤ 0),
 /// update and draw distance 0xff, state 1, drawn, the amount (−1: the record's pickup amount), the item, `a3`, the

@@ -37,7 +37,7 @@ fn tween(f: f32, a: u32, b: u32) -> u32 { tween_color(f.to_bits(), a, b) }
 
 /// Level15 `0x2a7880` (module doc).
 pub fn update(w: &mut World, id: MobyId) {
-    if w.hero.mode != GIANT && w.m(id).state == 1 { return; }
+    if w.body() != GIANT && w.m(id).state == 1 { return; }
     let rec = heavy_hit(w, id);
     w.mm(id).hit_slot = 0xff;
     let Some(i) = rec else {
@@ -125,7 +125,7 @@ fn heavy_hit(w: &World, id: MobyId) -> Option<usize> {
 
 /// Level15 `0x2aa280` (module doc).
 pub fn wall_update(w: &mut World, id: MobyId) {
-    if w.hero.mode != GIANT && w.m(id).state == 1 { return; }
+    if w.body() != GIANT && w.m(id).state == 1 { return; }
     let rec = heavy_hit(w, id);
     w.mm(id).hit_slot = 0xff;
     let Some(i) = rec else {

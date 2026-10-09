@@ -385,7 +385,7 @@ fn wake(w: &mut World, id: MobyId) -> bool {
     if let Some(comp) = link(w, id, pv::BUBBLE) {
         if !deleted(w, comp) && w.m(comp).state < 2 {
             let coll = w.classes.info(w.m(comp).o_class).is_some_and(|i| i.has_collision);
-            let clank = w.hero.mode != 0;
+            let clank = w.body() != 0;
             for m in [id, comp] {
                 let mm = w.mm(m);
                 if clank { mm.mode = (mm.mode & !0x41) | mode::TARGETABLE; } else { mm.mode = (mm.mode | 0x41) & !mode::TARGETABLE; }

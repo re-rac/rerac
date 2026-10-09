@@ -57,7 +57,7 @@ pub fn update(w: &mut World, id: MobyId) {
     let level = w.svc.level;
     let gate = p::i32(&w.m(id).pvars, 0x18);
     if gate != -1 && w.mission_done(level, gate as u8) != 0xff { return; }
-    let (mode, group) = (w.hero.mode, w.hero.group);
+    let (mode, group) = (w.body(), w.hero.group);
     if flags & 2 != 0 && mode != 1 { return; }
     if flags & 4 != 0 && mode != 3 && mode != 0 { return; }
     if flags & 0x10 != 0 && 1 < group as u32 && group != 9 { return; }
@@ -125,7 +125,7 @@ pub(crate) fn record(w: &mut World, r: Record) {
     // keeps the pending body, else a second death would come back as Ratchet.
     w.svc.save.checkpoint_body = match w.hero.bodies.restore {
         Some((body, state, _)) => (body, state),
-        None => (w.hero.mode, w.hero.bodies.state_param),
+        None => (w.body(), w.hero.bodies.state_param),
     };
     // 0x1bb6e0 / 0x1bb6e4: Ratchet's moby's light word and ambient.
     w.svc.save.checkpoint_light = w.hero_moby.and_then(|h| w.table.mobys.get(h)).map(|m| (m.light, m.ambient));

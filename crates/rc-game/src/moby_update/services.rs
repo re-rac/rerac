@@ -1566,6 +1566,18 @@ impl<'a> World<'a> {
         }
     }
 
+    /// The body word 0x1413f4 as the classes see it now (0 Ratchet, 1 Clank, 2 Giant Clank, 3 the disguise): the game's
+    /// `SwitchCharacter` and leave copies store it at once, so a class later in the same moby loop sees the new body
+    /// (Orxon's sliding blocks 1424 placed open in the loop where the Clank section 22 hands Clank the hero); the port
+    /// makes those calls after the loop ([`HeroCall`]), so the last one queued this tick wins over the hero's word.
+    pub fn body(&self) -> u8 {
+        self.hero_fields().calls.iter().flatten().fold(self.hero.mode, |b, c| match c {
+            HeroCall::SwitchCharacter { mode, .. } => *mode,
+            HeroCall::LeaveBody { .. } => crate::hero::bodies::body::RATCHET,
+            _ => b,
+        })
+    }
+
     /// Write access to the hero-block fields of [`HeroFields`] (a store of the game's class into the hero block);
     /// the tick applies them before the hero update.
     pub fn hero_fields_mut(&mut self) -> &mut HeroFields {
@@ -1583,7 +1595,7 @@ impl<'a> World<'a> {
     pub fn bolt_radii(&self) -> (Pf, Pf) {
         if self.counter == 0 { return (Pf::b(0x4008_0000), Pf::b(0x3fa0_0000)); }
         // The other bodies (`HeroTickStateTimer`, crate::hero::bodies): Clank 2.125 / 1.25, Giant Clank 15 / 3.
-        match self.hero.mode {
+        match self.body() {
             1 => return (Pf::b(0x4008_0000), Pf::b(0x3fa0_0000)),
             2 => return (Pf::b(0x4170_0000), Pf::b(0x4040_0000)),
             _ => {}

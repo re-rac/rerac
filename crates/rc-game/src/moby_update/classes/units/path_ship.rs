@@ -161,7 +161,7 @@ pub fn update(w: &mut World, id: MobyId) {
             c::set_pf(w, id, pv::T, t);
         }
         1 => {
-            if k.big && w.hero.mode == 1 && w.svc.level == 10 {
+            if k.big && w.body() == 1 && w.svc.level == 10 {
                 w.delete_moby(id);
                 return;
             }

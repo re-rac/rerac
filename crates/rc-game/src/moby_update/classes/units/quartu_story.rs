@@ -175,7 +175,7 @@ pub fn help_update(w: &mut World, id: MobyId) {
         request(w, 0x3a9f, 0x89);
         w.svc.units.set_word(DEATH_WORD, 0);
     }
-    if in_cuboid(w, id, 0x54) && w.hero.mode == 3 && w.svc.units.word(HOLD_WORD) == 0 && w.svc.help.records.help[0x88].count == 0 {
+    if in_cuboid(w, id, 0x54) && w.body() == 3 && w.svc.units.word(HOLD_WORD) == 0 && w.svc.help.records.help[0x88].count == 0 {
         request(w, 0x3a9e, 0x88);
     }
     let c0 = pvi(w, id, 0);
@@ -193,8 +193,8 @@ pub fn help_update(w: &mut World, id: MobyId) {
         set_pvi(w, id, 0x40, c0);
         set_pvi(w, id, 0x3c, 0);
     }
-    if w.hero.mode == 2 && w.hero_moby.is_some_and(|h| w.m(h).anim.seq_a == 0xc) { set_flag(w, 0x6f); }
-    if in_cuboid(w, id, 0x1c) && w.hero.mode == 2 && !flag(w, 0x6f) && idle(w) && (w.svc.help.records.help[0x80].mask as i32) >= 0 {
+    if w.body() == 2 && w.hero_moby.is_some_and(|h| w.m(h).anim.seq_a == 0xc) { set_flag(w, 0x6f); }
+    if in_cuboid(w, id, 0x1c) && w.body() == 2 && !flag(w, 0x6f) && idle(w) && (w.svc.help.records.help[0x80].mask as i32) >= 0 {
         request(w, 0x3a9c, 0x80);
     }
     let bit = 1u32 << (w.svc.help.level as u32 & 31);
