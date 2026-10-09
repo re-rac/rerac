@@ -60,7 +60,7 @@ pub fn instances(level: u32, classes: &[i32], short: bool) -> Result<()> {
     let pv = parse_pvars(&g)?;
     for (i, m) in inst.iter().enumerate() {
         if !classes.contains(&m.o_class) && !classes.contains(&-(i as i32)) { continue; }
-        println!("#{i} class {} pos {:?} rot {:?} group {} uid {} pvar {}", m.o_class, m.position, m.rotation, m.group, m.spawn_id, m.pvar_index);
+        println!("#{i} class {} pos {:?} rot {:?} group {} uid {} pvar {} flags {:#x} mission {}", m.o_class, m.position, m.rotation, m.group, m.spawn_id, m.pvar_index, m.spawn_flags, m.unknown_4);
         if let Some(p) = m.pvar(&pv) {
             let w: Vec<String> = p
                 .chunks(4)
