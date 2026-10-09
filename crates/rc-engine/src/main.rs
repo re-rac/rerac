@@ -121,6 +121,9 @@ struct ScreenshotRequest {
     min_frames: u32,
 }
 
+/// The task pools' threads (see the `TaskPoolPlugin` setting in `main`).
+const TASK_THREADS: usize = 3;
+
 fn main() -> anyhow::Result<()> {
     crash_log::install();
     // `--version-json` exits here; a missing or wrong data folder exits with a clear error (crate::disc_source).
@@ -151,7 +154,17 @@ fn main() -> anyhow::Result<()> {
                 primary_window: Some(Window { title: "ReRAC".into(), resolution: (1024u32, 768u32).into(), ..default() }),
                 ..default()
             })
-            .set(AssetPlugin { file_path: asset_dir(), ..default() }),
+            .set(AssetPlugin { file_path: asset_dir(), ..default() })
+            // Bevy's task pools share TASK_THREADS threads (RC_THREADS=n overrides; 0: Bevy's default, by core count).
+            // The frame is ~100 small systems: on an 8–10 core machine the default's idle workers spin and wake for each
+            // of them, which costs ~25% more CPU for the same frame (Novalis, 1,500 frames: 28.3 s default, 21.1 s at 3)
+            // with no slow frame added at 3.
+            .set(TaskPoolPlugin {
+                task_pool_options: match std::env::var("RC_THREADS").ok().and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(TASK_THREADS) {
+                    0 => TaskPoolOptions::default(),
+                    n => TaskPoolOptions::with_num_threads(n),
+                },
+            }),
     )
     // The game frame every camera renders into and its presentation in the window (before anything spawns a camera,
     // and before the capture, which captures the frame).
