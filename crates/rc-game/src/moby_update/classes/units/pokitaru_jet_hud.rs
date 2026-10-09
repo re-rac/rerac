@@ -109,14 +109,17 @@ fn score(w: &World, id: MobyId, t: MobyId) -> f32 {
     if mo.visible == 0 { return 10000.0; }
     let p = [mo.position[0], mo.position[1], mo.position[2]];
     let [sx, sy] = screen_point(w, p, 0).unwrap_or([0, 0]);
-    let (dx, dy) = ((sx - pi(w, id, pvo::CROSS_X)).abs(), (sy - pi(w, id, pvo::CROSS_Y)).abs());
+    // 32-bit integer arithmetic as the game's (it wraps: a target near the camera projects far off screen).
+    let (dx, dy) = (sx.wrapping_sub(pi(w, id, pvo::CROSS_X)).wrapping_abs(), sy.wrapping_sub(pi(w, id, pvo::CROSS_Y)).wrapping_abs());
     let left = crate::follow_camera::script::euler_rows(w.hero.loop_in.cam_euler)[1];
     let r = mo.bsphere[3] / 1280.0;
     let q = [p[0] + left[0] * r, p[1] + left[1] * r, p[2] + left[2] * r];
     let [qx, qy] = screen_point(w, q, 0).unwrap_or([0, 0]);
-    let (ex, ey) = (qx - sx, qy - sy);
-    let rpix = ((ex * ex + ey * ey) as f32).sqrt() as i32;
-    if dx < rpix + 0x1c && dy < rpix + 0x1c { (dx * dx + dy * dy) as f32 } else { 10000.0 }
+    let (ex, ey) = (qx.wrapping_sub(sx), qy.wrapping_sub(sy));
+    // `fun_001f9988` (SQRT.S: of |x|).
+    let rpix = crate::ps2v::Pf::f(ex.wrapping_mul(ex).wrapping_add(ey.wrapping_mul(ey)) as f32).sqrt().to_f32() as i32;
+    let near = rpix.wrapping_add(0x1c);
+    if dx < near && dy < near { dx.wrapping_mul(dx).wrapping_add(dy.wrapping_mul(dy)) as f32 } else { 10000.0 }
 }
 
 /// `0x311948(…, lock, 0)` with the count `0x311be8` (module doc).

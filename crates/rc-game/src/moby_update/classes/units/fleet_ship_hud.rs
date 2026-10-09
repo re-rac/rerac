@@ -75,17 +75,18 @@ fn search(w: &mut World, id: MobyId, out: &mut Vec<ScreenPrim>, lock: Option<Mob
         if mo.mode & mode::TARGETABLE != 0 && mo.visible != 0 && mo.has_class && class_type(w, m) == Some(5) {
             let p = [mo.position[0], mo.position[1], mo.position[2]];
             if let Some([sx, sy]) = screen_point(w, p, 0) {
-                let (dx, dy) = ((sx - cross[0]).abs(), (sy - cross[1]).abs());
+                // 32-bit integer arithmetic as the game's (it wraps: a target near the camera projects far off screen).
+                let (dx, dy) = (sx.wrapping_sub(cross[0]).wrapping_abs(), sy.wrapping_sub(cross[1]).wrapping_abs());
                 let r = mo.bsphere[3] / 1280.0;
                 let q = [p[0] + left[0] * r, p[1] + left[1] * r, p[2] + left[2] * r];
                 let rpix = screen_point(w, q, 0).map_or(0, |[qx, qy]| {
-                    let (ex, ey) = ((qx - sx) as f32, (qy - sy) as f32);
+                    let (ex, ey) = (qx.wrapping_sub(sx) as f32, qy.wrapping_sub(sy) as f32);
                     (ex * ex + ey * ey).abs().sqrt() as i32
                 });
-                if dx < rpix + 0x1c && dy < rpix + 0x1c {
+                if dx < rpix.wrapping_add(0x1c) && dy < rpix.wrapping_add(0x1c) {
                     match lock {
                         None => {
-                            let d = dx * dx + dy * dy;
+                            let d = dx.wrapping_mul(dx).wrapping_add(dy.wrapping_mul(dy));
                             if Some(m) != skip && d < best_d {
                                 best = Some(m);
                                 best_d = d;
