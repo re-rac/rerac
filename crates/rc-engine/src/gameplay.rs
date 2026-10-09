@@ -2025,6 +2025,11 @@ fn respawn(p: &mut Play, coll: &rc_formats::collision::Collision, class: &MobyAn
     if let (Some(gs), Some(s)) = (state, session) {
         s.hero_init(gs.global.max_hp);
         g.hero.health = s.hp;
+        // The owned items and ammo (0x13d4c0 / 0x13d428 lie outside the hero block the init clears), as the level
+        // load gives them before its load pass: the reload's load pass and the hero writes it queues (carried into
+        // the first tick) start from them, not from a zeroed hero (every weapon's ammo 0 after a death).
+        g.hero.owned.0 = gs.global.owned;
+        g.hero.weapons.ammo = gs.global.ammo;
         let e = &mut gs.global.equipped;
         if e[0] == 0 { e[0] = rc_game::game_state::item::BOMB_GLOVE as i32; }
         e[2] = 0;
