@@ -1029,6 +1029,13 @@ impl Services {
     /// wrote the hero this tick.
     pub fn take_hero_writes(&mut self) -> Option<HeroFields> { self.hero_writes.take().map(|(_, f)| f) }
 
+    /// The load pass's hero-block writes (a `SwitchCharacter` queued by a class: Orxon's Clank section) carried into
+    /// the first tick: the load pass runs at the counter `finish_load` then advances, and the first class to write the
+    /// hero that tick would otherwise start over from the hero and drop them. Nothing moves the hero in between.
+    pub fn carry_load_pass_writes(&mut self, counter: u64) {
+        if let Some((c, _)) = &mut self.hero_writes { *c = counter; }
+    }
+
     /// Counts a reached-but-unported state or branch of a ported class (the stats line / trace report).
     pub fn unported(&mut self, what: &'static str) { *self.fx.unported.entry(what).or_default() += 1; }
 

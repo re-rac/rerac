@@ -1405,6 +1405,7 @@ fn setup(
     };
     // LoadLevelCoreData: 0x15f5cc++ after the load pass.
     game.finish_load();
+    svc.carry_load_pass_writes(game.counter);
     if let Some(p) = particles.as_mut() { p.external = true; }
 
     // Ratchet as an extra instance of his class; the gameplay-instance entities are hidden.
@@ -1865,6 +1866,7 @@ fn reload_load_pass(p: &mut Play, coll: &rc_formats::collision::Collision, parti
     };
     p.sched = sched;
     p.game.finish_load();
+    p.svc.carry_load_pass_writes(p.game.counter);
     println!("gameplay: death reload: {n_load} run by the load pass");
 }
 
