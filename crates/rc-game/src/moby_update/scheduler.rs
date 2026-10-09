@@ -391,6 +391,8 @@ impl Scheduler {
         // The last frame's draw callbacks (their state and rand parts), before any update: classes::draw_callbacks.
         classes::draw_callbacks::run_frame(w);
         w.svc.draw_callbacks.tick = w.counter + 1;
+        // The level's scene hook (mode 2 only): classes::cutscene_fx::level_hook.
+        classes::cutscene_fx::level_hook(w);
         // The hits the last UpdateParts gave (type 58's fire: particles::type58).
         part_hits(w);
         // The Hoverboard hero code's stores of the last hero update (classes::units::hoverboard).

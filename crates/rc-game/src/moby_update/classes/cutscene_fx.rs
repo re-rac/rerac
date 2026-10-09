@@ -147,6 +147,30 @@ pub fn update(w: &mut World, id: MobyId) {
     }
 }
 
+/// The level's scene hook, called by `CutsceneModeUpdate` between the frame's draw callbacks (`0x2ab920`) and the moby
+/// loop (level01 `0x2525f0`, empty; level07 `0x265bd8`, level00 `0x23e268` with every level's part). Ported: the canopy
+/// glass `RegisterDrawCallback(glass, actor)` (level00 `0x2935b8`, level07 `0x2ba260` = L01 `0x2a70a8`) on Veldin
+/// (00) for every scene actor of class 530, on Umbris (07) for actor 4 of scene 4 when it is the ship 532 (the
+/// escape in Qwark's ship). Not ported: Aridia's (02) mode |= 0x800 on the actors of class 0x1b1 (no reader of that
+/// mode bit is known), Kerwan's (03) scene-5 particles, level 14's scene-0 call and level 15's scenes 3 / 4 call per
+/// actor.
+pub fn level_hook(w: &mut World) {
+    if w.svc.game_mode != 2 { return; }
+    let Some(scene) = w.svc.cinematic.scene.clone() else { return };
+    let glass = |w: &mut World, a: &SceneActorState| {
+        w.svc.draw_callbacks.register_with_matrix(super::draw_callbacks::Callback::ShipGlass, a.moby.unwrap_or(usize::MAX), a.joint_matrix(0));
+    };
+    match w.svc.level {
+        0 => {
+            for a in scene.actors.iter().filter(|a| a.o_class == 0x212) { glass(w, a); }
+        }
+        7 if scene.id == 4 => {
+            if let Some(a) = scene.actors.get(4).filter(|a| a.moby.is_some() && a.o_class == 0x214) { glass(w, a); }
+        }
+        _ => {}
+    }
+}
+
 /// `PartType46Spawn(size, spin, p, 0, &p.z)` with the caller's timer `life` (the scene-1 ripples). Without a particle
 /// system its draw is made and the slot counted.
 fn ring46(w: &mut World, size: f32, spin: f32, p: [f32; 4], life: i32) {
