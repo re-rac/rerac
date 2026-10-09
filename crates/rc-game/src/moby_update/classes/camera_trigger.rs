@@ -14,7 +14,8 @@
 //! camera)`, `CameraScript(P[9], 0, 0, 0)` (or `CameraScript(current view, 2, P[13], 0)`), `0x15f404 = 1`, +0xbc = 1,
 //! P[0..7] = P[9]'s centre and Euler → **2** holding: each tick `FastDecTimer(P[11])`; while it runs and +0xbc = 1
 //! the camera's targets are set from P[0..7]; when it runs out (or +0xbc is cleared) `CameraScript2(0)` (mode 2:
-//! `CameraScript2(2)`), Ratchet `SetState(0, 1)` (`FUN_002405a0`; 0x53 in his mode 3), `0x15f404 = 0`, +0xbc = 0 →
+//! `CameraScript2(2)`), the hero back to his body's idle (`FUN_002405a0` on 01: `SetState(0, 1)`, 0x53 in mode 3; the
+//! per-body idle on 07 / 10 / 13: Clank 0x43, Giant Clank 0x5a), `0x15f404 = 0`, +0xbc = 0 →
 //! **3** spent: only a new command (+0xbc = 1) re-arms it. No skip.
 //!
 //! Novalis has five: 860 (trigger cuboid 42, camera 43, Ratchet to 42; also commanded by the mission NPC 790 for 7 s
@@ -86,12 +87,17 @@ pub fn update(w: &mut World, id: MobyId) {
             }
             let kind = if pi(w, 0x30) == 0 { 0 } else { 2 };
             cinematic::camera_script2(w, kind);
-            // FUN_002405a0: back to idle (0x53 when he is in mode 3).
-            match w.body() {
-                0 => cinematic::hero_state(w, 0, true),
-                3 => cinematic::hero_state(w, 0x53, true),
-                _ => {}
-            }
+            // Back to the body's idle: the per-body idle of levels 07 / 10 / 13 (`0x24f4a0` / `0x21aca0` / `0x233120`:
+            // Clank 0x43, Giant Clank 0x5a); levels 01..03 call `0x2405a0` and its copies (0, or 0x53 in mode 3), the
+            // same on the bodies those levels have.
+            use crate::hero::bodies::{body, clank, giant};
+            let s = match w.body() {
+                body::CLANK => clank::IDLE,
+                body::GIANT => giant::IDLE,
+                body::DISGUISE => 0x53,
+                _ => 0,
+            };
+            cinematic::hero_state(w, s, true);
             cinematic::letterbox(w, false);
             let m = w.mm(id);
             m.state = 3;
