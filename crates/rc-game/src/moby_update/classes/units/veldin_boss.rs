@@ -298,12 +298,12 @@ fn release_voice(w: &mut World, id: MobyId) {
 /// `0x238fd8(h, 0)`: the meter's flags cleared (it times out).
 fn release_meter(w: &mut World, id: MobyId) {
     if c::pi32(w, id, pv::METER) == -1 { return; }
-    let key = meter_key(id);
+    let key = meter_key(w, id);
     w.svc.hud.set_flags(crate::hud::Request::boss(key, HEALTH as i32), 0);
     c::set_pi32(w, id, pv::METER, -1);
 }
 /// The meter's data key: the boss's +0x36c.
-pub fn meter_key(id: MobyId) -> u32 { ((id as u32) << 16) | pv::METER_VALUE as u32 }
+pub fn meter_key(w: &World, id: MobyId) -> u32 { crate::hud::calls::pvar_key(w.m(id).spawn_id, id, pv::METER_VALUE) }
 
 fn release_voice_always(w: &mut World, id: MobyId) {
     let v = c::pi32(w, id, pv::VOICE);
@@ -783,7 +783,7 @@ pub fn camera_and_meter(w: &mut World, id: MobyId) {
         _ => {
             if 0.0 < c::pf(w, id, pv::HEALTH) {
                 let v = c::pi32(w, id, pv::METER_VALUE);
-                w.svc.hud.boss_meter(meter_key(id), v, HEALTH as i32);
+                w.svc.hud.boss_meter(meter_key(w, id), v, HEALTH as i32);
                 c::set_pi32(w, id, pv::METER, 1);
             }
         }
@@ -1743,7 +1743,7 @@ fn epilogue(w: &mut World, id: MobyId) {
     camera_and_meter(w, id);
     // The meter's data word, every tick (the game's element reads +0x36c live).
     let v = c::pi32(w, id, pv::METER_VALUE);
-    w.svc.hud.data(meter_key(id), v);
+    w.svc.hud.data(meter_key(w, id), v);
     if w.m(id).visible != 0 {
         let j8 = w.joint_point(id, 8);
         let j9 = w.joint_point(id, 9);

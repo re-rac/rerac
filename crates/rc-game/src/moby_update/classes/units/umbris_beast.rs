@@ -237,7 +237,7 @@ pub fn update(w: &mut World, id: MobyId) {
     if !matches!(st(w, id), 0 | 0xa | 0x10) {
         let v = c::pi32(w, id, pv::METER);
         let max = (c::pi16(w, id, pv::D + 4) as i32) << 4 | 0xf;
-        w.svc.hud.boss_meter(meter_key(id), v, max);
+        w.svc.hud.boss_meter(meter_key(w, id), v, max);
         c::set_pi32(w, id, pv::METER_SLOT, 1);
     }
     let state_now = st(w, id);
@@ -254,7 +254,7 @@ pub fn update(w: &mut World, id: MobyId) {
         0xa => {
             if c::pi32(w, id, pv::METER_SLOT) != -1 {
                 let max = (c::pi16(w, id, pv::D + 4) as i32) << 4 | 0xf;
-                w.svc.hud.release(crate::hud::Request::boss(meter_key(id), max));
+                w.svc.hud.release(crate::hud::Request::boss(meter_key(w, id), max));
                 c::set_pi32(w, id, pv::METER_SLOT, -1);
             }
             if wrapped(w, id) {
@@ -303,7 +303,7 @@ pub fn update(w: &mut World, id: MobyId) {
     bfx::light_tick(w, id);
 }
 
-fn meter_key(id: MobyId) -> u32 { ((id as u32) << 16) | pv::METER as u32 }
+fn meter_key(w: &World, id: MobyId) -> u32 { crate::hud::calls::pvar_key(w.m(id).spawn_id, id, pv::METER) }
 
 /// The attack gates of the top (module doc).
 pub struct Gates {

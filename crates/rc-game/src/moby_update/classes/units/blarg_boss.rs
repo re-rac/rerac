@@ -110,7 +110,7 @@ fn tgt(w: &World, id: MobyId) -> Option<MobyId> { usize::try_from(pi(w, id, pv::
 fn tgt_pos(w: &World, id: MobyId) -> V { tgt(w, id).map_or([0.0; 4], |m| w.m(m).position) }
 fn heading(a: V, b: V) -> f32 { c::atan(b[0] - a[0], b[1] - a[1]) }
 fn no_target(w: &World, id: MobyId) -> bool { pi(w, id, pv::KIND) == 2 }
-fn meter_key(id: MobyId) -> u32 { ((id as u32) << 16) | pv::METER as u32 }
+fn meter_key(w: &World, id: MobyId) -> u32 { crate::hud::calls::pvar_key(w.m(id).spawn_id, id, pv::METER) }
 fn group(w: &World, g: i32) -> Vec<MobyId> { scheduler::group_ids(w, i8::try_from(g).unwrap_or(-1)) }
 fn turn_to(w: &mut World, id: MobyId, h: f32) {
     turn::turn_toward_pvar(w, id, h, c::DT2 * std::f32::consts::TAU, c::DT2 * std::f32::consts::TAU, c::DT * std::f32::consts::PI, pv::TURN_V);
@@ -389,7 +389,7 @@ fn hits(w: &mut World, id: MobyId) {
         let reaction = if hp <= 0.0 { 1 } else if res.reaction == 1 { 5 } else { res.reaction };
         match reaction {
             1 | 2 => {
-                w.svc.hud.release(crate::hud::Request::boss(meter_key(id), METER_MAX));
+                w.svc.hud.release(crate::hud::Request::boss(meter_key(w, id), METER_MAX));
                 c::set_pi32(w, id, pv::METER_SLOT, -1);
                 set(w, id, 0xe);
                 set_death_bits(w, id, 0, -1);
@@ -408,7 +408,7 @@ fn hits(w: &mut World, id: MobyId) {
     w.mm(id).hit_slot = 0xff;
     flash::update(w, id, pv::F);
     if c::pu8(w, id, pv::D + 0xe) & 2 != 0 && st(w, id) != 0xf {
-        w.svc.hud.release(crate::hud::Request::boss(meter_key(id), METER_MAX));
+        w.svc.hud.release(crate::hud::Request::boss(meter_key(w, id), METER_MAX));
         c::set_pi32(w, id, pv::METER_SLOT, -1);
         set(w, id, 0xe);
         return;
@@ -461,7 +461,7 @@ pub fn update(w: &mut World, id: MobyId) {
     }
     if (3..14).contains(&st(w, id)) {
         let v = pi(w, id, pv::METER);
-        w.svc.hud.boss_meter(meter_key(id), v, METER_MAX);
+        w.svc.hud.boss_meter(meter_key(w, id), v, METER_MAX);
         c::set_pi32(w, id, pv::METER_SLOT, 1);
     }
     match st(w, id) {

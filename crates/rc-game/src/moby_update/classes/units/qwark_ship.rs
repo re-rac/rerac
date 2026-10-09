@@ -217,18 +217,18 @@ fn keep_voice(w: &mut World, id: MobyId, o: usize, index: i32) {
 }
 
 /// The meter's data key: the moby's +0x108.
-pub fn meter_key(id: MobyId) -> u32 { ((id as u32) << 16) | pvo::METER_VALUE as u32 }
+pub fn meter_key(w: &World, id: MobyId) -> u32 { crate::hud::calls::pvar_key(w.m(id).spawn_id, id, pvo::METER_VALUE) }
 
 fn meter_request(w: &World, id: MobyId) -> crate::hud::Request {
     let full = p16(w, id, pvo::FULL) as i32;
-    crate::hud::Request { slot: 1, flags: 0x10, icon: 0xffff, element: crate::hud::Element::Boss { key: meter_key(id) }, max: (full << 4) | 0xf }
+    crate::hud::Request { slot: 1, flags: 0x10, icon: 0xffff, element: crate::hud::Element::Boss { key: meter_key(w, id) }, max: (full << 4) | 0xf }
 }
 
 /// `queue_animation_update(0x11, 0xffff, …, &+0x108, full·16 | 0xf)` → +0x104.
 fn meter(w: &mut World, id: MobyId) {
     let r = meter_request(w, id);
     let v = pi(w, id, pvo::METER_VALUE);
-    w.svc.hud.data(meter_key(id), v);
+    w.svc.hud.data(meter_key(w, id), v);
     w.svc.hud.queue(r);
     seti(w, id, pvo::METER, 1);
 }

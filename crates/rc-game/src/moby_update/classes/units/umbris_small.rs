@@ -10,7 +10,7 @@
 //!   each of its joint lists 0..3 (type 23: 0.6, 1 → 1.01, `randf(20000, 200000)`, still, white at
 //!   `rand_range(0x20, 0x80)` alpha, spin `±rand_range(0, 4)`, life `ticks(rand_range(60, 90))`, fading).
 //! * **1133, the swinging part** (`0x31b3f0`, 1 placed; U278): waits for its link (+0x00) to be gone or in state A
-//!   (+0x04), then swings in pitch (a kick of +0x0c·dt, then `v += cos(pitch)·+0x0c·dt`, `v ·= +0x10`) with sound 0,
+//!   (+0x04), then swings in pitch, +0x44 (a kick of +0x0c·dt, then `v += cos(pitch)·+0x0c·dt`, `v ·= +0x10`) with sound 0,
 //!   until the link is in state B (+0x08); then it swings back by +0x14 a tick to 0 and waits again (the link gone or
 //!   in A meanwhile: sound 0 and it stops for good).
 //! * **1142, the ammo drop** (`0x31d2e0`, 1 placed; U279): its path's segment lengths into the points' w and their
@@ -151,7 +151,7 @@ pub fn swing_update(w: &mut World, id: MobyId) {
     let speed = c::pf(w, id, 0xc);
     match w.m(id).state {
         0 => {
-            w.mm(id).rotation[0] = 0.0;
+            w.mm(id).rotation[1] = 0.0;
             w.mm(id).state = 1;
             c::set_pf(w, id, 0x18, 0.0);
         }
@@ -159,14 +159,14 @@ pub fn swing_update(w: &mut World, id: MobyId) {
             if link_state(w, id).is_some_and(|s| s != a) { return; }
             let v = speed * DT;
             c::set_pf(w, id, 0x18, v);
-            w.mm(id).rotation[0] = v;
+            w.mm(id).rotation[1] = v;
             w.play_sound(0, 0, id);
             w.mm(id).state = 3;
         }
         3 => {
-            let pitch = w.m(id).rotation[0];
+            let pitch = w.m(id).rotation[1];
             let v = c::add_rot(c::pf(w, id, 0x18), pitch.cos() * speed * DT);
-            w.mm(id).rotation[0] = c::add_rot(pitch, v);
+            w.mm(id).rotation[1] = c::add_rot(pitch, v);
             c::set_pf(w, id, 0x18, v * c::pf(w, id, 0x10));
             if link_state(w, id) == Some(b) { w.mm(id).state = 4; }
         }
@@ -176,10 +176,10 @@ pub fn swing_update(w: &mut World, id: MobyId) {
                 w.mm(id).state = 2;
                 return;
             }
-            let p = c::sub_rot(w.m(id).rotation[0], c::pf(w, id, 0x14));
-            w.mm(id).rotation[0] = p;
+            let p = c::sub_rot(w.m(id).rotation[1], c::pf(w, id, 0x14));
+            w.mm(id).rotation[1] = p;
             if 0.0 < p {
-                w.mm(id).rotation[0] = 0.0;
+                w.mm(id).rotation[1] = 0.0;
                 w.mm(id).state = 1;
                 c::set_pf(w, id, 0x18, 0.0);
             }

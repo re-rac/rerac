@@ -90,6 +90,14 @@ impl Calls {
     }
 }
 
+/// A data key for a moby's pvar word at `offset`, as the game's data pointer: the pvars belong to the placed instance
+/// (`spawn_id`), so a death reload that compacts the moby table leaves the key (and the HUD's request) unchanged, as
+/// the game's pointer is; a moby without a placement keys by its slot.
+pub fn pvar_key(spawn_id: i16, id: usize, offset: usize) -> u32 {
+    let k = if spawn_id >= 0 { spawn_id as u32 } else { 0x8000 | id as u32 };
+    (k << 16) | offset as u32
+}
+
 impl Request {
     /// The boss meter's request (module doc).
     pub fn boss(key: u32, max: i32) -> Request { Request { slot: 6, flags: 0x10, icon: 0xffff, element: Element::Boss { key }, max } }
