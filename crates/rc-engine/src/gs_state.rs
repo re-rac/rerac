@@ -71,8 +71,9 @@
 //!   pair each), not ordered (Bevy's `depth_bias` only sorts Transparent3d and Transmissive3d, not the
 //!   binned phases). Within one batch the index order is the packet order.
 //!
-//! `EffectMix` and `AdditiveNoZ` are the effect mobys' draws (crate::moby_render `MobyBlend::Translucent` /
-//! `Additive`: one draw, Z tested, not written, sorted with the blended items). They are not GS register models: they
+//! `EffectTested` + `EffectLowAlpha` (`MobyBlend::Translucent`: the regular alpha-test split) and `AdditiveNoZ`
+//! (`Additive`: one draw, Z tested, not written) are the effect mobys' draws (crate::moby_render), sorted with the
+//! blended items. They are not GS register models: they
 //! blend on the frame's display bytes like every effect (crate::display_blend, user decision 2026-09-27; the shader
 //! gets `DISPLAY_BLEND_MIX` / `DISPLAY_BLEND_ADD`, the pipeline targets the effect pass's display-encoded target, and
 //! the entity carries `DisplayEffect`).

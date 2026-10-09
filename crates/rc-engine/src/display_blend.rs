@@ -1,7 +1,7 @@
 //! PS2-style blending of the effects: additive and translucent effects blend on the frame's **display bytes**, as
 //! the GS does, not in linear light (user decision 2026-09-27; docs/plan/hardware_fidelity_layers.md "Result-level
 //! reproductions"). One mechanism for every effect: the particles (crate::particle_render), the effect mobys
-//! (`MobyBlend::Translucent` / `Additive` → `GsPass::EffectMix` / `GsPass::AdditiveNoZ`) and the draw-callback
+//! (`MobyBlend::Translucent` / `Additive` → `GsPass::EffectTested` + `EffectLowAlpha` / `GsPass::AdditiveNoZ`) and the draw-callback
 //! effects (crate::fx_draw; the fire fields of crate::water_render). Each effect entity carries [`DisplayEffect`].
 //!
 //! **Why.** The GS equations are `Cd + (Cs·As >> 7)` (ALPHA 0x48) and `Cd + ((Cs − Cd)·As >> 7)` (0x44) on the

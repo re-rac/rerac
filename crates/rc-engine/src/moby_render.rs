@@ -420,9 +420,10 @@ fn metal_passes(texel: AlphaRange) -> Vec<GsPass> {
 /// * [`Self::Plain`]: vertex alpha 0x80: the regular moby draw (opaque, texture cut-outs as before);
 /// * [`Self::Fading`]: the distance fade (or mode bit 8): the existing fade draw, unchanged;
 /// * [`Self::Translucent`]: +0x23 below 0x80 (the explosion flashes 0x70 / 1192 are spawned with 0x20..0x40 and
-///   fade to 0, a fading body piece counts it down): **alpha blend on display bytes (crate::display_blend), no depth
-///   write, sorted back to front**; in the game such a moby's pixels fail the Z-writing alpha test (below 0x60), so
-///   they blend over the scene without occluding what is behind;
+///   fade to 0, a fading body piece counts it down, a pickup fades in from 0): **alpha blend on display bytes
+///   (crate::display_blend), sorted back to front, split by the regular alpha test**: fragments with As ≥ 0x60 write
+///   Z (`EffectTested`), the rest blend colour-only (`EffectLowAlpha`); a flash fails the test everywhere and blends
+///   over the scene without occluding it, a nearly opaque pickup still hides its own back faces;
 /// * [`Self::Additive`]: mode bit 0x200 (the game switches the moby to `Cs·As + Cd`): **additive on display bytes,
 ///   no depth write, sorted**.
 ///
@@ -462,7 +463,15 @@ impl MobyBlend {
                 let fade = AlphaRange { min: 0, max: ((0x7f * mult.max as u32) >> 7) as u8 };
                 gs_state::draws(moby_lod::AREF_FADE, texel, fade)
             }
-            MobyBlend::Translucent => vec![GsPass::EffectMix],
+            // The game keeps TEST_1 0x5360b: fragments with As ≥ 0x60 still write Z (a pickup fading in), the rest
+            // blend colour-only; both halves on display bytes.
+            MobyBlend::Translucent => {
+                let a = AlphaRange { min: 0, max: ((0x7f * mult.max as u32) >> 7) as u8 };
+                gs_state::draws(gs_state::AREF_WORLD, texel, a)
+                    .into_iter()
+                    .map(|p| match p { GsPass::BlendNoZ => GsPass::EffectMix, p => ordered_pass(p) })
+                    .collect()
+            }
             MobyBlend::Additive => vec![GsPass::AdditiveNoZ],
         }
     }
@@ -1584,7 +1593,8 @@ mod tests {
         assert_eq!(MobyBlend::pick(0x200, true, 0x80), MobyBlend::Additive);
         let o = AlphaRange::OPAQUE;
         assert_eq!(MobyBlend::Plain.passes(o, o), vec![GsPass::Opaque]);
-        assert_eq!(MobyBlend::Translucent.passes(o, o), vec![GsPass::EffectMix]);
+        let a = gs_state::AREF_WORLD;
+        assert_eq!(MobyBlend::Translucent.passes(o, o), vec![GsPass::EffectTested { aref: a }, GsPass::EffectLowAlpha { aref: a }]);
         assert_eq!(MobyBlend::Additive.passes(o, o), vec![GsPass::AdditiveNoZ]);
         assert!(!GsPass::EffectMix.state().depth_write && !GsPass::AdditiveNoZ.state().depth_write);
         assert!(GsPass::EffectMix.state().display && GsPass::AdditiveNoZ.state().display && !GsPass::BlendNoZ.state().display);
