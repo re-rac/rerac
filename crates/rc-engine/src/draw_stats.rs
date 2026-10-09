@@ -110,9 +110,11 @@ fn mesh_detail(mut ev: MessageReader<AssetEvent<Mesh>>, assets: Res<Assets<Mesh>
     v.sort_by_key(|x| std::cmp::Reverse(x.1));
     for (id, n) in v.into_iter().take(25) {
         let m = assets.get(id);
-        let verts = m.map_or(0, |m| m.count_vertices());
-        let attrs: Vec<String> = m.map(|m| m.attributes().map(|(a, _)| a.name.to_string()).collect()).unwrap_or_default();
-        println!("draws: mesh {id:?} {n:4} changes / 300 frames, {verts} vertices, attributes {attrs:?}");
+        // try_: a render-world-only mesh has no attributes in the main world.
+        let attrs: Vec<(String, usize)> =
+            m.and_then(|m| m.try_attributes().ok()).map(|a| a.map(|(a, v)| (a.name.to_string(), v.len())).collect()).unwrap_or_default();
+        let verts = attrs.first().map_or(0, |a| a.1);
+        println!("draws: mesh {id:?} {n:4} changes / 300 frames, {verts} vertices, attributes {:?}", attrs.iter().map(|a| &a.0).collect::<Vec<_>>());
     }
 }
 

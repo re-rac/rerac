@@ -234,6 +234,21 @@ impl PrimBuf {
 
     pub fn is_empty(&self) -> bool { self.idx.is_empty() }
 
+    /// Whether `mesh` already holds these primitives (crate::asset_write: a rewrite is an upload).
+    fn same_as(&self, mesh: &Mesh) -> bool {
+        use bevy::mesh::VertexAttributeValues as V;
+        matches!(mesh.try_attribute_option(Mesh::ATTRIBUTE_POSITION), Ok(Some(V::Float32x3(v))) if *v == self.pos)
+            && matches!(mesh.try_attribute_option(Mesh::ATTRIBUTE_UV_0), Ok(Some(V::Float32x2(v))) if *v == self.uv)
+            && matches!(mesh.try_attribute_option(Mesh::ATTRIBUTE_COLOR), Ok(Some(V::Float32x4(v))) if *v == self.color)
+            && matches!(mesh.try_indices_option(), Ok(Some(Indices::U32(v))) if *v == self.idx)
+    }
+
+    /// Writes into mesh `h` unless it already holds these primitives.
+    pub fn update(self, meshes: &mut Assets<Mesh>, h: &Handle<Mesh>) {
+        if meshes.get(h).is_some_and(|m| self.same_as(m)) { return; }
+        if let Some(mut m) = meshes.get_mut(h) { self.write(&mut m); }
+    }
+
     pub fn write(self, mesh: &mut Mesh) {
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, self.pos);
         mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, self.uv);
@@ -295,7 +310,7 @@ impl FxSlots {
                 let params = if g.subtract { FxPrimParams::subtract() } else { FxPrimParams::blend(g.additive) };
                 match &mut self.slots[k] {
                     Some((_, mesh, mat, _)) => {
-                        if let Some(mut m) = a.meshes.get_mut(&*mesh) { g.prims.write(&mut m); }
+                        g.prims.update(a.meshes, mesh);
                         let need = a.materials.get(&*mat).is_none_or(|m| m.texture != img || m.params.misc != params.misc || m.fog != a.fog);
                         if need {
                             if let Some(mut m) = a.materials.get_mut(&*mat) {

@@ -1007,10 +1007,10 @@ pub(crate) fn upload_gfx(
     if let Some(extra) = &g.extra {
         let fits = |b: &ShaderBuffer, n: usize| b.data.as_ref().is_some_and(|d| d.len() == n);
         if buffers.get(&extra.palette).is_some_and(|b| fits(b, palette.len())) {
-            if let Some(mut b) = buffers.get_mut(&extra.palette) { b.data = Some(palette); }
+            crate::asset_write::set_buffer(&mut *buffers, &extra.palette, &palette);
         }
         if buffers.get(&extra.instances).is_some_and(|b| fits(b, records.len())) {
-            if let Some(mut b) = buffers.get_mut(&extra.instances) { b.data = Some(records); }
+            crate::asset_write::set_buffer(&mut *buffers, &extra.instances, &records);
         }
     }
     for (ents, model) in shown {

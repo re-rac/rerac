@@ -144,9 +144,9 @@ fn draw(
         }
     }
     if rec_changed {
-        if let Some(mut b) = buffers.get_mut(&g.extra.instances) { b.data = Some(g.records.clone()); }
+        crate::asset_write::set_buffer(&mut buffers, &g.extra.instances, &g.records);
     }
     if pal_changed {
-        if let Some(mut b) = buffers.get_mut(&g.extra.palette) { b.data = Some(g.palette.clone()); }
+        crate::asset_write::set_buffer(&mut buffers, &g.extra.palette, &g.palette);
     }
 }

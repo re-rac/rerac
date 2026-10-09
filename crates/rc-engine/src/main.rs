@@ -29,6 +29,7 @@
 //! - `RC_SHADOWS=0|1`, `RC_SHADOW_DEBUG=1`, `RC_SHADOW_TRACE=1` the moby shadows, crate::shadow_render
 
 mod crash_log;
+mod asset_write;
 mod audio_out;
 mod determinism;
 mod display;

@@ -2569,8 +2569,8 @@ fn upload(
         commands.entity(p.ratchet_lods[0]).insert(vis(!low));
         commands.entity(p.ratchet_lods[1]).insert(vis(low));
     }
-    if let Some(mut buf) = buffers.get_mut(&p.extra.palette) { buf.data = Some(palette); }
-    if let Some(mut buf) = buffers.get_mut(&p.extra.instances) { buf.data = Some(record); }
+    crate::asset_write::set_buffer(&mut buffers, &p.extra.palette, &palette);
+    crate::asset_write::set_buffer(&mut buffers, &p.extra.instances, &record);
     upload_dynamic(&mut p, lv, cam, tans, &mut commands, &mut buffers, &mut meshes, &mut images, &mut materials, &point_lights.0, deferred);
 }
 
@@ -2669,10 +2669,10 @@ fn upload_dynamic(
     }
     (d.live, d.drawn) = (live, drawn);
     if rec_changed {
-        if let Some(mut buf) = buffers.get_mut(&d.extra.instances) { buf.data = Some(d.records.clone()); }
+        crate::asset_write::set_buffer(&mut *buffers, &d.extra.instances, &d.records);
     }
     if pal_changed {
-        if let Some(mut buf) = buffers.get_mut(&d.extra.palette) { buf.data = Some(d.palette.clone()); }
+        crate::asset_write::set_buffer(&mut *buffers, &d.extra.palette, &d.palette);
     }
 }
 

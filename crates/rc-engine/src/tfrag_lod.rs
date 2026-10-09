@@ -156,6 +156,9 @@ impl TfragLodState {
         let n = self.tfrags.len().max(1);
         for (i, &l) in lists.iter().take(n).enumerate() { self.tail[i * 4..i * 4 + 4].copy_from_slice(&(l as u32).to_le_bytes()); }
         self.tail[n * 4..n * 4 + bank.len()].copy_from_slice(bank);
+        // Only a changed tail marks the buffer (crate::asset_write: every get_mut is an upload).
+        let same = buffers.get(&self.modes).and_then(|b| b.data.as_deref()).is_some_and(|d| d.len() >= self.tail.len() && d[d.len() - self.tail.len()..] == self.tail[..]);
+        if same { return; }
         if let Some(mut buf) = buffers.get_mut(&self.modes) {
             if let Some(d) = buf.data.as_mut() {
                 let at = d.len() - self.tail.len();
@@ -299,12 +302,10 @@ fn update_tfrag_modes(
             m
         })
         .collect();
-    if let Some(mut buf) = buffers.get_mut(&state.modes) {
-        let mut d = bytemuck_u32(&modes);
-        if d.is_empty() { d.resize(4, 0); }
-        d.extend_from_slice(&state.tail);
-        buf.data = Some(d);
-    }
+    let mut d = bytemuck_u32(&modes);
+    if d.is_empty() { d.resize(4, 0); }
+    d.extend_from_slice(&state.tail);
+    crate::asset_write::set_buffer(&mut buffers, &state.modes, &d);
     if let Some(mut o) = occl {
         o.tfrags = crate::occlusion::CullCounts { occluded, culled: hist[0] - occluded, drawn: modes.len() - hist[0] };
     }

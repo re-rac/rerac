@@ -601,6 +601,6 @@ fn build_sprites(
     }
     for (g, sprites) in groups.iter_mut().enumerate() {
         if sprites.len() == 0 { continue; }
-        if let Some(mut buf) = buffers.get_mut(&handles[g]) { buf.data = Some(sprites.contents()); }
+        crate::asset_write::set_buffer(&mut buffers, &handles[g], &sprites.contents());
     }
 }

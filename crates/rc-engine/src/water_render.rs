@@ -489,7 +489,7 @@ fn setup(
         data.map(|d| d.manager_classes.clone()).unwrap_or_default(),
         slot
     );
-    if let Some(mut b) = buffers.get_mut(&frame) { b.data = Some(frame_bytes.clone()); }
+    crate::asset_write::set_buffer(&mut buffers, &frame, &frame_bytes);
     commands.insert_resource(WaterState {
         classes,
         ripple_at,
@@ -609,7 +609,7 @@ fn draw(
         if c.anim == StripAnim::BobAfterDraw1225 { c.w = ww::bob(st.counter); }
     }
     st.fallback = fallback;
-    if let Some(mut b) = buffers.get_mut(&st.frame) { b.data = Some(st.frame_bytes.clone()); }
+    crate::asset_write::set_buffer(&mut buffers, &st.frame, &st.frame_bytes);
 }
 
 /// The ripple patches of this frame (`sim` None: not registered this tick, nothing drawn).
@@ -674,7 +674,7 @@ fn draw_ripples(
         }
     }
     if wrote {
-        if let Some(mut b) = buffers.get_mut(&st.ripple_buf) { b.data = Some(st.ripple_bytes.clone()); }
+        crate::asset_write::set_buffer(&mut *buffers, &st.ripple_buf, &st.ripple_bytes);
     }
     if st.stats && st.ticks.is_multiple_of(60) {
         if let Some(s) = sim.as_deref() { println!("water: tick {} active patches {active} clock {:?} render buffer {}", st.ticks, s.clock, s.render); }
@@ -922,7 +922,7 @@ fn draw_fire_fields(
                 let img = img.expect("checked");
                 match &mut slot.groups[g] {
                     Some((_, mesh, mat, cur)) => {
-                        if let Some(mut mm) = meshes.get_mut(&*mesh) { q.write(&mut mm); }
+                        q.update(&mut meshes, mesh);
                         if *cur != img {
                             if let Some(mut mm) = materials.get_mut(&*mat) { mm.texture = img.clone(); }
                             *cur = img;

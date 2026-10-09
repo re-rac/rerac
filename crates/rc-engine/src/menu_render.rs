@@ -1570,7 +1570,7 @@ fn menu_layer(
     for (h, data) in [(&fr.extra.palette, palette), (&fr.extra.instances, records)] {
         let Some(data) = data else { continue };
         if buffers.get(h).and_then(|b| b.data.as_ref()).is_some_and(|d| *d == data) { continue; }
-        if let Some(mut b) = buffers.get_mut(h) { b.data = Some(data); }
+        crate::asset_write::set_buffer(&mut buffers, h, &data);
     }
 }
 

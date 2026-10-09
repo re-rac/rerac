@@ -675,7 +675,7 @@ fn update(
         }
     }
     if (palette.clone(), records.clone()) != before {
-        if let Some(mut b) = buffers.get_mut(&rt.extra.palette) { b.data = Some(palette); }
-        if let Some(mut b) = buffers.get_mut(&rt.extra.instances) { b.data = Some(records); }
+        crate::asset_write::set_buffer(&mut buffers, &rt.extra.palette, &palette);
+        crate::asset_write::set_buffer(&mut buffers, &rt.extra.instances, &records);
     }
 }

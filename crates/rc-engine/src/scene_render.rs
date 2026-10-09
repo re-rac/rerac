@@ -850,10 +850,10 @@ fn upload(mut rt: ResMut<SceneRuntime>, active: Res<ActiveScene>, mut buffers: R
     // Only data of this scene's layout: a buffer keeps the size it was created with (its materials are bound to it).
     let fits = |b: &ShaderBuffer, n: usize| b.data.as_ref().is_some_and(|d| d.len() == n);
     if buffers.get(&extra.palette).is_some_and(|b| fits(b, rt.palette.len())) {
-        if let Some(mut b) = buffers.get_mut(&extra.palette) { b.data = Some(rt.palette.clone()); }
+        crate::asset_write::set_buffer(&mut buffers, &extra.palette, &rt.palette);
     }
     if buffers.get(&extra.instances).is_some_and(|b| fits(b, rt.records.len())) {
-        if let Some(mut b) = buffers.get_mut(&extra.instances) { b.data = Some(rt.records.clone()); }
+        crate::asset_write::set_buffer(&mut buffers, &extra.instances, &rt.records);
     }
     let shown = active.last.as_ref().is_some_and(|t| !t.actors.is_empty());
     for (k, a) in rt.actors.iter().enumerate() {

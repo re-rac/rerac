@@ -391,8 +391,8 @@ fn draw(
     }
     gfx.shown = now;
     if (&palette, &records) != (&before.0, &before.1) {
-        if let Some(mut b) = buffers.get_mut(&gfx.extra.palette) { b.data = Some(palette); }
-        if let Some(mut b) = buffers.get_mut(&gfx.extra.instances) { b.data = Some(records); }
+        crate::asset_write::set_buffer(&mut buffers, &gfx.extra.palette, &palette);
+        crate::asset_write::set_buffer(&mut buffers, &gfx.extra.instances, &records);
     }
     // ---- The cone (menu) and the beams (approach).
     let counter = play.game.counter;

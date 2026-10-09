@@ -1484,11 +1484,11 @@ pub fn update_moby_occlusion(
         }
     }
     if lod_bytes != s.last_lod {
-        if let Some(mut buf) = buffers.get_mut(&s.lods) { buf.data = Some(lod_bytes.clone()); }
+        crate::asset_write::set_buffer(&mut buffers, &s.lods, &lod_bytes);
         s.last_lod = lod_bytes;
     }
     if std::mem::take(&mut s.records_dirty) {
-        if let Some(mut buf) = buffers.get_mut(&s.instances) { buf.data = Some(s.records.clone()); }
+        crate::asset_write::set_buffer(&mut buffers, &s.instances, &s.records);
     }
     if let Some(mut o) = occl {
         o.mobys = crate::occlusion::CullCounts { occluded: hist[0], culled: hist[1] + hist[2] + hist[3], drawn: hist[4..8].iter().sum() };

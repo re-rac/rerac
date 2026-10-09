@@ -236,7 +236,7 @@ fn upload_palette(anim: Option<ResMut<MobyAnim>>, level: Res<crate::Level>, mut 
         false
     };
     if changed || first {
-        if let Some(mut buf) = buffers.get_mut(&a.palette) { buf.data = Some(a.bytes.clone()); }
+        crate::asset_write::set_buffer(&mut buffers, &a.palette, &a.bytes);
     }
     let now = time.elapsed_secs();
     if a.enabled && now - a.last_report >= 5.0 {

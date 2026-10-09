@@ -332,7 +332,7 @@ fn build_meshes(
     }
     for (_, sprites, h) in groups.iter_mut() {
         if sprites.len() == 0 { continue; }
-        if let Some(mut buf) = buffers.get_mut(&*h) { buf.data = Some(sprites.contents()); }
+        crate::asset_write::set_buffer(&mut buffers, &*h, &sprites.contents());
     }
 }
 

@@ -668,8 +668,8 @@ fn upload(
             if let Ok(mut tr) = transforms.get_mut(e) { *tr = t; }
         }
     }
-    if let Some(mut buf) = buffers.get_mut(&a.extra.palette) { buf.data = Some(palette); }
-    if let Some(mut buf) = buffers.get_mut(&a.extra.instances) { buf.data = Some(records); }
+    crate::asset_write::set_buffer(&mut buffers, &a.extra.palette, &palette);
+    crate::asset_write::set_buffer(&mut buffers, &a.extra.instances, &records);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -570,7 +570,7 @@ fn draw(
         let params = match g.effect { None => FxPrimParams::opaque(), Some(Blend::Sub) => FxPrimParams::subtract(), Some(b) => FxPrimParams::blend(b == Blend::Add) };
         let effect = g.effect.is_some();
         if let Some((e, mesh, mat, shown)) = &mut st.slots[k] {
-            if let Some(mut mm) = meshes.get_mut(&*mesh) { g.prims.write(&mut mm); }
+            g.prims.update(&mut meshes, mesh);
             let need = materials.get(&*mat).is_none_or(|m| m.texture != img || m.params.misc != params.misc || m.fog != g.fog || m.order != g.bias);
             if need {
                 if let Some(mut m) = materials.get_mut(&*mat) {

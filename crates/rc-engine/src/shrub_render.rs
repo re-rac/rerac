@@ -456,7 +456,7 @@ impl ShrubSway {
         let n = self.len;
         for (i, &l) in lists.iter().take(n).enumerate() { self.data[n * 8 + i * 8..n * 8 + i * 8 + 4].copy_from_slice(&(l as u32).to_le_bytes()); }
         self.data[n * 16..n * 16 + bank.len()].copy_from_slice(bank);
-        if let Some(mut buf) = buffers.get_mut(&self.buffer) { buf.data = Some(self.data.clone()); }
+        crate::asset_write::set_buffer(&mut *buffers, &self.buffer, &self.data);
     }
 }
 
@@ -489,7 +489,7 @@ fn update_sway(
             bytes[at + 4..at + 8].copy_from_slice(&sy.to_le_bytes());
         }
     }
-    if let Some(mut buf) = buffers.get_mut(&sway.buffer) { buf.data = Some(bytes.clone()); }
+    crate::asset_write::set_buffer(&mut buffers, &sway.buffer, bytes);
 }
 
 fn spawn_shrubs(

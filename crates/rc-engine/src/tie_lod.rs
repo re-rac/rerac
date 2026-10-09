@@ -206,6 +206,9 @@ impl TieLodState {
         let n = self.inputs.len();
         for (i, &l) in lists.iter().take(n).enumerate() { self.tail[i * 16..i * 16 + 4].copy_from_slice(&(l as u32).to_le_bytes()); }
         self.tail[n * 16..n * 16 + bank.len()].copy_from_slice(bank);
+        // Only a changed tail marks the buffer (crate::asset_write: every get_mut is an upload).
+        let same = buffers.get(&self.buffer).and_then(|b| b.data.as_deref()).is_some_and(|d| d.len() >= self.tail.len() && d[d.len() - self.tail.len()..] == self.tail[..]);
+        if same { return; }
         if let Some(mut buf) = buffers.get_mut(&self.buffer) {
             if let Some(d) = buf.data.as_mut() {
                 let at = d.len() - self.tail.len();
@@ -280,11 +283,9 @@ pub fn update_tie_lods(
     if let Some(mut o) = occl {
         o.ties = crate::occlusion::CullCounts { occluded: hist[0], culled: hist[1], drawn: hist[2..].iter().sum() };
     }
-    if let Some(mut buf) = buffers.get_mut(&state.buffer) {
-        let mut d = u32_bytes(&words);
-        d.extend_from_slice(&state.tail);
-        buf.data = Some(d);
-    }
+    let mut d = u32_bytes(&words);
+    d.extend_from_slice(&state.tail);
+    crate::asset_write::set_buffer(&mut buffers, &state.buffer, &d);
     if hist != state.last_hist && time.elapsed_secs() - *last_print >= 1.0 {
         *last_print = time.elapsed_secs();
         state.last_hist = hist;
