@@ -136,6 +136,9 @@ struct PreviewRt {
     model_open: bool,
     made: [i16; 3],
     props: [Option<usize>; 3],
+    /// The joints of Ratchet's lists 0x16 / 0x17 (his feet): `LoadHandGadget`'s nodes 0x1ba390 / 0x1ba3d0 at scale
+    /// 0.01 while a feet item is on (the boots replace them).
+    feet: [Option<u8>; 2],
 }
 
 /// The 3D Ratchet's back item callback `0x224fc0`, its animation part, then `MobyAnimAdvance`: when the last advance
@@ -213,6 +216,7 @@ fn setup(
     }
     let chains: Vec<(usize, Vec<u8>)> =
         HERO_LISTS.iter().enumerate().filter_map(|(i, &l)| gadget::joint_list(&ratchet_blob, &ratchet.class.header, l).ok().map(|(a, _)| (i, a))).collect();
+    let feet = [0x16, 0x17].map(|l| gadget::joint_list(&ratchet_blob, &ratchet.class.header, l).ok().and_then(|(_, second)| moby_anim::list_target(&second)));
     // Every class the widgets can show: the level's (Ratchet, Clank, packs, head items, boots, the drone 0x1df) and
     // the gadget table's (the hand items).
     let mut classes: Vec<(LevelMobyClass, MobyAnimClass)> = Vec::new();
@@ -300,7 +304,7 @@ fn setup(
     let hud = global_sequences("hud_seqs", HUD_SEQS);
     commands.insert_resource(PreviewRt {
         parts, extra, chains, bank, menu_cam, canvases: ids, last_frame: 0, player: Player::enter(tables.clone()), tables, hud, base: base as i32,
-        model_open: false, made: [-1; 3], props: [None; 3],
+        model_open: false, made: [-1; 3], props: [None; 3], feet,
     });
 }
 
@@ -504,7 +508,11 @@ fn update(
             if normalise { moby_anim::normalise_columns(&mut r); }
             Some((r, [w[3][0], w[3][1], w[3][2]]))
         };
-        placed[ri] = Some(Placed { rows, pos, pose: moby_anim::evaluate_with_snapshot(&ranim, &rstate, rsnap.as_ref()) });
+        // `LoadHandGadget`'s feet nodes (`AttachManipulator(ratchet, 0x16 / 0x17)`, scale 0.01) while the feet moby is.
+        let feet_mods: Vec<moby_anim::JointModifier> = if rt.made[2] == -1 { Vec::new() } else {
+            rt.feet.iter().flatten().map(|&t| moby_anim::JointModifier { scale: [0.01; 3], ..moby_anim::JointModifier::compose(t) }).collect()
+        };
+        placed[ri] = Some(Placed { rows, pos, pose: moby_anim::evaluate_posed(&ranim, &rstate, rsnap.as_ref(), &[], &feet_mods) });
         for k in rt.props.into_iter().flatten() {
             let p = &rt.parts[k];
             placed[k] = Some(Placed { rows, pos, pose: moby_anim::evaluate_with_snapshot(&p.anim, &p.state, p.snap.as_ref()) });

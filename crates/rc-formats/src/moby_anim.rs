@@ -995,14 +995,15 @@ pub fn evaluate_posed(class: &MobyAnimClass, s: &AnimState, snap: Option<&MobyFr
     apply_layers(class, layers, &mut rec[..jc.min(SPR_RECORDS)]);
     apply_modifiers(mods, &mut rec[..jc.min(SPR_RECORDS)], jc, false);
 
-    // Local matrices and the chain (§6.5), joints in index order.
+    // Local matrices and the chain (§6.5), joints in index order. `MobyProc`'s own build (0x268690..0x26876c) scales
+    // the rows by the record's scale without testing its presence word: a joint without a scale record holds (1, 1, 1)
+    // (the init), so only a modifier's or layer's scale on such a joint shows the difference (Ratchet's feet records at
+    // 0.01 under the boots).
     for j in 0..jc.min(SPR_RECORDS) {
         let [q, sc, tr, _] = rec[j];
         let mut rows = quat_rows(q);
-        if sc[3] != 0 {
-            for (i, row) in rows.iter_mut().enumerate() {
-                for c in row.iter_mut().take(3) { *c = ps2::mul(*c, sc[i]); }
-            }
+        for (i, row) in rows.iter_mut().enumerate() {
+            for c in row.iter_mut().take(3) { *c = ps2::mul(*c, sc[i]); }
         }
         let pp: [V4; 4] = if tr[3] == 0 { ID4 } else {
             match spr_record(tr[3]) { Some(p) => rec[p], None => ID4 }
