@@ -299,8 +299,10 @@ pub struct Vendor {
     pub items: Vec<Entry>,
     /// 0x1ca998: selected entry.
     pub sel: usize,
-    /// 0x1ca98c: carousel offset (≥ 8 entries).
+    /// 0x1ca98c: carousel offset (≥ 8 entries), eased back 4 a frame ([`Vendor::ease_strip`]).
     pub scroll: i32,
+    /// The carousel's selection frame is drawn this frame (the offset was 0 before its ease).
+    pub strip_settled: bool,
     /// 0x1ca99c: buy flow 0..4.
     pub buy: u8,
     /// 0x1622b4: quantity; 0x162290: the popup asks a quantity; 0x16228c: confirmed.
@@ -367,6 +369,7 @@ impl Vendor {
             items,
             sel,
             scroll: (base - sel as i32) * 0x28,
+            strip_settled: false,
             buy: 0,
             qty: 0,
             qty_mode: false,
@@ -574,6 +577,7 @@ impl Vendor {
             }
         }
         self.buy_flow(inp, gs, items, session, assets, rng, out);
+        self.ease_strip();
         self.prev_pressed = inp.pressed_u;
         if self.power_on {
             if self.power_t == 0 { self.power_on = false; } else { self.power_t -= 1; }
@@ -879,6 +883,14 @@ impl Vendor {
         }
     }
 
+    /// The carousel's part of `VendorDrawIconStrip` 0x2b1c10 (≥ 8 entries; the game does it in the draw, once a frame):
+    /// below 0 the offset + 4, above 0 − 4; at 0 the selection frame is drawn and the offset stays.
+    pub(crate) fn ease_strip(&mut self) {
+        if self.items.len() < 8 { return; }
+        self.strip_settled = self.scroll == 0;
+        if self.scroll < 0 { self.scroll += 4; } else if self.scroll > 0 { self.scroll -= 4; }
+    }
+
     /// `VendorDrawIconStrip` 0x2b1c10.
     fn draw_strip(&self, a: &MenuAssets, out: &mut Vec<MenuDraw>) {
         let n = self.items.len() as i32;
@@ -893,7 +905,7 @@ impl Vendor {
             fill(out, x + 10, 4, x + 0x3e, 0x38, 0x8000_0000);
             for (i, e) in self.items.iter().enumerate() { sprite(out, icon(e), 12 + 0x38 * i as i32, 6, 0x30, 0x30, 0x80); }
         } else {
-            if self.scroll == 0 {
+            if self.strip_settled {
                 fill(out, 0xb0, 2, 0xe8, 0x3a, sel_rgba);
                 fill(out, 0xb2, 4, 0xe6, 0x38, 0x8000_0000);
             }

@@ -191,3 +191,29 @@ fn a_short_list_pulls_in_all_four_arms() {
     assert!(arm_manipulators(8).iter().all(|(_, t)| *t == [0.0; 3]));
     assert!(crate::moby_update::classes::ClassUpdate::Vendor.needs_joint_lists());
 }
+
+/// The carousel (≥ 8 entries): a step moves the offset ±0x38, the strip's draw eases it back 4 a frame and draws the
+/// selection frame only once it is back at 0 (the old port never eased it: the strip stayed shifted, the frame
+/// hidden, and the ±0x39 limit refused or doubled the next steps).
+#[test]
+fn the_carousel_eases_back_after_a_step() {
+    let mut out = VendorOut::default();
+    let gs = GameState::zeroed(rc_formats::save_game::ChunkTables { global: Vec::new(), level: Vec::new() });
+    let mut v = Vendor::open(VendorTables { shop: shop(), ..Default::default() }, &gs, false, &mut out);
+    v.items = (0..10).map(|i| Entry { item: 10 + i, ammo: true, locked: false }).collect();
+    v.scroll = -0x38;
+    let mut frames = 0;
+    while v.scroll != 0 {
+        v.ease_strip();
+        assert!(!v.strip_settled);
+        frames += 1;
+    }
+    assert_eq!(frames, 14);
+    v.ease_strip();
+    assert!(v.strip_settled && v.scroll == 0);
+    // Fewer than 8: no carousel, nothing eased.
+    v.items.truncate(5);
+    v.scroll = 8;
+    v.ease_strip();
+    assert_eq!(v.scroll, 8);
+}
