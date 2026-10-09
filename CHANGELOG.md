@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.3.0-alpha
+
+Dying now works the way it does in the original, and a long list of fixes from play-testing Umbris, Orxon, Gemlik and the rest.
+
+- Dying brings back enemies, crates and pickups the way the original does, and saves remember which enemies stay defeated and what they dropped.
+- Lifts and gates you already opened stay open after loading a save.
+- After dying, the ship can be boarded and has its glass, nanotech no longer gets stuck in the air or turns see-through, and leftover fog no longer lingers.
+- Kerwan: the troopers and the info bot are on the train.
+- Umbris, Gaspar, Orxon and the last two planets: breaking ammo crates no longer crashes the game, and the vendor sells ammo again.
+- Umbris: the first landing no longer leaves the screen dark with Ratchet missing.
+- The Snagglebeast: its fire sweep, suck beam, shockwave and shield work like the original, and rapid fire no longer lands every shot. A few other enemies had the same problem and are fixed too.
+- Boss health bars no longer freeze after dying.
+- Orxon: the gate at the start of Clank's section opens without dying first, dying there brings Clank back at the checkpoint, and Clank no longer gets stuck after the landing or the turret cutscene. The gadgetbots' glass bubbles show.
+- Gemlik Base: Ratchet walks the curved Magneboots rails, and the robots' rolling fire wall shows and hurts.
+- The Suck Cannon pulls in Eudora's robots, the crew on Drek's fleet and the hoppers on Veldin.
+- Ratchet no longer holds the wrench on ledges or while swimming.
+- Space travel: planets show their real colours, and the ship's canopy stays in place in every flight and cutscene.
+- The planet preview in the ship's menu turns smoothly, and the "Enter Ship" prompt no longer shows behind the planet menu.
+- Qwark's broadcast on Rilgar no longer takes on the TV screen's tint.
+- Vendor: weapons face the right way, and the item bar fits the list.
+- Ammo and other pickups no longer show their insides as they fade in.
+- Ratchet, the crate and the ship stay on the title screen behind the main menu.
+
 ## v0.2.3-alpha
 
 Mostly Blarg Station, plus fixes for Clank's sections and a few other planets.

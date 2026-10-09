@@ -4376,14 +4376,14 @@ dependencies = [
 
 [[package]]
 name = "rc-data"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "rc-formats",
 ]
 
 [[package]]
 name = "rc-engine"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "bevy",
@@ -4395,7 +4395,7 @@ dependencies = [
 
 [[package]]
 name = "rc-extract"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "rc-data",
  "rc-formats",
@@ -4403,7 +4403,7 @@ dependencies = [
 
 [[package]]
 name = "rc-formats"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -4412,14 +4412,14 @@ dependencies = [
 
 [[package]]
 name = "rc-game"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "rc-formats",
 ]
 
 [[package]]
 name = "rc-trace"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "miniz_oxide 0.8.9",
@@ -4431,7 +4431,7 @@ dependencies = [
 
 [[package]]
 name = "rc-video"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "rc-formats",
 ]
@@ -4527,7 +4527,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "repo-checks"
-version = "0.2.3"
+version = "0.3.0"
 
 [[package]]
 name = "rodio"
@@ -6190,7 +6190,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.2.3"
+version = "0.3.0"
 
 [[package]]
 name = "yazi"

@@ -6,7 +6,7 @@ members = ["crates/rc-formats", "crates/rc-engine", "crates/rc-game", "crates/rc
 [workspace.package]
 # The one ReRAC version (every crate: `version.workspace = true`). Release tags are `v<version>[-pre]`
 # (docs/workflows/release.md); the manifest and `rerac --version-json` carry this version.
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 license = "ISC"
 publish = false
