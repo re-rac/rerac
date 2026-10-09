@@ -439,6 +439,42 @@ fn the_suck_cannon_takes_the_horny_toad() {
     assert_eq!(p::i16(&m.pvars, vc::pv::SUCK + react::rec::STATE), 0);
 }
 
+/// A class with a reaction table reversed on its level: the table found, a pull let go puts it in its held state, its
+/// own update runs the carried update until it lands and leaves `back`.
+fn sucked_and_let_go(level: u32, oc: i16, table: react::Table, record: usize, held: u8, back: u8) {
+    let Some(mut lv) = load(level) else { eprintln!("skipped"); return };
+    let b = lv.of_class(oc)[0];
+    let a = lv.table.mobys[b].position;
+    let hero = hero_at([a[0] - 30.0, a[1], a[2]]);
+    lv.load_pass(&hero);
+    lv.tick(&hero);
+    {
+        let mut w = lv.world(&hero);
+        assert_eq!(react::table(&w, b), Some(table));
+        assert_eq!(react::record(&w, b), Some(record));
+        rc_game::moby_update::creature::set_pi16(&mut w, b, record + react::rec::STATE, 1);
+        react::slot_let_go(&mut w, b);
+        assert_eq!(w.m(b).state, held);
+    }
+    let k = (0..600).find(|_| { lv.tick(&hero); lv.table.mobys[b].state != held }).expect("never let go");
+    let m = &lv.table.mobys[b];
+    eprintln!("{oc} #{b} let go: back in state {} after {k} ticks", m.state);
+    assert_eq!(m.state, back);
+    assert_eq!(p::i16(&m.pvars, record + react::rec::STATE), 0);
+}
+
+/// Eudora's brawler 340 (level04 0x1dd11c, [`react::EUDORA_340`]): held in 9, the record at +0x180.
+#[test]
+fn the_suck_cannon_takes_eudoras_brawler() { sucked_and_let_go(4, 340, react::Table::Eudora340, 0x180, 9, 0); }
+
+/// The Fleet's crew 1382 (level17 0x1e7854, [`react::FLEET_1382`]): held in 0xc, the record at +0x60.
+#[test]
+fn the_suck_cannon_takes_the_fleets_crew() { sucked_and_let_go(17, 1382, react::Table::Fleet1382, 0x60, 0xc, 0); }
+
+/// Veldin's hopper 1906 (level18 0x1f34c8, [`react::VELDIN_1906`]): held in 7, the record at +0xd0.
+#[test]
+fn the_suck_cannon_takes_veldins_hopper() { sucked_and_let_go(18, 1906, react::Table::Veldin1906, 0xd0, 7, 2); }
+
 #[test]
 fn a_knocked_horny_toad_presses_its_floor_switch() {
     let Some(mut lv) = load(18) else { eprintln!("skipped"); return };

@@ -32,7 +32,7 @@
 //! | a target that is not Ratchet's moby (`0x1413d0`) within 2 (3-D) → +0x19c = 1 | on a decoy: the large blast next tick | [`chase`] |
 //! | case 4: `0x305260(m, +0x110)` done → state 3, record state 0 | the Suck Cannon's carried update | [`update`] (`react::carried`) |
 //! | table 0x2d6108 / 0x2d6190 / 0x2d61e0 / 0x2d6230 / 0x2d6250 | the Suck Cannon's wrappers: taken only in states 3 / 4 (else record state 0), the state saved in +0xbc, record +0x60 | `react::slot_*` with [`react::ROLLING_MINE_568`] |
-//! | table 0x2d6280 | slot +0x14: state 5, blend 0 (`ticks(10)`) when not on 0, +0x31 = 0, +0x94 = 0, mode & ~0x1000 \| 1 | [`park`] |
+//! | table 0x2d6280 | slot +0x14: state 5, blend 0 (`ticks(10)`) when not on 0, +0x31 = 0, +0x94 = 0, mode & ~0x1000 \| 1 | `react::pool_park` |
 //! | level18 `0x2d5cf8(s, boss, group, from, to, fuse)` (the boss 1422's call) | the last parked (5) mine of the group in list order: update / draw 0xff, state 1, mode & ~0x41 \| 0x1000, drawn, +0xbc = 0, collision on; blend 0 (1 tick) when not on 0; position from; rot.x 0, rot.y −2.5; to.z + 0.75; landing = from + (to − from) at xy length −2.5 shorter; +0x170 = it; +0x180 = unit(it − from)·s with z 0, +0xc8 = 0, +0x188 = `0x25cf30(s, −10·dt², from, landing, 0)`; yaw = atan(+0x180); +0x194 fuse, +0x198 the boss, +0x19c 0; `PlayClassSound(0, 0)` | [`throw`] (2026-10-01, with the boss) |
 //!
 //! No bolts, no death bits, no pieces: the mine is never deleted. The large blast is the only hit on Ratchet (the
@@ -125,19 +125,6 @@ pub fn throw(w: &mut World, s: f32, boss: MobyId, group: i32, from: [f32; 4], to
     c::set_pi32(w, id, pv::TOUCHED, 0);
     w.play_sound(0, 0, id);
     Some(id)
-}
-
-/// Slot +0x14 of 568's table (level18 0x2d6280): back to the pool.
-pub fn park(w: &mut World, id: MobyId) {
-    w.mm(id).state = st::PARKED;
-    if w.m(id).anim.seq_b != 0 {
-        let t = w.ticks(10);
-        w.anim_blend(id, 0, 0, t);
-    }
-    let m = w.mm(id);
-    m.visible = 0;
-    m.has_collision = false;
-    m.mode = (m.mode & !mode::TARGETABLE) | mode::HIDDEN;
 }
 
 /// `0x2d5f20` (module doc).
