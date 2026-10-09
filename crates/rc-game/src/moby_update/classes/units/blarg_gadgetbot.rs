@@ -1103,13 +1103,16 @@ pub fn glow_quads(table: &MobyTable, svc: &Services, id: MobyId) -> Vec<GlowQuad
 // -------------------------------------------------------------------------------------------------
 // The bubble 302 and the marker 303
 
-/// Level06 data of the bubble's mesh ([`Bubble`]).
+/// Level06 data of the bubble's mesh ([`Bubble`]); level 10's copy (`0x2bd0e8`, its draw `0x2bd280`) reads the same
+/// tables 0x300 lower ([`BUBBLE_MESH_SHIFT`]), with the same gp words (level10 gp−0x53b0..−0x5394).
 const BUBBLE_POINTS: u32 = 0x1d_3290;
 const BUBBLE_NORMALS: u32 = 0x1d_3d30;
 const BUBBLE_ST: u32 = 0x1d_38c0;
 const BUBBLE_QUADS: u32 = 0x1d_3620;
 const BUBBLE_CENTRES: u32 = 0x1d_40c0;
 const BUBBLE_FACES: u32 = 0x1d_3a90;
+/// Each level's offset of the mesh tables from level 6's: Orxon's bubbles round its 31 gadgetbots.
+const BUBBLE_MESH_SHIFT: [(u32, u32); 2] = [(REFERENCE_LEVEL, 0), (ORXON_LEVEL, 0x300)];
 const BUBBLE_N: usize = 0x39;
 const BUBBLE_NQ: usize = 0x2a;
 /// gp−0x537c the texture, −0x5378 the colour, −0x5374 the length the reflected normals are scaled to; the blend is
@@ -1133,16 +1136,19 @@ pub struct Bubble {
 }
 
 impl Bubble {
-    /// Reads the mesh from level 6's overlay (None on another level or when a table does not read).
+    /// Whether `level` has the bubbles (levels 6 and 10).
+    pub fn on_level(level: u32) -> bool { BUBBLE_MESH_SHIFT.iter().any(|s| s.0 == level) }
+
+    /// Reads the mesh from the level's overlay (None on a level without the bubbles or when a table does not read).
     pub fn parse(ov: &rc_formats::water::Overlay, level: u32) -> Option<std::sync::Arc<Bubble>> {
-        if level != REFERENCE_LEVEL { return None; }
-        let vec4 = |a: u32| -> Option<[f32; 4]> { Some([ov.f32(a).ok()?, ov.f32(a + 4).ok()?, ov.f32(a + 8).ok()?, ov.f32(a + 12).ok()?]) };
+        let shift = BUBBLE_MESH_SHIFT.iter().find(|s| s.0 == level)?.1;
+        let vec4 = |a: u32| -> Option<[f32; 4]> { let a = a - shift; Some([ov.f32(a).ok()?, ov.f32(a + 4).ok()?, ov.f32(a + 8).ok()?, ov.f32(a + 12).ok()?]) };
         let table = |a: u32, n: usize| (0..n as u32).map(|i| vec4(a + 16 * i)).collect::<Option<Vec<_>>>();
-        let b = ov.read(BUBBLE_QUADS, 16 * BUBBLE_NQ).ok()?;
+        let b = ov.read(BUBBLE_QUADS - shift, 16 * BUBBLE_NQ).ok()?;
         let h = |o: usize| u16::from_le_bytes([b[o], b[o + 1]]);
         let quads: Vec<[(u16, u16); 4]> = (0..BUBBLE_NQ).map(|q| std::array::from_fn(|k| (h(16 * q + 4 * k), h(16 * q + 4 * k + 2)))).collect();
         let ns = quads.iter().flatten().map(|c| c.1 as u32 + 1).max()?;
-        let st = (0..ns).map(|i| Some([ov.f32(BUBBLE_ST + 8 * i).ok()?, ov.f32(BUBBLE_ST + 8 * i + 4).ok()?])).collect::<Option<Vec<_>>>()?;
+        let st = (0..ns).map(|i| Some([ov.f32(BUBBLE_ST - shift + 8 * i).ok()?, ov.f32(BUBBLE_ST - shift + 8 * i + 4).ok()?])).collect::<Option<Vec<_>>>()?;
         let bubble = Bubble {
             points: table(BUBBLE_POINTS, BUBBLE_N)?,
             normals: table(BUBBLE_NORMALS, BUBBLE_N)?,

@@ -1890,7 +1890,8 @@ fn ratchet_visibility(
 }
 
 /// Debug: F9 prints the hero, the engine's own Ratchet draw and every moby within 12 units of the hero (id, class,
-/// state, mode bits, collision, position) with the visibility of its generic moby meshes.
+/// state, mode bits, collision, position) with the visibility of its generic moby meshes. `RC_MOBY_DUMP_AT=<tick>`
+/// prints it once at the first gameplay tick from that one on (headless runs), `RC_MOBY_DUMP_RADIUS` widens the 12.
 /// F10 (debug): the respawn state, in the format of the PCSX2 probe `work/scratch/respawn_probe.py` (the original's
 /// memory over PINE), so the two can be compared line by line: the mission bytes (the arrival copy 0x15fc88, the save's
 /// 0x14c050), the checkpoint, this visit's kills 0x1baea4, the never-again bytes 0x1bbb04, the visit death bits
@@ -1937,14 +1938,22 @@ fn debug_dump(
     play: Option<Res<Play>>,
     meshes: Query<(&MeshTag, &InheritedVisibility), With<MeshMaterial3d<MobyMaterial>>>,
     vis: Query<&InheritedVisibility>,
+    mut done: Local<bool>,
 ) {
-    if !keys.just_pressed(KeyCode::F9) { return; }
+    static AT: std::sync::OnceLock<(Option<u64>, f32)> = std::sync::OnceLock::new();
+    let (at, radius) = *AT.get_or_init(|| {
+        let at = std::env::var("RC_MOBY_DUMP_AT").ok().and_then(|v| v.trim().parse().ok());
+        (at, std::env::var("RC_MOBY_DUMP_RADIUS").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(12.0))
+    });
+    let timed = !*done && at.is_some_and(|t| play.as_ref().is_some_and(|p| p.game.counter >= t));
+    if !keys.just_pressed(KeyCode::F9) && !timed { return; }
+    if timed { *done = true; }
     let Some(p) = play else { println!("dump: no gameplay"); return };
     let h = &p.game.hero;
     let hp = h.pos.map(|v| v.to_f32());
     println!(
-        "dump: tick {} hero mode {} state {:#x} pos ({:.2}, {:.2}, {:.2}) body {:?} hero moby {} ratchet moby {}",
-        p.game.counter, h.mode, h.state, hp[0], hp[1], hp[2], h.bodies.moby, h.hero_moby(p.hero_id), p.hero_id
+        "dump: tick {} hero mode {} state {:#x} pos ({:.2}, {:.2}, {:.2}) body {:?} hero moby {} ratchet moby {} back {}",
+        p.game.counter, h.mode, h.state, hp[0], hp[1], hp[2], h.bodies.moby, h.hero_moby(p.hero_id), p.hero_id, h.back.is_some()
     );
     let shown = p.entities.iter().filter(|&&e| vis.get(e).is_ok_and(|v| v.get())).count();
     println!("dump: engine Ratchet draw: cached hidden {}, {} of {} entities visible", p.ratchet_hidden, shown, p.entities.len());
@@ -1957,7 +1966,7 @@ fn debug_dump(
     for (id, m) in p.game.mobys.mobys.iter().enumerate() {
         if m.is_deleted() { continue; }
         let d = ((m.position[0] - hp[0]).powi(2) + (m.position[1] - hp[1]).powi(2) + (m.position[2] - hp[2]).powi(2)).sqrt();
-        if d > 12.0 { continue; }
+        if d > radius { continue; }
         let (sv, st) = visible.get(&(id as u32)).copied().unwrap_or((0, 0));
         println!(
             "dump:   moby {id:4} class {:5} state {:#04x} mode {:#06x} coll {} pos ({:.2}, {:.2}, {:.2}) dist {:.1} meshes {sv}/{st} visible",

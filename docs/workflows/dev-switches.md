@@ -49,6 +49,7 @@ module that reads it: `grep -rn '"RC_' crates/` lists them all.
 | `RC_DUMP_REALTIME` | `1`: `RC_DUMP_FRAMES` in real-time mode (wall-clock ticks as in play, not frame-exact; dev only) |
 | `RC_DUMP_TICKS` | `n,m,…`: in frame-exact mode, update k runs the k-th entry's game ticks, cycled (`1,0` = a 120 Hz display, `2` = 30 Hz; dev only, for real-time pacing repros) |
 | `RC_NOVSYNC` | `1`: present without vsync, so `fps:` measures headroom |
+| `RC_MOBY_DUMP_AT` | `<tick>`: print the **F9** moby dump once at that gameplay tick (headless runs); `RC_MOBY_DUMP_RADIUS` = its distance from the hero (default 12) |
 | `RC_RESPAWN_PROBE_AT` | `<tick>`: print the respawn state once at that gameplay tick, as **F10** does in dev builds (the format of `work/scratch/respawn_probe.py`, which reads the same tables from a running PCSX2 over PINE: compare the two line by line) |
 | `RC_TRACE_RESPAWN` | `1`: at every death reload, the spawn test's verdict for each Kerwan trooper (574) with the bits that decided it, and a line whenever a trooper blows up or is deleted (`respawn trace:`) |
 | `RC_TRACE_BOTS` | `1`: Clank's gadgetbots and their pads (class 857 / 1302) on stderr: each bot merged into a pad with the count left, each knock-back home, each pad trigger with its count, mission and the class and state of each linked door (a door opens only from state 2) |

@@ -526,6 +526,10 @@ fn update(attach: Option<ResMut<MobyAttach>>, anim: Option<Res<MobyAnim>>, level
                 item.snapshot = m.snapshot.clone();
             }
         }
+    } else if play.is_some() {
+        // The game has not made the back mobys yet (`HeroItemsCreate` runs in Ratchet's hero update: none ran when a
+        // body took over at the level's start, Orxon's Clank section): nothing on his back exists to draw.
+        for item in a.items.iter_mut().filter(|i| i.attach.slot == Slot::Back) { item.visible = false; }
     }
     // Clank's eyelid nodes and glow pulse (`0x2278c0`, rc_game::hero::idle).
     if let Some(p) = play.as_ref() {

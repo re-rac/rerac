@@ -334,7 +334,7 @@
 //! | U272 | 1110, 1112, 871 Umbris' floating mines (07): lone mines, the chain mines on their leader's path, the leader that revives them | level07 0x319040, 0x3196e0, 0x30b000 | [`umbris_mines`] |
 //! | U258 | 529, 1789, 1552, 1133, 1142, 1113–1116 Umbris' small classes (07): the parked ship, scene jets and dust, the swinging part, the ammo drop, the beast's walls | level07 0x2fbdb8, 0x31f900, 0x31eba8, 0x31b3f0, 0x31d2e0, 0x319f48 | [`umbris_small`] |
 //! | U254 | 38, 1474 Umbris' path lifts (07): the ride from end to end, Ratchet held, the pause over him, the vanish and return | level07 0x2cd2b0, 0x2cdb28 | [`umbris_lift`] |
-//! | U224 | 857 Clank's gadgetbots (06, 10), 302 their bubbles, 303 their markers (06): follow, wait, attack and pad commands, the share-out of targets, the glow, the shattering bubble | level06 0x2f0040, 0x2f37d0, 0x2d85a0, 0x2d8738, 0x2d8c20 | [`blarg_gadgetbot`] |
+//! | U224 | 857 Clank's gadgetbots (06, 10), 302 their bubbles, 303 their markers (06, 10): follow, wait, attack and pad commands, the share-out of targets, the glow, the shattering bubble | level06 0x2f0040, 0x2f37d0, 0x2d85a0, 0x2d8738, 0x2d8c20 | [`blarg_gadgetbot`] |
 //! | U233 | 1051 Blarg's mini-boss (06): the drop-in cutaway, the chase and slam, the crawler and trooper phases, the boss meter | level06 0x2f9a28 | [`blarg_boss`] |
 //! | U238 | 1068 Blarg's fire-wave bots (06, 10): the rolling fire wall and its strip, the swing, the walk-out, knockback and death | level06 0x2fdbd0, 0x2ff680 | [`blarg_wave_bot`] |
 //! | U232 | 1048 Blarg's troopers (06): group wakes, the surround, the jab, the leap, the guards, knockback and death | level06 0x2f7d78 | [`blarg_trooper`] |
@@ -1406,7 +1406,7 @@ pub struct Globals {
     pub bot_listeners: i32,
     /// Level 6's glass meshes (`blarg_glass`; read from the overlay by the engine at the level load).
     pub blarg_glass: Option<std::sync::Arc<blarg_glass::Meshes>>,
-    /// Level 6's gadgetbot bubble mesh (`blarg_gadgetbot`; read from the overlay by the engine at the level load).
+    /// The gadgetbot bubble mesh of levels 6 and 10 (`blarg_gadgetbot`; read from the overlay by the engine at the level load).
     pub blarg_bubble: Option<std::sync::Arc<blarg_gadgetbot::Bubble>>,
     /// The Snagglebeast's tongue and its draws' inputs (`umbris_beast_fx`).
     pub umbris_beast: umbris_beast_fx::Fx,
