@@ -364,6 +364,8 @@ pub struct Fx {
     pub counter: u64,
     /// Joint list 9's point (the shimmer's centre).
     pub shimmer_at: [f32; 3],
+    /// The ground line's ends this frame: joint list 2 and the hit point (or the unhit far end).
+    pub ground: [V; 2],
     /// The camera's first row (0x167050; the ground line faces it).
     pub cam: [f32; 3],
 }
@@ -808,7 +810,7 @@ pub fn frame(w: &mut World, f: u32, id: MobyId) {
     }
 }
 
-/// The ground line's end this frame (the head wobbling in x, 30 out from joint list 2, the probe's height).
+/// The ground line's end this frame (the head wobbling in x, 30 past it from joint list 2, cut at the hit).
 fn ground_end(w: &World, id: MobyId) -> (V, V, bool) {
     let t = w.counter as f32;
     let mut head = c::pv4(w, id, bp::HEAD);
@@ -819,13 +821,14 @@ fn ground_end(w: &World, id: MobyId) -> (V, V, bool) {
     let d = c::set_len3(c::sub(head, jp), 30.0);
     let mut far = c::add(head, d);
     let hit = w.coll_line(v4(jp), v4(far), 2, Some(id));
-    if let Some(o) = &hit { far[2] = o.point[2]; }
+    if let Some(o) = &hit { far = [o.point[0], o.point[1], o.point[2], far[3]]; }
     (jp, far, hit.is_some())
 }
 
 /// `0x312420`'s game state: on the ground, the fires (module doc).
 fn ground_frame(w: &mut World, id: MobyId) {
     let (jp, far, hit) = ground_end(w, id);
+    w.svc.units.umbris_beast.ground = [jp, far];
     if !hit {
         c::set_pf(w, id, bp::HIT_GROUND, 0.0);
         return;
@@ -840,7 +843,7 @@ fn ground_frame(w: &mut World, id: MobyId) {
         for i in 0..4 {
             p = c::add(p, step);
             let d = c::set_len3(c::sub(p, jp), 5.0);
-            if let Some(o) = w.coll_line(v4(c::sub(p, d)), v4(c::add(p, d)), 2, Some(id)) { p[2] = o.point[2]; }
+            if let Some(o) = w.coll_line(v4(c::sub(p, d)), v4(c::add(p, d)), 2, Some(id)) { p = [o.point[0], o.point[1], o.point[2], p[3]]; }
             if i == 2 {
                 let (r1, r2, r3) = (w.rng.rand() & 1, w.rng.rand() & 7, w.rng.rand() & 3);
                 let (a, b, cc) = (w.ticks(r1 + 0x2d), w.ticks(r2 + 0x37), w.ticks(r3 + 0xd));
@@ -865,10 +868,8 @@ fn fire58(w: &mut World, p: V, kind: u8, life: i32, emit: i32, flame: i32, owner
 
 /// `0x312420`'s quad (module doc): from joint list 2 to the end, a camera-facing 0.25 width.
 pub fn ground_quads(table: &MobyTable, svc: &Services, id: MobyId) -> Option<FxQuads> {
-    let m = table.mobys.get(id)?;
-    let p = |o: usize| crate::moby_update::services::pvar::v4f(&m.pvars, o);
-    let jp = p(bp::LUNGE + 0x30);
-    let far = p(bp::LUNGE);
+    table.mobys.get(id)?;
+    let [jp, far] = svc.units.umbris_beast.ground;
     let cam = svc.units.umbris_beast.cam;
     let seg = c::sub(jp, far);
     let side = c::set_len3(cross([cam[0], cam[1], cam[2], 0.0], seg), 0.25);
@@ -969,12 +970,9 @@ pub fn quad_groups(table: &MobyTable, svc: &Services, f: u32, id: MobyId) -> Vec
     }
 }
 
-/// The draws' inputs the update keeps (the tick, joint list 9 for the shimmer, joint list 2 and the camera row for the
-/// ground line).
+/// The draws' inputs the update keeps (the tick, joint list 9 for the shimmer, the camera row for the ground line).
 pub fn keep_draw_inputs(w: &mut World, id: MobyId) {
     let j9 = w.joint_point(id, 9);
-    let j2 = w.joint_point(id, 2);
-    c::set_pv4(w, id, bp::LUNGE + 0x30, j2);
     let r = w.camera_rows[0];
     let f = &mut w.svc.units.umbris_beast;
     f.counter = w.counter;
