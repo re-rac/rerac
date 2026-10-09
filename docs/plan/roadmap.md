@@ -1,6 +1,52 @@
 # Roadmap
 
-## Status (2026-09-27)
+## Status (2026-10-09)
+
+Where the port stands; the milestone lists below are the historical record (their "Since" notes say where an item
+went), and the open work lives in docs/plan/gaps.md (rows by system, "Survey 2026-10-04" at the top).
+
+- **Playable start to finish, every level.** New game from the front end (card check, logos, title world, main menu),
+  ship travel with the take-off / space flight / landing scenes, the planet page and galaxy map, save / load on the
+  memory card, and all 19 levels with their story: batch C (2026-10-02 .. 10-04, one `docs/plan/planet_*.md` per
+  planet) ported every placed class; `rc-trace class-census` lists no placed class without a port on any level
+  (classes created only by code show up through `RC_UNPORTED=1`, G-TOOL-017).
+- **Releases:** v0.1.0-alpha (2026-09-30), v0.2.0-alpha (10-05), v0.2.1 / v0.2.2 (10-06), v0.2.3-alpha (10-07), with
+  the launcher (one-time extraction from the player's own disc image, mods) and the website (launcher_contract.md,
+  launcher_extractor.md, mods.md).
+- **Systems complete enough to play:** hero on foot and every body (Clank, Giant Clank, the Hologuise), all weapons and
+  gadgets incl. the gold versions, the hoverboard and races, the level camera classes, vendors, the HUD, pause pages,
+  help system, in-engine scenes, item scenes and FMVs, audio (989snd grains, music, reverb, scene speech), particles,
+  water and sea, shadows, checkpoints and the death reload in the game's order (measured against PCSX2 over PINE).
+- **Since the last releases (2026-10-07 .. 10-09):** play-test fixes, mostly from the user's runs and testers:
+  the death reload's resets audited on every level (`rc-trace death-census`); the loaded save's persistent death bits
+  now reach the classes' latches (a lift or gate activated before a save holds after a load, as after a death); a
+  class sees a `SwitchCharacter` made earlier in the same moby loop (Orxon's sliding blocks); a cutscene camera's end
+  gives Clank / Giant Clank their idle (Clank frozen after Orxon's turret shots); Orxon's gadgetbot bubbles, the
+  backpack Clank after a body hand-over, the per-level scene hook (canopy glass), boss meters over a death, the
+  Snagglebeast fight, display settings (aspect, resolutions, fullscreen).
+- **Verification:** goldens for every loader (`crates/rc-formats/tests/`, snapshot hashes); PCSX2 comparisons are made
+  per question with the PINE probes (`rc-trace read / dump-ee / pine-write --pine`, `work/scratch/*_probe.py`) rather
+  than with a full trace harness; the frame-exact trace comparison of M4 is still open (G-TOOL-003..012).
+
+**Open, in order of what the player meets:**
+
+1. **QA of the recent fixes**: the user's test requests (`docs/test-requests/2026-10-0*.md`) and the 2026-10-09 Orxon
+   fixes (bubbles, sliding blocks, lift after a load, checkpoint respawn in Clank's section, the turret cutaway).
+2. **Music through Aridia's scene 1** (Skid's agent after the last sandshark, testers' report): not reproduced
+   headless (frame-exact and real-time, forced shark count); waiting for an `RC_AUDIO_TRACE=1` log of a real run.
+3. **Smaller behaviours**: Orxon's 10-gadgetbot gate after a reload past it (the turret's latch: the original's code
+   says it stays shut, unconfirmed in play), `SetMissionDone(1)` logged every tick on Blarg after the Hydrodisplacer,
+   the stray antenna glow in the Hydrodisplacer pickup scene; from the user's play tests, not yet looked at: nanotech
+   respawn, ship collision, Gemlik's Magneboots wall, Blarg's warship crash and sound, Aridia's teleporter doors,
+   Eudora's infobot twice, Ratchet's head size on stopping, weapon counter icon / hiding, weapons visible while
+   swimming, camera features).
+4. **Fidelity rows in gaps.md**: the GS state of class draws (G-REN-036), stale collision output (G-CLS-036),
+   particle–moby collision (G-PRT-009), HUD slot leftovers (G-UI-030), the race records' save chunk (G-LVL-007).
+5. **Deferred packages**: the hero feel pass (G-HERO-001, hero_feel_pass.md), statistics (G-SAV-009), performance
+   (performance.md: 90-100 fps and ~1 GB on Metropolis against the PS2's 60 fps in ~20 MB; G-TOOL-001), the strict
+   native pass (hardware_fidelity_layers.md), the PCSX2 trace verification (G-TOOL-003..012, 018).
+
+### Status (2026-09-27), kept for history
 
 Summary of the items below; the milestone lists stay the detailed record.
 
@@ -97,7 +143,7 @@ valid. M3 onward are Rust.
   - [x] Wrench melee, hand swap, HUD values (2026-09-26, player_controller.md "Melee and item swap"): □ trigger `HeroPdaGadget` 0x240ed8 (item 8), ground combo 0x13 (3 swings, table 0x17c0a8: chain / idle / hit frames) and jump attack 0x14 (entries, physics, transitions, landing shockwave), the wrench's in-hand update 0x2be1c0 (hand → head segment, 5-line sweep + 0.35 sphere, flags 0x10000, damage 1/2) into `World`'s hit log (`ServiceHits`: `deliver_hit` / the bounding-sphere `coll_sphere_mobys` stand-in), `rc_game::hero::items` (slot 0x1403e0: create 0x22f3c0, attach 0x22fec0 incl. the glove pose 0x22a9c8, slot loop 0x231088, swap 0x2307e0 consuming 0x141408, delete 0x2305e8), `moby_attach` draws the game's hand item (wrench 71 / bomb glove 192), HUD fed from `Persistent` / `Session` / `HeldWeapon`. Crates break with debris and bolts on Novalis; frame-exact runs identical. Not yet: comet strike 0x15, rebound 0x21, strafe moves, aim-assist targets, the bomb glove's throw, real moby collision, wrench sounds / sparks, the item mobys in the moby table
 
 ## M6 — Gameplay breadth
-- [ ] Moby classes and level scripts, level by level, trace-verified
+- [ ] Moby classes and level scripts, level by level, trace-verified — Since (2026-10-04): every placed class on all 19 levels is ported (batch C, `docs/plan/planet_*.md`; class_census.md); the trace verification is G-TOOL-003..012.
 
 ## M7 — Presentation
 - [ ] HUD, menus, text, saves, cutscenes
