@@ -460,7 +460,7 @@ pub(super) fn ground_magnet(h: &mut Hero, _env: &Env) -> bool {
 }
 
 /// `0x248b68(amount, dst, src)` by gravity mode: mode 0 `src` with z − amount, mode 1 along −normal.
-fn gravity(h: &Hero, src: V4, amount: Pf) -> V4 {
+pub(super) fn gravity(h: &Hero, src: V4, amount: Pf) -> V4 {
     if h.gravity_mode == 1 { return gravity_vec(h, src, amount); }
     let mut v = h.vel;
     v[2] = src[2] - amount;

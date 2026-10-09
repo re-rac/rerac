@@ -158,11 +158,9 @@ pub(super) fn physics(h: &mut Hero, env: &Env, anim: &mut dyn AnimCtl) -> bool {
     if !blending && passed(&v, 33.0) { throw_wrench(h, env, false); }
     h.speed_step(DT2 * Pf::b(0x4214_0000), DT2 * Pf::b(0x41e0_0000));
     h.set_planar_vel(Pf::b(0x47c3_4f80));
-    if h.air_ticks != 0 {
-        h.vel[2] = h.eff_v[2] - DT2 * Pf::b(0x41c8_0000);
-    } else {
-        h.vel[2] = h.vel[2] - DT2 * Pf::b(0x4258_0000);
-    }
+    // 0x248b68: along −normal on the Magneboots (mode 0: z only).
+    let (src, amount) = if h.air_ticks != 0 { (h.eff_v, DT2 * Pf::b(0x41c8_0000)) } else { (h.vel, DT2 * Pf::b(0x4258_0000)) };
+    h.vel = super::boots::gravity(h, src, amount);
     true
 }
 
@@ -243,9 +241,14 @@ pub fn throw_wrench(h: &mut Hero, env: &Env, _from_check: bool) {
         // its rows: the wrench's model x axis points along the view, its z axis along the view's up.
         f.euler = launch_euler(&sv::euler_rows(from_f32x3(cam_euler)));
     } else {
-        // 0x248da0(1.0): along the moby's yaw (+0x48); the rotation from Ratchet's moby rows +0xc0.
-        let y = h.moby_rot[2].to_f32();
-        f.dir = [y.cos(), y.sin(), 0.0];
+        // 0x248da0(1.0): along the moby's yaw (+0x48) — on the Magneboots its model x axis (the rows of +0x40);
+        // the rotation from Ratchet's moby rows +0xc0.
+        f.dir = if h.gravity_mode == 0 {
+            let y = h.moby_rot[2].to_f32();
+            [y.cos(), y.sin(), 0.0]
+        } else {
+            to_f32x3(sv::euler_rows(h.moby_rot)[0])
+        };
         f.euler = launch_euler(&moby_rows);
     }
     f.accel = 0.0;
