@@ -15,7 +15,7 @@
 //! |---|---|---|
 //! | `transition_load_wad` | the GS upload, the tfrags (`fun_002040e0`), the sky, the moby / tie / shrub classes, the textures, the FX and particle banks, the chrome map TEX0, the gameplay block (`level_init_read_settings`: the fog and background colour, the lights, `light_tfrags`, the tie and shrub instances with their LightTies / LightShrubs colours, every object's occlusion word 0x7f80 = always visible), the camera chunks (`parse_space_scene_chunk(0)`), the logo; the class 0x472 sound defs (0x1861e0) | [`load`]: `TitleWorld::parse` and the level parsers (tfrags lit with the title's lights; no occlusion grid: every object always visible); [`title_audio`] |
 //! | `startlevel` 0x1e9658 | the boot's sound bank (`global/sound_bank`), the level sound defs 0x15f634 = 0x186100 (7, 0x15f630) | [`title_audio`]: the audio system's data while the title runs |
-//! | `transition_default_draw` | the clear (sky header +4), the sky (`update_sky_effects`: shells 0, 1, the stars, shells 2, 3), tfrags, ties, shrubs, the mobys (mode 3: the page menu's frames instead), the list-1 callbacks, the particles; the logo, PRESS START, the fade (crate::menu_render) | [`spawn`] (tfrags, ties, shrubs and their billboards, the sky shells and the stars on [`TITLE_SKY_LAYER`]: `rc_game::sky_stars::TITLE_LEVEL`, the actors on [`TITLE_LAYER`]); the list-1 callbacks and the particles: n/a (nothing on the title registers one or spawns one: the actors' updates are `noop_callback_e`, the moby instances of the gameplay block are never loaded) |
+//! | `transition_default_draw` | the clear (sky header +4), the sky (`update_sky_effects`: shells 0, 1, the stars, shells 2, 3), tfrags, ties, shrubs, the mobys (mode 3: the first 4 moby slots, then the page menu's frames), the list-1 callbacks, the particles; the logo, PRESS START, the fade (crate::menu_render) | [`spawn`] (tfrags, ties, shrubs and their billboards, the sky shells and the stars on [`TITLE_SKY_LAYER`]: `rc_game::sky_stars::TITLE_LEVEL`, the actors on [`TITLE_LAYER`]); the list-1 callbacks and the particles: n/a (nothing on the title registers one or spawns one: the actors' updates are `noop_callback_e`, the moby instances of the gameplay block are never loaded) |
 //! | `fun_001eb0a8` / `transition_update_movie_camera` | the scene loop, the camera (tan 0.63), the actors' poses | [`tick`] (`rc_game::travel::title::TitleScene`; the camera through `ActiveScene::camera`) |
 //! | 0x1eb798 scene sounds, `sound_update` in boot modes 0 / 3 / 4 | the ambience and the timed sounds of the global bank | [`tick`] (mode 3's `sound_update` is the page menu's, crate::menu_render) |
 //! | 0x1eb798 attract | after the attract movie the scene restarts at tick 0 | [`tick`] (a movie's end in the title phase) |
@@ -350,7 +350,6 @@ fn tick(
     }
     let out = scene.tick();
     if let Some(c) = out.camera { active.camera = Some(c); }
-    let drawn = TitleScene::actors_drawn(fe.mode);
     rt.poses = out
         .actors
         .iter()
@@ -365,7 +364,7 @@ fn tick(
             yaw: 0.0,
             moby: None,
             scale: None,
-            hidden: !drawn,
+            hidden: !TitleScene::actors_drawn(fe.mode, a.actor),
             glow: None,
             head: None,
         })

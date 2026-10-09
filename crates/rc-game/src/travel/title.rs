@@ -15,7 +15,7 @@
 //! | `transition_update_movie_camera` | tan(hfov/2) 0x18cdb0 = 0.63 (not the record's); the eye and the rotation x, y, z of the record at the chunk tick (0x20-byte records) | [`TitleScene::tick`] (`scene_player::scene_camera`, tan 0.63) |
 //! | `fun_001eb0a8` actors | per actor: frames chunk tick >> 1, +1; `update_moby_animation_state`; t = (chunk tick & 1)·0.5; position = the track's lerp (no ship frame); +0x71 = 0xff; `moby_build_rotation`; +0x7f = 0 (no shadow); +0xa6 == 0 → `noop_callback_e` | [`TitleScene::tick`] ([`ActorPose`]) |
 //! | `noop_callback_h` | nothing | n/a |
-//! | `transition_default_draw` mode 3 | the page menu's frame mobys (`fun_002196b8`) instead of `draw_mobys`: the actors are not drawn while the main menu is open | [`TitleScene::actors_drawn`] |
+//! | `transition_default_draw` mode 3 | `fun_002196b8` instead of `draw_mobys`: `draw_moby_list(0x15ff18, 4)` (`moby_proc` over the first 4 moby slots: end = start + 4·0x100), then the page menu's frame mobys. The table holds the actors from slot 0 in chunk-0 order (`init_mem_slots`, then `parse_space_scene_chunk(0)`), so actors 0..3 stay drawn under the main menu and the fifth does not | [`TitleScene::actors_drawn`] |
 //! | 0x1eb798 loop, before the update | the scene sounds (boot 0x1862b0, [`TITLE_SOUNDS`]): per entry `{start, end, def, slot}` until start = −1: end = −1: tick < start → slot −1; else no slot → `allocate_voice_for_group_entry(def, 0, 0)`; otherwise tick < start or tick > end: the slot released when it still plays the def (`is_active_state_entry`), slot −1; else the def started again when its slot no longer plays it | [`TitleScene::sounds`] |
 //! | 0x1eb798 attract | after the attract movie: tick 0, chunk 0, `parse_space_scene_chunk(0)` | [`TitleScene::restart`] |
 
@@ -85,9 +85,12 @@ impl TitleScene {
         self.chunk_tick = 0;
     }
 
-    /// The draws of `transition_default_draw`: the actors in boot modes other than 3 (the page menu draws its frames
-    /// instead of the mobys).
-    pub fn actors_drawn(mode: i32) -> bool { mode != 3 }
+    /// `fun_002196b8`'s `draw_moby_list` count: the moby slots mode 3 still draws.
+    pub const MENU_DRAWN_ACTORS: usize = 4;
+
+    /// The draws of `transition_default_draw`: every actor outside boot mode 3; in mode 3 (the page menu) the first
+    /// [`Self::MENU_DRAWN_ACTORS`] moby slots = actors 0..3 (module docs).
+    pub fn actors_drawn(mode: i32, actor: usize) -> bool { mode != 3 || actor < Self::MENU_DRAWN_ACTORS }
 
     /// The classes of the actors (chunk 0 order = the slot order).
     pub fn actors(&self) -> Vec<i32> { self.scene.actor_classes() }
