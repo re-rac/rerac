@@ -25,9 +25,9 @@
 //!
 //! | address | what | status |
 //! |---|---|---|
-//! | 0x2f2280 head | no pvars → return; `0x2645a8(item, 0, +0x10)`: the tip | ported ([`update`], `guns::item_point`) |
+//! | 0x2f2280 head | no pvars → return; `0x2645a8(item, 0, +0x10)`: the tip (the posed joints, the head's node in) | ported ([`update`], `item_rows`) |
 //! | state 0 | 0x141394 = 100000, 0x141390 = 0; +0x0c = +0x00 = +0x04 = −1, +0x08 = 0x7fff, +0x28 = 0, +0x20 = 0x13cac9, +0x24 = 0; the node cleared; `AttachManipulator(item, 3, 0x1e1600)`; state 1 | ported (the pad byte 0x13cac9 is not modelled: n/a, no reader) |
-//! | states 1 / 2 | the aim: nearest valid (class 0x25d, state not 0xfe / 0xfd): xy distance tip → cache, elevation `atan(d, dz)`, bearing `atan(dx, dy)`; Δyaw = bearing − Ratchet's yaw clamped to ±gp−0x5120 (70°), Δpitch = elevation + 90° clamped to ±gp−0x511c (80°); dir = `polar(−3, yaw + Δyaw, Δpitch − 90°)` (0x277b50); the frame: row 0 = dir (length 1), row 1 = −unit(row 0 × (−1, 0, 0)), row 2 = row 1 × row 0; times the transpose of joint list 2's world rows (normalised): the quaternion (`fun_00214260`); none: the identity | ported ([`aim`]; the matrix → quaternion conversion is the standard one [L]) |
+//! | states 1 / 2 | the aim: nearest valid (class 0x25d, state not 0xfe / 0xfd): xy distance tip → cache, elevation `atan(d, dz)`, bearing `atan(dx, dy)`; Δyaw = bearing − Ratchet's yaw clamped to ±gp−0x5120 (70°), Δpitch = elevation + 90° clamped to ±gp−0x511c (80°); dir = `polar(−3, yaw + Δyaw, Δpitch − 90°)` (0x277b50); the frame: row 0 = dir (length 1), row 1 = −unit((−1, 0, 0) × row 0), row 2 = row 0 × row 1 (`FastVecCross(out, a, b)` = b × a); times the transpose of joint list 2's world rows (normalised): the quaternion (`fun_00214260`); none: the identity | ported ([`aim`], `quat_of`) |
 //! | | `0x218828(tip, tip + dir)` | n/a (an empty function: a debug hook) |
 //! | | node quaternion = `fun_001fa400(0.1, node, q)` (the nlerp); +0x30 = joint list 3's first world row | ported ([`Detector::node`], `services::quat_nlerp`) |
 //! | | ○ pressed (0x13cae4 & 0x20): +0x24 = +0x28 = 0 | ported ([`buried_bolts::Scan`](crate::moby_update::classes::buried_bolts::Scan)) |
@@ -99,35 +99,23 @@ pub fn node(hero: &Hero, targets: &[u8]) -> Option<JointModifier> {
     Some(JointModifier { quat: d.quat, ..JointModifier::compose(t) })
 }
 
-/// The world rows (x, y, z, point) of the hand item's joint list `list` (`fun_0020cca8` / `0x2645a8`).
+/// The world rows (x, y, z, point) of the hand item's joint list `list` (`fun_0020cca8` / `0x2645a8`): the item's
+/// posed joints, with its modifier list as the last frame drew it (the head's node turns the head, the tip and the
+/// scan's axis with it).
 fn item_rows(hero: &Hero, env: &ItemEnv, list: usize) -> Option<[[f32; 4]; 4]> {
     let it = hero.items.slot.item.as_ref()?;
     let class = env.data.class(it.o_class)?;
     let chain = class.chains.get(list).filter(|c| !c.is_empty())?;
-    let p = rc_formats::moby_anim::evaluate_chains(&class.anim, &it.anim, it.snapshot.as_ref(), &[chain.as_slice()]);
+    let p = rc_formats::moby_anim::evaluate_chains_posed(&class.anim, &it.anim, it.snapshot.as_ref(), &[chain.as_slice()], &[], &hero.gadgets.hand_mods);
     let w = rc_formats::moby_anim::attach_matrix(p.first()?, &it.rows, it.position, it.scale);
     Some(w)
 }
 
 fn norm(a: [f32; 3]) -> [f32; 3] { super::guns::with_len(a, 1.0) }
 
-/// The rotation rows → quaternion (`fun_00214260`, the standard conversion [L]).
-pub(crate) fn quat_of(m: [[f32; 3]; 3]) -> [f32; 4] {
-    let tr = m[0][0] + m[1][1] + m[2][2];
-    if 0.0 < tr {
-        let s = (tr + 1.0).sqrt() * 2.0;
-        [(m[1][2] - m[2][1]) / s, (m[2][0] - m[0][2]) / s, (m[0][1] - m[1][0]) / s, 0.25 * s]
-    } else if m[0][0] > m[1][1] && m[0][0] > m[2][2] {
-        let s = (1.0 + m[0][0] - m[1][1] - m[2][2]).sqrt() * 2.0;
-        [0.25 * s, (m[0][1] + m[1][0]) / s, (m[2][0] + m[0][2]) / s, (m[1][2] - m[2][1]) / s]
-    } else if m[1][1] > m[2][2] {
-        let s = (1.0 + m[1][1] - m[0][0] - m[2][2]).sqrt() * 2.0;
-        [(m[0][1] + m[1][0]) / s, 0.25 * s, (m[1][2] + m[2][1]) / s, (m[2][0] - m[0][2]) / s]
-    } else {
-        let s = (1.0 + m[2][2] - m[0][0] - m[1][1]).sqrt() * 2.0;
-        [(m[2][0] + m[0][2]) / s, (m[1][2] + m[2][1]) / s, 0.25 * s, (m[0][1] - m[1][0]) / s]
-    }
-}
+/// The rotation rows → quaternion (`fun_00214260`: x = m21 − m12, …; `creature::react::rows_quat`, the inverse of the
+/// evaluator's `quat_rows`).
+pub(crate) fn quat_of(m: [[f32; 3]; 3]) -> [f32; 4] { crate::moby_update::creature::react::rows_quat(m) }
 
 /// The aim's target quaternion (module doc, states 1 / 2). `cache` = the nearest valid cache's position.
 fn aim(hero: &Hero, env: &ItemEnv, tip: [f32; 3], cache: Option<[f32; 3]>) -> [f32; 4] {
@@ -143,9 +131,10 @@ fn aim(hero: &Hero, env: &ItemEnv, tip: [f32; 3], cache: Option<[f32; 3]>) -> [f
     if ly < dy.abs() { dy = dy / dy.abs() * ly; }
     if lp < dp.abs() { dp = dp / dp.abs() * lp; }
     let dir = crate::targeting::polar(-3.0, add_rot(dy, yaw0), add_rot(dp, down));
+    // `FastVecCross(out, a, b)` = b × a: row 1 = −unit((−1, 0, 0) × row 0), row 2 = row 0 × row 1.
     let r0 = norm(dir);
-    let r1 = super::guns::scale3(norm(super::guns::cross3(r0, [-1.0, 0.0, 0.0])), -1.0);
-    let r2 = super::guns::cross3(r1, r0);
+    let r1 = super::guns::scale3(norm(super::guns::cross3([-1.0, 0.0, 0.0], r0)), -1.0);
+    let r2 = super::guns::cross3(r0, r1);
     let Some(j) = item_rows(hero, env, NECK_LIST) else { return [0.0, 0.0, 0.0, 1.0] };
     let jr: [[f32; 3]; 3] = std::array::from_fn(|k| norm([j[k][0], j[k][1], j[k][2]]));
     // `fun_001fa378(out, Jᵀ, frame)`: out_i = Σ_k frame_i[k]·Jᵀ_k, the frame's rows in joint list 2's axes.
@@ -168,7 +157,7 @@ fn nlerp(t: f32, a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
 /// `0x2f2280`, the Metal Detector's update (module doc).
 pub fn update(hero: &mut Hero, table: &mut MobyTable, _anim: &dyn super::anim::AnimCtl, env: &ItemEnv, hits: &mut dyn HitSink, rng: &mut Rng) {
     if hero.items.slot.item.is_none() { return; }
-    hero.gadgets.detector.tip = super::guns::item_point(hero, env, TIP_LIST);
+    hero.gadgets.detector.tip = item_rows(hero, env, TIP_LIST).map_or_else(|| super::guns::item_point(hero, env, TIP_LIST), |w| [w[3][0], w[3][1], w[3][2]]);
     let state = hero.items.slot.item.as_ref().map_or(0, |it| it.mstate);
     if state == 0 {
         let d = &mut hero.gadgets.detector;
