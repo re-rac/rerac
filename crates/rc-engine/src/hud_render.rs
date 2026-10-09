@@ -824,10 +824,12 @@ fn tick_and_build(
         if let Some(gs) = &state {
             rt.game.bolts = gs.0.global.bolts;
             rt.game.max_hp = gs.0.global.max_hp;
+            rt.game.ammo = gs.0.global.ammo;
         }
         if let Some(s) = &session { rt.game.hp = s.0.hp; }
         rt.game.weapon = held.as_ref().and_then(|h| h.0);
-        if let Some(w) = feed.weapon { rt.game.weapon = w; }
+        // The vendor's own slot-0 requests (`rc_game::hud::HudState`'s vendor part), not the held weapon's.
+        rt.game.vendor = feed.weapon.map(|w| w.map(|(item, _, max)| (item, max)));
         // Ratchet's state 0x1413d4 (mounted, 0x32: the health and bolt draws skip).
         if let Some(p) = play.as_deref() {
             rt.game.hero_state = p.game.hero.state;

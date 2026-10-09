@@ -50,7 +50,7 @@
 //! | 0x24b458 / 0x24ee20 / 0x24eed8 | bolt alert: flag-driven ramp; nothing in body 2 / state 0x32 / slide 0; bar, spinning bolt, pulsing "!" | `init_alert`, `update_alert`, `draw_alert` |
 //! | 0x227d90 `HudBoltAlertShow` | queues element 7 with the Metal Detector owned and a cache within 20 | `classes::buried_bolts::alert_frame` → `Services::hud` |
 //! | 0x24f9c0 body 2 | Giant Clank's energy: `0x24f248` (sub-rect bar `221·shown/200 + 27`, frame, beam light) | `update_weapon_request`, `draw_giant` |
-//! | 0x24f9c0 `iGpffff8d68` | weapon show skipped after `FUN_0024fb00` until `update_resource_counter` | n/a: the port's only reset is the vendor's open, whose own slot-0 requests (`HudFeed::weapon`) drive slot 0 until its exit |
+//! | 0x24f9c0 `iGpffff8d68` | weapon show skipped after `FUN_0024fb00` until `update_resource_counter` | ported (`HudState::weapon_gate`; the vendor's own slot-0 requests 0x30 and their release on its exit: `HudState::vendor_requests`) |
 //! | 0x231348 leave body 2 | `FUN_0024b090(0x140984, 0)` | `frame_calls` (body ≠ 2 → flags 0) |
 //! | level18 0x23cd60 (06 0x249738, 07, 13) | boss meter: n segments (3; 6 on 07 / 13; 7 on 18), level 13 at the top, the squeezed ends, red → yellow → green fill | [`Element::Boss`], `draw_boss`; consumers: `Calls::boss_meter` (level06 0x2f9a28 class 1051, level18 0x2f7288 for 1422: G-CLS-001) |
 //! | 0x226fa8 `HeroTakeDamage` → 0x24a498 | health queued on damage only (a gain is shown by the element already in slot 1) | `frame_calls` (health went down) |
@@ -386,6 +386,11 @@ pub struct Inputs {
     /// (0x24f9c0): shown iff item table 0x1c4538[item] (stride 0x18) has a non-zero s16 at +0 and the player
     /// state 0x1413f4 is 0; the wrench (item 8) has 0 there, so holding it shows nothing.
     pub weapon: Option<(u16, i32, i32)>,
+    /// The ammo table 0x13d428 by item: a weapon element's data word is its own item's (`item·4 + 0x13d428`).
+    pub ammo: [i32; 37],
+    /// The vendor while it is open: its selected ammo entry (item, max ammo) or `None` (a weapon, or nothing); `None`
+    /// outside the vendor. Its requests are its own (`OpenVendorMenu` / `VendorModeUpdate` / `VendorExit`).
+    pub vendor: Option<Option<(u16, i32)>>,
     /// 0x15ed88 (rc_formats::strings::lang).
     pub lang: u32,
     /// Ratchet's state 0x1413d4: mounted (0x32, `crate::hero::scripted::MOUNTED`: a turret or vehicle holds him) the
@@ -453,6 +458,8 @@ impl Default for Inputs {
             max_hp: 4,
             bolts: 0,
             weapon: None,
+            ammo: [0; 37],
+            vendor: None,
             lang: 0,
             hero_state: 0,
             body: 0,
@@ -530,6 +537,12 @@ pub struct HudState {
     pub sounds: Vec<i32>,
     /// `0x140984`: Giant Clank's energy request is up (`HudWeaponShow`, released by the body's leave).
     giant_up: bool,
+    /// `gp−0x7298`: `HudWeaponShow` skipped while non-zero (`FUN_0024fb00` sets 1, `update_resource_counter` counts down).
+    weapon_gate: i32,
+    /// The vendor: open as last seen, its selected ammo entry and its slot-0 request 0x1ca990.
+    vendor_open: bool,
+    vendor_sel: Option<(u16, i32)>,
+    vendor_handle: Option<u32>,
     /// The Morph-o-Ray's request as last seen (up, target).
     morph_last: (bool, i32),
     /// Port-only: the game pixels the frame extends past the 512-wide screen on each side (16:9; 0 at 4:3, the TV's).
@@ -547,6 +560,10 @@ impl HudState {
             health_anim: [0; 4],
             bolt_anim: 0,
             weapon_handle: None,
+            weapon_gate: 0,
+            vendor_open: false,
+            vendor_sel: None,
+            vendor_handle: None,
             prompt_show: false,
             prompt_text: Vec::new(),
             bolts_pinned: false,
@@ -751,7 +768,11 @@ impl HudState {
         self.slots = [Slot::default(); SLOTS];
         for (s, z) in self.slots.iter_mut().zip(sizes) { s.size = z; }
         self.giant_up = false;
+        // 0x15f970 = −1, 0x15f96c = 0, and the weapon show held off until `update_resource_counter`.
         self.weapon_handle = None;
+        self.weapon_gate = 1;
+        // `OpenVendorMenu` queues its ammo entry after the reset: the vendor's request is made again.
+        (self.vendor_open, self.vendor_sel, self.vendor_handle) = (false, None, None);
         self.bolts_pin_handle = None;
         self.prompt_show = false;
     }
@@ -769,7 +790,7 @@ impl HudState {
             Element::Empty | Element::Prompt | Element::RaceLap | Element::RaceTime => return None,
             Element::Health => i.hp,
             Element::Bolts => i.bolts,
-            Element::Weapon { .. } => i.weapon.map_or(0, |w| w.1),
+            Element::Weapon { item } => i.ammo.get(item as usize).copied().unwrap_or(0),
             Element::Oxygen => i.oxygen,
             Element::Morph => i.morph_value,
             Element::SuckCannon => i.suck_held,
@@ -1005,6 +1026,8 @@ impl HudState {
     /// 0x24f9c0: keep the weapon element requested while the held item has an ammo HUD (on foot, body 0), release it
     /// otherwise; as Giant Clank (body 2) slot 0 shows his energy instead (`0x140984`).
     fn update_weapon_request(&mut self) {
+        self.vendor_requests();
+        if self.weapon_gate != 0 { return; }
         let weapon = if self.inputs.body != 0 { None } else { self.inputs.weapon };
         match weapon {
             Some((item, _, max)) => {
@@ -1017,6 +1040,28 @@ impl HudState {
                     self.giant_up = true;
                 }
             }
+        }
+    }
+
+    /// The vendor's slot-0 requests: on open (`OpenVendorMenu`) and on each move (`VendorModeUpdate`, the purchase) the old
+    /// one's flags 0 (`FUN_0024b090`), then `queue_animation_update(0x30, 60000 + item, …, max)` for an ammo entry;
+    /// on `VendorExit` its flags 0 and `update_resource_counter` (the weapon show again).
+    fn vendor_requests(&mut self) {
+        match self.inputs.vendor {
+            Some(sel) => {
+                if self.vendor_open && sel == self.vendor_sel { return; }
+                self.vendor_open = true;
+                self.vendor_sel = sel;
+                if let Some(h) = self.vendor_handle.take() { self.set_flags(h, 0); }
+                self.vendor_handle = sel.map(|(item, max)| self.queue(0x30, icon::ITEM_BASE.wrapping_add(item), Element::Weapon { item }, max));
+            }
+            None if self.vendor_open => {
+                self.vendor_open = false;
+                self.vendor_sel = None;
+                if let Some(h) = self.vendor_handle.take() { self.set_flags(h, 0); }
+                if self.weapon_gate != 0 { self.weapon_gate -= 1; }
+            }
+            None => {}
         }
     }
 
@@ -2006,12 +2051,42 @@ mod tests {
     #[test]
     fn wrench_hides_the_weapon_slot_and_ammo_weapon_persists() {
         let mut h = HudState::new(assets());
-        for _ in 0..50 { h.tick(Inputs { weapon: Some((10, 25, 40)), ..inputs(4, 0) }); }
+        let mut ammo = [0; 37];
+        ammo[10] = 25;
+        for _ in 0..50 { h.tick(Inputs { weapon: Some((10, 25, 40)), ammo, ..inputs(4, 0) }); }
         assert_eq!((h.slots[0].slide, h.slots[0].alpha, h.slots[0].shown), (8, 8, 25));
-        for _ in 0..400 { h.tick(Inputs { weapon: Some((10, 25, 40)), ..inputs(4, 0) }); }
+        for _ in 0..400 { h.tick(Inputs { weapon: Some((10, 25, 40)), ammo, ..inputs(4, 0) }); }
         assert_eq!((h.slots[0].slide, h.slots[0].alpha), (8, 8), "flag 0x10 keeps it up");
         for _ in 0..40 { h.tick(inputs(4, 0)); }
         assert_eq!((h.slots[0].slide, h.slots[0].alpha, h.slots[0].flags), (0, 0, 0));
+    }
+
+    /// The vendor's own slot-0 requests (`OpenVendorMenu` / `VendorModeUpdate` / `VendorExit`): open with the Bomb Glove
+    /// held, the selected ammo entries replace each other at once (flags 0x30), the weapon show is held off; after the
+    /// exit the held weapon's counter comes back with its own icon and count, and the wrench hides it. (The old port
+    /// made the vendor's entries persistent weapon requests: the first counter stuck on every weapon, the wrench's too.)
+    #[test]
+    fn the_vendor_counter_gives_way_to_the_held_weapon() {
+        let mut h = HudState::new(assets());
+        let mut ammo = [0; 37];
+        (ammo[10], ammo[11], ammo[24]) = (25, 7, 3);
+        let held = |item: u16, max: i32| Inputs { weapon: Some((item, ammo[item as usize], max)), ammo, ..inputs(4, 0) };
+        for _ in 0..50 { h.tick(held(10, 40)); }
+        assert_eq!((h.slots[0].icon, h.slots[0].shown), (icon::ITEM_BASE + 10, 25));
+        // The vendor opens (`FUN_0024fb00`) on the Bomb Glove's ammo, then moves to another ammo entry.
+        h.reset_slots();
+        for _ in 0..30 { h.tick(Inputs { vendor: Some(Some((10, 40))), mode: 5, ..held(10, 40) }); }
+        assert_eq!((h.slots[0].icon, h.slots[0].shown), (icon::ITEM_BASE + 10, 25));
+        for _ in 0..30 { h.tick(Inputs { vendor: Some(Some((24, 20))), mode: 5, ..held(10, 40) }); }
+        assert_eq!((h.slots[0].icon, h.slots[0].shown, h.slots[0].max), (icon::ITEM_BASE + 24, 3, 20), "the move replaces it at once");
+        // Exit: the vendor's counter goes, the held weapon's comes back.
+        for _ in 0..200 { h.tick(held(11, 20)); }
+        assert_eq!((h.slots[0].icon, h.slots[0].shown, h.slots[0].max), (icon::ITEM_BASE + 11, 7, 20));
+        // The wrench (no ammo HUD): the counter hides.
+        for _ in 0..60 { h.tick(inputs(4, 0)); }
+        assert_eq!((h.slots[0].slide, h.slots[0].alpha), (0, 0));
+        for _ in 0..200 { h.tick(held(10, 40)); }
+        assert_eq!((h.slots[0].icon, h.slots[0].shown), (icon::ITEM_BASE + 10, 25));
     }
 
     /// The help box of the game tick (crate::help) drawn by the HUD: sized with the small font, centred at (256, H − 60),
