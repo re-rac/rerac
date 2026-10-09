@@ -76,7 +76,10 @@ pub fn update(w: &mut World, id: MobyId) {
     }
     let sid = w.m(id).spawn_id;
     let o2 = w.hero.owned.has(O2_MASK);
-    let clank_now = w.body() == crate::hero::bodies::body::CLANK;
+    // Last tick's body word, not `World::body`: the hand-over this class queued in the load pass is made during the
+    // landing's space scene, which leaves Clank in the scene state 100; the port relies on the first tick's second
+    // `SwitchCharacter` to give him his idle state.
+    let clank_now = w.hero.mode == crate::hero::bodies::body::CLANK;
     let visited = w.svc.save.collected.get(&sid).is_some_and(|&b| b != 0) || w.svc.save.death.contains(&(level, sid));
     if visited {
         if o2 {
