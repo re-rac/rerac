@@ -48,6 +48,7 @@ mod interact_render;
 mod level_load;
 mod level_switch;
 mod media_render;
+mod frame_pace;
 mod menu_models;
 mod menu_render;
 mod mirror_render;
@@ -155,6 +156,8 @@ fn main() -> anyhow::Result<()> {
     .add_plugins(display::DisplayPlugin)
     // Frame-exact ticks / capture and the deterministic phase order, before anything spawns a camera.
     .add_plugins(determinism::DeterminismPlugin)
+    // One game tick per drawn frame, at most 60 frames a second (crate::frame_pace).
+    .add_plugins(frame_pace::FramePacePlugin)
     // MSAA of the world cameras (default off; `RenderSettings` can change it at run time).
     .add_plugins(render_settings::RenderSettingsPlugin)
     .add_plugins((MaterialPlugin::<TfragMaterial>::default(), FlyCamPlugin, game_camera::GameCameraPlugin { fog: level.fog }))
@@ -296,12 +299,15 @@ fn parse_cam(s: &str) -> Option<([f32; 3], [f32; 3])> {
     (v.len() == 6).then(|| ([v[0], v[1], v[2]], [v[3], v[4], v[5]]))
 }
 
-fn report_fps(time: Res<Time>, mut acc: Local<(f32, u32)>) {
-    acc.0 += time.delta_secs();
-    acc.1 += 1;
-    if acc.0 >= 5.0 {
-        println!("fps: {:.1}", acc.1 as f32 / acc.0);
-        *acc = (0.0, 0);
+/// Drawn frames per second over 5 s of wall-clock time (the game clock advances by whole ticks: crate::frame_pace).
+fn report_fps(mut acc: Local<Option<(std::time::Instant, u32)>>) {
+    let now = std::time::Instant::now();
+    let (start, n) = acc.get_or_insert((now, 0));
+    *n += 1;
+    let t = (now - *start).as_secs_f32();
+    if t >= 5.0 {
+        println!("fps: {:.1}", *n as f32 / t);
+        *acc = Some((now, 0));
     }
 }
 

@@ -27,7 +27,7 @@ struct Last {
 
 #[allow(clippy::too_many_arguments)]
 fn log(
-    time: Res<Time<Real>>,
+    mut clock: Local<Option<std::time::Instant>>,
     play: Option<Res<crate::gameplay::Play>>,
     entities: Query<Entity>,
     meshes: Res<Assets<Mesh>>,
@@ -35,7 +35,9 @@ fn log(
     images: Res<Assets<Image>>,
     mut last: Local<Last>,
 ) {
-    let ms = time.delta_secs() * 1000.0;
+    // The wall clock: Bevy's clocks advance by whole game ticks (crate::frame_pace).
+    let now = std::time::Instant::now();
+    let ms = clock.replace(now).map_or(0.0, |t| (now - t).as_secs_f32() * 1000.0);
     let counter = play.as_ref().map(|p| p.game.counter);
     let counts = [entities.iter().count(), meshes.len(), mats.len(), images.len()];
     if ms > SLOW_MS {
