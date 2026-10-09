@@ -1077,6 +1077,20 @@ impl Services {
         }
     }
 
+    /// The persistent death bits `0x14c190 + L·0x100` of every level as the game state holds them (chunk 3005: the
+    /// loaded save and this session's earlier levels, [`Services::sync_save`]) into [`SaveBits::death`], at the level
+    /// entry: in the game they are the save's memory itself, so a class's latch on them (Orxon's lift 1141 activated
+    /// once, the gates, the story directors' "done before") holds after a load as after a death.
+    pub fn load_death_bits(&mut self, gs: &crate::game_state::GameState) {
+        for (l, lv) in gs.levels.iter().enumerate() {
+            for (b, &byte) in lv.killed.iter().enumerate() {
+                for k in 0..8 {
+                    if byte >> k & 1 != 0 { self.save.death.insert((l as u32, (b * 8 + k) as i16)); }
+                }
+            }
+        }
+    }
+
     /// The splines from `rc_formats::gameplay::parse_splines`, as raw words.
     pub fn set_splines(&mut self, s: &[Vec<[f32; 4]>]) {
         self.splines = s.iter().map(|v| v.iter().map(|p| p.map(f32::to_bits)).collect()).collect();

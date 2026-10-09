@@ -1234,6 +1234,8 @@ fn setup(
     let mut svc = Services::new();
     svc.level = level_index;
     svc.death_z = lv.death_z;
+    // The persistent death bits the classes latch on (0x14c190: the save's memory in the game).
+    if let Some(s) = state.as_ref() { svc.load_death_bits(&s.0); }
     // `entry` 0x259c40 stores game mode 6 before the load pass (`LoadLevelCoreData`): the classes' first update sees
     // it (Umbris' director 436 waits in state 0 for mode 0, so its arrival scene follows the landing).
     if travel.as_ref().is_some_and(|t| t.entry_follows()) { svc.game_mode = 6; }
