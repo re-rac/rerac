@@ -82,6 +82,7 @@ Commands:
   read <source> --addr HEX --len N    hex-dump EE memory
   pine-info [slot]                    print PCSX2 version / game / status over PINE
   pine-savestate <state-slot> [--slot N]   ask PCSX2 to save to a state slot (like pressing F1)
+  pine-write --addr HEX --bytes HEX [--slot N]   write bytes (e.g. 01ff) to EE memory over PINE (dev pokes)
   synth [--level 01] [--unlit] --out FILE [--base HEX]   write a synthetic 'loaded level' EE image
 
 Hero feel pass (docs/plan/hero_feel_pass.md):
@@ -327,6 +328,17 @@ fn run() -> Result<i32> {
             println!("version {}", c.version()?);
             println!("status  {}", c.status_name());
             println!("game    {} | {}", c.game_id().unwrap_or_default(), c.title().unwrap_or_default());
+            Ok(0)
+        }
+        "pine-write" => {
+            let slot: u16 = a.opt("--slot")?.map(|s| s.parse()).transpose()?.unwrap_or(pine::DEFAULT_SLOT);
+            let addr = hex_u32(&a.opt("--addr")?.context("--addr required")?)?;
+            let hex = a.opt("--bytes")?.context("--bytes required")?;
+            a.done()?;
+            if !hex.len().is_multiple_of(2) { bail!("--bytes: an even number of hex digits"); }
+            let bytes = (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).with_context(|| format!("bad hex {hex:?}"))).collect::<Result<Vec<_>>>()?;
+            pine::Pine::connect(slot)?.write(addr, &bytes)?;
+            println!("wrote {} bytes at {addr:#x}", bytes.len());
             Ok(0)
         }
         "pine-savestate" => {

@@ -14,6 +14,7 @@ use std::path::PathBuf;
 
 pub const DEFAULT_SLOT: u16 = 28011;
 const MSG_READ64: u8 = 3;
+const MSG_WRITE8: u8 = 4;
 const MSG_VERSION: u8 = 8;
 const MSG_SAVE_STATE: u8 = 9;
 const MSG_TITLE: u8 = 0xb;
@@ -89,6 +90,18 @@ impl Pine {
         let r = self.call(&cmds)?;
         ensure!(r.len() == addrs.len() * 8, "PINE returned {} bytes for {} reads", r.len(), addrs.len());
         Ok(r.as_chunks::<8>().0.to_vec())
+    }
+
+    /// Writes `bytes` to EE memory at `addr` in one message of `MsgWrite8` (dev pokes: unlocking a planet).
+    pub fn write(&mut self, addr: u32, bytes: &[u8]) -> Result<()> {
+        ensure!(bytes.len() <= READS_PER_MSG, "too many bytes in one PINE message");
+        let mut cmds = Vec::with_capacity(bytes.len() * 6);
+        for (i, &b) in bytes.iter().enumerate() {
+            cmds.push(MSG_WRITE8);
+            cmds.extend_from_slice(&(addr + i as u32).to_le_bytes());
+            cmds.push(b);
+        }
+        self.call(&cmds).map(|_| ())
     }
 
     /// Reads `len` bytes of EE memory at `addr` (both multiples of 8) through batched `MsgRead64`.
