@@ -17,7 +17,8 @@
 //!
 //! * 3D Ratchet: class 0 at camera + (4, 0, −0.6), turned by π (`FUN_00297ad0`), on his idle sequence 0 [L: the
 //!   game streams per-item animations, `fun_002265d8` with the table 0x1b9870, not ported]; Clank and the pending
-//!   pack on the back list (the Heli-Pack's class 607 on its rotor sequence 6, `LoadHandGadget`); the pending
+//!   pack on the back list (the Heli-Pack's class 607 spins its rotor sequence 6 eight times, then folds to sequence 1:
+//!   `LoadHandGadget` and the callback 0x224fc0, [`back_update`]); the pending
 //!   hand item on its attach list (sequence 1); the pending head item and boots posed from his joints
 //!   (`rc_game::hero::worn::pose_from_host`); the Persuader (0x197, on his joint list 0x1e), the Map-o-Matic (0x266)
 //!   and the Bolt Grabber (0x26a, list 0x1d) when owned (`fun_002250f0`: on sequence 0, advanced, at the list's
@@ -99,6 +100,9 @@ struct Part {
     state: AnimState,
     /// The item the state was cut for (its part changes show).
     cut_for: i32,
+    /// The moby's +0x20 (the 3D Ratchet's Heli-Pack: its rotor cycles left, [`back_update`]) and its blend snapshot.
+    count: u8,
+    snap: Option<moby_anim::MobyFrame>,
 }
 
 #[derive(Resource)]
@@ -111,6 +115,26 @@ struct PreviewRt {
     /// The canvases of the 3D Ratchet, the item preview, the ammo model, the gold bolt and the Helpdesk girl.
     canvases: [CanvasId; 5],
     last_frame: u64,
+}
+
+/// The 3D Ratchet's back item callback `0x224fc0`, its animation part, then `MobyAnimAdvance`: when the last advance
+/// wrapped (+0x70 bit 1), the Heli-Pack on its rotor sequence 6 counts a cycle off +0x20 and at 0 blends to sequence 1
+/// (the blades folded) over 10 ticks; otherwise it stays on 6 (cut, no blend), and off 6 it is cut to 1. Another pack
+/// is cut to sequence 1.
+fn back_update(p: &mut Part) {
+    let s = &mut p.state;
+    if s.flags & 2 != 0 {
+        let (seq, ticks) = if p.o_class != HELI_O_CLASS {
+            (1, 0)
+        } else if s.seq_a == 6 {
+            p.count = p.count.wrapping_sub(1);
+            if p.count == 0 { (1, 10) } else { (6, 0) }
+        } else {
+            (1, 0)
+        };
+        if s.seq_b != seq { moby_anim::set_sequence(s, &p.anim, seq, 0, ticks, &mut p.snap); }
+    }
+    moby_anim::advance(&mut p.state, &p.anim);
 }
 
 pub struct MenuModelsPlugin;
@@ -207,7 +231,7 @@ fn setup(
         let slots = (anim.joint_count as u32).max(ExtraMobys::max_skinned_joint(class) as u32 + 1).max(1);
         parts.push(Part {
             role: *role, o_class: class.o_class as i16, anim: anim.clone(), scale: class.class.header.scale, base: palette_len, slots,
-            entities: Vec::new(), shown: false, state: AnimState::spawn(anim), cut_for: -1,
+            entities: Vec::new(), shown: false, state: AnimState::spawn(anim), cut_for: -1, count: 0, snap: None,
         });
         palette_len += slots;
     }
@@ -347,8 +371,25 @@ fn update(
         for (k, p) in rt.parts.iter_mut().enumerate() {
             if matches!(p.role, Role::Ratchet | Role::Item | Role::ItemClank) || (p.role != Role::Extra && want(p.role) != Some(p.o_class)) { continue; }
             match p.role {
-                Role::Clank | Role::Back | Role::Hand => {
-                    let seq = if p.o_class == HELI_O_CLASS { 6 } else { 1 };
+                Role::Back => {
+                    if p.cut_for != p.o_class as i32 {
+                        // `LoadHandGadget`: a new moby; the Heli-Pack blends to its rotor sequence 6 over 10 ticks
+                        // (`fun_00212f90(m, 6, 0, 10)` unless B is 6 already) with +0x20 = 8.
+                        p.state = AnimState::spawn(&p.anim);
+                        p.snap = None;
+                        p.count = 0;
+                        if p.o_class == HELI_O_CLASS {
+                            if p.state.seq_b != 6 { moby_anim::set_sequence(&mut p.state, &p.anim, 6, 0, 10, &mut p.snap); }
+                            p.count = 8;
+                        }
+                        p.cut_for = p.o_class as i32;
+                    }
+                    for _ in 0..steps { back_update(p); }
+                    let Some((r, at)) = w_of(BACK_ATTACH, true) else { continue };
+                    placed[k] = Some(Placed { rows: r, pos: at, pose: moby_anim::evaluate_with_snapshot(&p.anim, &p.state, p.snap.as_ref()) });
+                }
+                Role::Clank | Role::Hand => {
+                    let seq = 1;
                     let key = seq as i32 * 1000 + p.o_class as i32;
                     if p.cut_for != key {
                         p.state = AnimState::spawn(&p.anim);
