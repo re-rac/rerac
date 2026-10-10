@@ -1352,14 +1352,18 @@ impl PageMenu {
             a.msg_in(l.id as i32, swapped).to_vec()
         } else if l.flags & 0x100 != 0 && content < 0 {
             Vec::new()
-        } else if l.id != 0 && content >= 0 {
+        } else if l.id != 0 {
             // `*(table + (content·stride & ~3) + variant·4)`, the table in the overlay (`MenuAssets::overlay`).
+            // `content` may be −1 (the flags 0x20 / 0x40 index from one past the table base: the map and confirm
+            // pages' labels carry `0x1c22cc` / `0x1c22d0` = `0x1c22c0 + 12` / `+16` and `dest − 1`, so on Veldin
+            // (dest 0) the address lands on level 0's entry one record before the base). The game's arithmetic
+            // wraps; the patched tables below are only for flags whose content is never negative.
             let addr = l.id.wrapping_add((content as u32).wrapping_mul(l.stride) & !3).wrapping_add(variant as u32 * 4);
             id = match (&l.table, tables.get(&l.id)) {
-                (Some(t), _) => t.get(content as usize).copied().unwrap_or(0),
+                (Some(t), _) if content >= 0 => t.get(content as usize).copied().unwrap_or(0),
                 // A table a page enter built (the Help / Weapons and Help / Gadgets descriptions).
-                (None, Some(t)) => t.get(content as usize).copied().unwrap_or(0),
-                (None, None) => a.overlay.u32(addr).unwrap_or(0),
+                (None, Some(t)) if content >= 0 => t.get(content as usize).copied().unwrap_or(0),
+                _ => a.overlay.u32(addr).unwrap_or(0),
             };
             a.msg_in(id as i32, swapped).to_vec()
         } else {
