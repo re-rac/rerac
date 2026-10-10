@@ -61,6 +61,7 @@ mod moby_lod;
 mod moby_render;
 mod moby_spawn;
 mod movie_render;
+mod no_clusters;
 mod occlusion;
 mod particle_render;
 mod play_camera;
@@ -173,6 +174,7 @@ fn main() -> anyhow::Result<()> {
     .add_plugins(determinism::DeterminismPlugin)
     // One game tick per drawn frame, at most 60 frames a second (crate::frame_pace).
     .add_plugins(frame_pace::FramePacePlugin)
+    .add_plugins(no_clusters::NoClustersPlugin)
     .add_plugins(draw_stats::DrawStatsPlugin)
     // MSAA of the world cameras (default off; `RenderSettings` can change it at run time).
     .add_plugins(render_settings::RenderSettingsPlugin)

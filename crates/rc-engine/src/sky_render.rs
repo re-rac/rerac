@@ -28,6 +28,8 @@
 //! pixel whose frame alpha is below 1 (e.g. a tie fat vertex whose VU-blended alpha lane truncates 0x80 to 0x7f,
 //! or a translucent draw's `OVER` alpha) would let that stale image through: the see-through, flickering surfaces
 //! of 2026-09-27. The GS frame buffer's alpha is never used for display either.
+//! The sky camera writes nothing (`CameraOutputMode::Skip`): the main camera's write replaces the whole target, so
+//! the sky's own copy of the main texture to it was a full-frame blit thrown away every frame.
 //!
 //! Frame clear: the game clears (colour = level background, Z = 0) before the sky only while sky header
 //! +4 is non-zero. The loader sets it to 1, and the per-level dispatch zeroes it every frame on all levels
@@ -278,7 +280,7 @@ fn spawn_sky(
     commands.spawn((
         Camera3d { depth_load_op: Camera3dDepthLoadOp::Clear(0.0), ..default() },
         // First frame: the loader's clear_screen = 1 clears to the level background (the ClearColor resource).
-        Camera { order: -1, clear_color: ClearColorConfig::Default, ..default() },
+        Camera { order: -1, clear_color: ClearColorConfig::Default, output_mode: CameraOutputMode::Skip, ..default() },
         game_camera::game_projection(),
         Tonemapping::None,
         DebandDither::Disabled,
