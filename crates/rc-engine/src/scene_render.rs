@@ -506,6 +506,10 @@ fn scene_frame(
             }
         };
         let gs = state.as_deref().map(|s| &s.0.global);
+        // 0x15ed88 is the runtime language (the front end's Language list sets it, `hud_render::set_language`).
+        // `SceneRuntime::language` is captured once when this plugin is built, i.e. before the player can pick a
+        // language, so read the live value here, when the scene starts (the same moment the speech is streamed).
+        rt.language = crate::hud_render::language() as usize;
         let ctx = SceneContext {
             game_beaten: gs.is_some_and(|g| g.game_beaten != 0),
             completes: gs.map_or(0, |g| g.completes),
