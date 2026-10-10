@@ -5,7 +5,7 @@
 // target coordinates); UVs in texels. Fragment = GS texture unit + MODULATE on raw GS bytes, output
 // (Cs / 255, As / 128) for the (Cs - Cd)·As + Cd blend (ALPHA_1 0x44) set by GsPass::Hud.
 //
-// HUD_COMPOSITE: the UI material that puts the offscreen image on the main camera, nearest (pixel doubling),
+// HUD_COMPOSITE: the UI material that puts the offscreen image on the main camera, bilinear or nearest (the HUD option),
 // premultiplied display bytes -> straight linear colour for the sRGB target's alpha blend; `composite_static` the
 // static layer's (premultiplied blend).
 //
@@ -103,6 +103,27 @@ fn fragment(in: HudVarying) -> @location(0) vec4<f32> {
 
 #ifdef HUD_COMPOSITE
 @group(1) @binding(0) var hud_image: texture_2d<f32>;
+// x: 1 bilinear (the HUD option's Original: the TV showed the picture smoothed), 0 nearest (Sharp pixels).
+@group(1) @binding(1) var<uniform> scaling: vec4<f32>;
+
+// The image at `uv`: the pixel under it (nearest), or the four around it weighted (bilinear, edges clamped). Both on
+// the stored values (premultiplied display bytes), as a display scaler works on the signal.
+fn sample_layer(uv: vec2<f32>) -> vec4<f32> {
+    let size = vec2<i32>(textureDimensions(hud_image));
+    if scaling.x < 0.5 {
+        let p = clamp(vec2<i32>(floor(uv * vec2<f32>(size))), vec2<i32>(0), size - vec2<i32>(1));
+        return textureLoad(hud_image, p, 0);
+    }
+    let q = uv * vec2<f32>(size) - 0.5;
+    let p0 = vec2<i32>(floor(q));
+    let f = q - floor(q);
+    let hi = size - vec2<i32>(1);
+    let a = textureLoad(hud_image, clamp(p0, vec2<i32>(0), hi), 0);
+    let b = textureLoad(hud_image, clamp(p0 + vec2<i32>(1, 0), vec2<i32>(0), hi), 0);
+    let c = textureLoad(hud_image, clamp(p0 + vec2<i32>(0, 1), vec2<i32>(0), hi), 0);
+    let d = textureLoad(hud_image, clamp(p0 + vec2<i32>(1, 1), vec2<i32>(0), hi), 0);
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
 
 fn to_linear(c: vec3<f32>) -> vec3<f32> {
     let lo = c / 12.92;
@@ -112,11 +133,8 @@ fn to_linear(c: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn composite(in: UiVertexOutput) -> @location(0) vec4<f32> {
-    // Nearest: the game pixel under this window pixel.
     // The target's own size: 512×416, wider in 16:9 (crate::display; crate::hud_render widens the layer).
-    let size = vec2<i32>(textureDimensions(hud_image));
-    let p = clamp(vec2<i32>(floor(in.uv * vec2<f32>(size))), vec2<i32>(0), size - vec2<i32>(1));
-    let c = textureLoad(hud_image, p, 0);
+    let c = sample_layer(in.uv);
     if c.a <= 0.0 {
         discard;
     }
@@ -130,9 +148,7 @@ fn composite(in: UiVertexOutput) -> @location(0) vec4<f32> {
 @fragment
 fn composite_static(in: UiVertexOutput) -> @location(0) vec4<f32> {
     // The target's own size: 512×416, wider in 16:9 (crate::display; crate::hud_render widens the layer).
-    let size = vec2<i32>(textureDimensions(hud_image));
-    let p = clamp(vec2<i32>(floor(in.uv * vec2<f32>(size))), vec2<i32>(0), size - vec2<i32>(1));
-    let c = textureLoad(hud_image, p, 0);
+    let c = sample_layer(in.uv);
     let rgb = to_linear(clamp(c.rgb, vec3<f32>(0.0), vec3<f32>(1.0)));
     let a = clamp(c.a, 0.0, 1.0);
     if a <= 0.0 && max(rgb.r, max(rgb.g, rgb.b)) <= 0.0 {

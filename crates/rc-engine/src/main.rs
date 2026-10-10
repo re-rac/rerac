@@ -51,6 +51,7 @@ mod level_switch;
 mod media_render;
 mod draw_stats;
 mod frame_pace;
+mod graphics;
 mod menu_models;
 mod menu_render;
 mod mirror_render;
@@ -175,6 +176,7 @@ fn main() -> anyhow::Result<()> {
     // One game tick per drawn frame, at most 60 frames a second (crate::frame_pace).
     .add_plugins(frame_pace::FramePacePlugin)
     .add_plugins(no_clusters::NoClustersPlugin)
+    .add_plugins(graphics::GraphicsPlugin)
     .add_plugins(draw_stats::DrawStatsPlugin)
     // MSAA of the world cameras (default off; `RenderSettings` can change it at run time).
     .add_plugins(render_settings::RenderSettingsPlugin)

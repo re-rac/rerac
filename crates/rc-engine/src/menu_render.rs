@@ -514,6 +514,32 @@ fn target_main_camera(mut commands: Commands, nodes: Query<Entity, (With<MenuLay
 /// The anti-aliasing row's values (Off, 2x, 4x, 8x) as sample counts.
 const AA_SAMPLES: [u32; 4] = [1, 2, 4, 8];
 
+/// The graphics rows (crate::graphics) from the settings, before the menu tick: the preset row shows the preset the
+/// options are (Custom included) but ✕ offers only Original and Enhanced.
+fn sync_graphics_rows(menu: &mut PageMenu, g: &crate::graphics::GraphicsSettings) {
+    use crate::graphics::GfxOption;
+    menu.set_port_choices(Setting::Preset, 0b011);
+    menu.set_port_value(Setting::Preset, g.preset().index());
+    menu.set_port_value(Setting::Hud, g.hud.index());
+}
+
+/// The graphics rows back into the settings after the menu tick: a new preset sets every option; otherwise each row is
+/// read. A change is saved to the port settings file.
+fn read_graphics_rows(menu: &PageMenu, g: &mut crate::graphics::GraphicsSettings, before: &crate::graphics::GraphicsSettings, frame: u64) {
+    use crate::graphics::{GfxOption, Hud, Preset};
+    let preset = menu.port_value(Setting::Preset).map(Preset::from_index);
+    match preset {
+        Some(p) if p != Preset::Custom && p != before.preset() => *g = before.with_preset(p),
+        _ => {
+            if let Some(v) = menu.port_value(Setting::Hud) { g.hud = Hud::from_index(v); }
+        }
+    }
+    if *g != *before {
+        println!("menus: frame {frame}: Port Options: graphics {g:?} ({:?})", g.preset());
+        g.save();
+    }
+}
+
 fn aa_index(m: Msaa) -> u8 { AA_SAMPLES.iter().position(|&n| n == m.samples()).unwrap_or(0) as u8 }
 
 /// The anti-aliasing row's selectable values (bit k = `AA_SAMPLES[k]`) on this device.
@@ -545,7 +571,11 @@ fn menu_frame(
     mut render: Option<ResMut<RenderSettings>>,
     supported: Option<Res<SupportedMsaa>>,
     (mut vr, mut feed, mut view, mut audio): InteractParams,
-    (mut shadows, mut display): (Option<ResMut<crate::shadow_render::ShadowSettings>>, ResMut<crate::display::DisplaySettings>),
+    (mut shadows, mut display, mut gfx): (
+        Option<ResMut<crate::shadow_render::ShadowSettings>>,
+        ResMut<crate::display::DisplaySettings>,
+        ResMut<crate::graphics::GraphicsSettings>,
+    ),
     mut widgets3d: ResMut<crate::menu_models::GadgetsPreview>,
     (mut fer, movies): (ResMut<crate::saves::FrontEndRt>, Option<Res<crate::movie_render::MovieState>>),
 ) {
@@ -684,6 +714,8 @@ fn menu_frame(
                 menu.set_port_value(Setting::Resolution, display.resolution.index());
                 menu.set_port_value(Setting::Aspect, display.aspect.index());
                 menu.set_port_value(Setting::Fullscreen, display.fullscreen as u8);
+                let gfx_before = *gfx;
+                sync_graphics_rows(menu, &gfx_before);
                 // The card and the save inputs moved into the menu for its tick (crate::saves).
                 saves_in(menu, &play);
                 // 0x15172a as the widgets read it (the Helpdesk girl).
@@ -696,6 +728,7 @@ fn menu_frame(
                         s.save();
                     }
                 }
+                read_graphics_rows(menu, &mut gfx, &gfx_before, frame);
                 // The display (crate::display): the game frame's resolution and the window mode.
                 let want = (
                     menu.port_value(Setting::Aspect).map(crate::display::Aspect::from_index),

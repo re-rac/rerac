@@ -1,5 +1,7 @@
-//! **Port-only** (not in the game): the "Port Options" page, for settings the PS2 never had (anti-aliasing,
-//! switching the moby shadows off, the render resolution and fullscreen). Spec: docs/plan/menus.md "Port-only settings".
+//! **Port-only** (not in the game): the "Port Options" page, for settings the PS2 never had (the graphics options and
+//! their preset, anti-aliasing, switching the moby shadows off, the aspect, the render resolution and fullscreen).
+//! Spec: docs/plan/menus.md "Port-only settings"; the graphics rows: docs/plan/graphics_options.md (every row's first
+//! value is the game's own look).
 //!
 //! It is built entirely from the game's own machinery so it looks and behaves like the Options sub-pages:
 //! a page record whose frame-moby seqs, filler widgets and "✕ Toggle / △ Exit" hint list are those of a
@@ -70,6 +72,12 @@ pub mod text {
     pub const ASPECT_4_3: i32 = -0x151;
     pub const ASPECT_16_9: i32 = -0x152;
     pub const ASPECT_16_10: i32 = -0x153;
+    pub const PRESET: i32 = -0x160;
+    pub const ORIGINAL: i32 = -0x161;
+    pub const ENHANCED: i32 = -0x162;
+    pub const CUSTOM: i32 = -0x163;
+    pub const HUD: i32 = -0x170;
+    pub const SHARP_PIXELS: i32 = -0x171;
     /// The game's own "on" / "off" (20314 / 20315, the Subtitles / HelpDesk toggle values).
     pub const ON: i32 = 20314;
     pub const OFF: i32 = 20315;
@@ -95,6 +103,12 @@ pub mod text {
             ASPECT_4_3 => b"4:3",
             ASPECT_16_9 => b"16:9",
             ASPECT_16_10 => b"16:10",
+            PRESET => b"Preset",
+            ORIGINAL => b"Original",
+            ENHANCED => b"Enhanced",
+            CUSTOM => b"Custom",
+            HUD => b"HUD",
+            SHARP_PIXELS => b"Sharp pixels",
             _ => return None,
         })
     }
@@ -103,6 +117,9 @@ pub mod text {
 /// A port setting (the engine owns the value's meaning and its persistence).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Setting {
+    /// The graphics preset: value 0 Original, 1 Enhanced, 2 Custom (shown when the rows match no preset; ✕ skips it,
+    /// the engine restricts the row).
+    Preset,
     /// World-camera multisampling: value 0 off, 1 2x, 2 4x, 3 8x.
     Msaa,
     /// The moby shadows (docs/plan/shadows.md): value 0 on (the game's look, the default), 1 off.
@@ -114,6 +131,8 @@ pub enum Setting {
     Fullscreen,
     /// The frame's aspect: value 0 the TV's 4:3, 1 16:10, 2 16:9 (the 3D view widens; the 2D screen stays 4:3, centred).
     Aspect,
+    /// How the game's 2D screen reaches the frame: value 0 Original (scaled smoothly, as on a TV), 1 Sharp pixels.
+    Hud,
 }
 
 /// One row: the setting, its label and the ids of its values (✕ cycles through them).
@@ -126,7 +145,9 @@ pub struct Entry {
 
 /// The rows, in order.
 pub const ENTRIES: &[Entry] = &[
+    Entry { setting: Setting::Preset, label: text::PRESET, values: &[text::ORIGINAL, text::ENHANCED, text::CUSTOM] },
     Entry { setting: Setting::Msaa, label: text::ANTI_ALIASING, values: &[text::OFF, text::X2, text::X4, text::X8] },
+    Entry { setting: Setting::Hud, label: text::HUD, values: &[text::ORIGINAL, text::SHARP_PIXELS] },
     Entry { setting: Setting::Shadows, label: text::SHADOWS, values: &[text::ON, text::OFF] },
     Entry { setting: Setting::Aspect, label: text::ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9] },
     Entry { setting: Setting::Resolution, label: text::RESOLUTION, values: &[text::RES_WINDOW, text::RES_416, text::RES_720, text::RES_1080, text::RES_1440, text::RES_2160] },
@@ -161,7 +182,8 @@ fn list_mut(m: &mut PageMenu, w: u32) -> Option<&mut PortList> {
     }
 }
 
-fn row(s: Setting) -> Option<usize> { ENTRIES.iter().position(|e| e.setting == s) }
+/// The row of a setting in [`ENTRIES`].
+pub fn row_of(s: Setting) -> Option<usize> { ENTRIES.iter().position(|e| e.setting == s) }
 
 impl PageMenu {
     /// Adds the page, its widgets and the Options entry (module docs). `ov` is read for the description
@@ -211,11 +233,11 @@ impl PageMenu {
     }
 
     /// The value index of a port setting (None without the page).
-    pub fn port_value(&self, s: Setting) -> Option<u8> { list(self)?.values.get(row(s)?).copied() }
+    pub fn port_value(&self, s: Setting) -> Option<u8> { list(self)?.values.get(row_of(s)?).copied() }
 
     /// Sets a port setting's value index (from the engine's current value), clamped to the row's values.
     pub fn set_port_value(&mut self, s: Setting, v: u8) {
-        let Some(r) = row(s) else { return };
+        let Some(r) = row_of(s) else { return };
         let max = ENTRIES[r].values.len().saturating_sub(1) as u8;
         if let Some(slot) = list_mut(self, LIST_W).and_then(|p| p.values.get_mut(r)) { *slot = v.min(max); }
     }
@@ -223,7 +245,7 @@ impl PageMenu {
     /// Restricts a port setting to some of its values (bit k = value index k; ✕ skips the others). Value 0 stays
     /// selectable whatever the mask, so a row always has a choice.
     pub fn set_port_choices(&mut self, s: Setting, mask: u32) {
-        let Some(r) = row(s) else { return };
+        let Some(r) = row_of(s) else { return };
         if let Some(p) = list_mut(self, LIST_W) {
             if p.choices.len() < ENTRIES.len() { p.choices.resize(ENTRIES.len(), u32::MAX); }
             p.choices[r] = mask | 1;

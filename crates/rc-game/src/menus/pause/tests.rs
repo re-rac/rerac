@@ -363,6 +363,9 @@ fn port_page_from_the_disc() {
     assert!(m.mobys.iter().all(|&(_, back)| !back) && m.mobys[0].0 == sub.seqs[0]);
     for _ in 0..12 { m.tick(&NONE, &mut g, &env); }
     assert_eq!((m.current, m.kind), (port::PAGE, port::KIND));
+    // The cursor starts on the first row; down to the anti-aliasing row.
+    let aa = port::row_of(Setting::Msaa).unwrap();
+    for _ in 0..aa { m.tick(&press(button::DOWN), &mut g, &env); }
     m.set_port_value(Setting::Msaa, 9);
     assert_eq!(m.port_value(Setting::Msaa), Some(3), "clamped");
     m.set_port_value(Setting::Msaa, 1);
@@ -374,13 +377,13 @@ fn port_page_from_the_disc() {
     // Down moves through the rows and stops at the last one (port::ENTRIES); back up to the shadows row (default on =
     // value 0), ✕ toggles it off and back on.
     assert_eq!(m.port_value(Setting::Shadows), Some(0));
-    for _ in 1..port::ENTRIES.len() {
+    for _ in aa + 1..port::ENTRIES.len() {
         let o = m.tick(&press(button::DOWN), &mut g, &env);
         assert_eq!(o.sounds, vec![MenuSound::Cursor]);
     }
     let o = m.tick(&press(button::DOWN), &mut g, &env);
     assert!(o.sounds.is_empty(), "last row: no cursor move");
-    for _ in 2..port::ENTRIES.len() { m.tick(&press(button::UP), &mut g, &env); }
+    for _ in port::row_of(Setting::Shadows).unwrap() + 1..port::ENTRIES.len() { m.tick(&press(button::UP), &mut g, &env); }
     m.tick(&press(button::CROSS), &mut g, &env);
     assert_eq!((m.port_value(Setting::Shadows), m.port_value(Setting::Msaa)), (Some(1), Some(0)));
     m.tick(&press(button::CROSS), &mut g, &env);

@@ -31,7 +31,8 @@
 //! (the target keeps `Σ Cs·As` in RGB and the coverage in A), which is exact for HUD-on-HUD overlaps and
 //! keeps As > 0x80 (orb glow) as the GS computes it over opaque HUD pixels. The result is composited onto the
 //! main camera by a Bevy UI node ([`HudComposite`], `UiMaterial`) filling the camera's letterboxed 512×416
-//! viewport (`game_camera::letterbox`), sampled **nearest** (integer pixel doubling at 1024×832), in the UI
+//! viewport (`game_camera::letterbox`), sampled as the HUD option says (crate::graphics: Original bilinear, as the TV
+//! showed the 512×416 picture; Sharp pixels nearest), in the UI
 //! pass: after every 3D pass and before the underwater tint (`fog_state::UnderwaterTint`, scheduled after
 //! `ui_pass`), which is the game's order (the tint is in the `0x15f3f4 & 0x40` pass after the HUD's `& 0x80`).
 //! The composite mixes in linear light on the sRGB target (exact where the HUD coverage is 0 or 1; the GS
@@ -434,11 +435,14 @@ impl Material2d for HudMaterial {
     }
 }
 
-/// The UI node that puts the 512×416 HUD image on the main camera (nearest, premultiplied → straight alpha).
+/// The UI node that puts the 512×416 HUD image on the main camera (premultiplied → straight alpha), scaled as the
+/// HUD option says ([`scaling`]).
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct HudComposite {
     #[texture(0)]
     pub image: Handle<Image>,
+    #[uniform(1)]
+    pub scaling: Vec4,
 }
 
 impl UiMaterial for HudComposite {
@@ -461,6 +465,20 @@ impl UiMaterial for HudComposite {
 pub struct HudStaticComposite {
     #[texture(0)]
     pub image: Handle<Image>,
+    #[uniform(1)]
+    pub scaling: Vec4,
+}
+
+/// The composites' scaling uniform for the HUD option (crate::graphics): x = 1 bilinear (Original: the TV showed the
+/// 512×416 image smoothed), 0 nearest (Sharp pixels).
+pub fn scaling(h: crate::graphics::Hud) -> Vec4 { Vec4::new(if h == crate::graphics::Hud::Original { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0) }
+
+/// Applies a changed HUD option to both composites.
+fn apply_scaling(gfx: Res<crate::graphics::GraphicsSettings>, mut a: ResMut<Assets<HudComposite>>, mut b: ResMut<Assets<HudStaticComposite>>) {
+    if !gfx.is_changed() { return; }
+    let v = scaling(gfx.hud);
+    for (_, m) in a.iter_mut() { if m.scaling != v { m.scaling = v; } }
+    for (_, m) in b.iter_mut() { if m.scaling != v { m.scaling = v; } }
 }
 
 impl UiMaterial for HudStaticComposite {
@@ -629,7 +647,8 @@ impl Plugin for HudPlugin {
         if std::env::var("RC_HUD").is_ok_and(|v| v.trim() == "0") { return; }
         app.add_plugins((Material2dPlugin::<HudMaterial>::default(), UiMaterialPlugin::<HudComposite>::default(), UiMaterialPlugin::<HudStaticComposite>::default()))
             .add_systems(crate::level_switch::LevelStartup, setup)
-            .add_systems(Update, (target_main_camera, tick_and_build, apply_fx_cuts).chain().in_set(HudBuild));
+            .add_systems(Update, (target_main_camera, tick_and_build, apply_fx_cuts).chain().in_set(HudBuild))
+            .add_systems(PostUpdate, apply_scaling);
     }
 }
 
@@ -639,9 +658,10 @@ fn setup(
     mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<HudMaterial>>,
-    mut composites: ResMut<Assets<HudComposite>>,
-    mut static_composites: ResMut<Assets<HudStaticComposite>>,
+    (mut composites, mut static_composites): (ResMut<Assets<HudComposite>>, ResMut<Assets<HudStaticComposite>>),
+    gfx: Res<crate::graphics::GraphicsSettings>,
 ) {
+    let sc = scaling(gfx.hud);
     let Some(lh) = level.0.hud.as_ref() else {
         eprintln!("hud: no HUD data for this level");
         return;
@@ -688,7 +708,7 @@ fn setup(
     let full = || Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() };
     // On the frame's 4:3 box (crate::display: in 16:9 the 512×416 screen is centred, the world widens around it).
     // The whole frame (crate::display): the 512×416 screen in its middle, wider in 16:9 ([`HudRuntime::extra`]).
-    let hud_node = commands.spawn((full(), MaterialNode(composites.add(HudComposite { image: target.clone() })), GlobalZIndex(i32::MAX), HudCompositeNode, Name::new("hud composite"))).id();
+    let hud_node = commands.spawn((full(), MaterialNode(composites.add(HudComposite { image: target.clone(), scaling: sc })), GlobalZIndex(i32::MAX), HudCompositeNode, Name::new("hud composite"))).id();
     // The 512×416 screen's box inside it: the parent of the canvases composed with the HUD (crate::screen_canvas).
     commands.spawn((full(), crate::display::UiBoxed, HudBoxNode, ChildOf(hud_node), Name::new("hud box")));
     // The static layer: its own 512×416 target, three meshes in pass order (Transparent2d sorts by z), a node over
@@ -718,7 +738,7 @@ fn setup(
         ));
         m
     });
-    commands.spawn((full(), MaterialNode(static_composites.add(HudStaticComposite { image: static_target.clone() })), ZIndex(1), ChildOf(hud_node), Name::new("hud static composite")));
+    commands.spawn((full(), MaterialNode(static_composites.add(HudStaticComposite { image: static_target.clone(), scaling: sc })), ZIndex(1), ChildOf(hud_node), Name::new("hud static composite")));
 
     let assets = HudAssets::new(&lh.hud, lh.glyphs, lh.messages.clone());
     let frame_sizes = assets.frame_sizes.clone();
