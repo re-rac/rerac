@@ -114,7 +114,7 @@ fn order(mut phases: ResMut<ViewSortedRenderPhases<Transparent3d>>, set: Res<Tag
     let key = |k: &(Entity, MainEntity)| set.0.get(&k.1).map_or((1, WorldDrawOrder::NONE), |o| (0, *o));
     for phase in phases.values_mut() {
         if !phase.items.keys().any(|k| set.0.contains_key(&k.1)) { continue; }
-        phase.items.sort_by(|a, _, b, _| key(a).cmp(&key(b)));
+        phase.items.sort_by_cached_key(|k, _| key(k));
     }
 }
 
@@ -127,12 +127,11 @@ fn split(view: ViewQuery<&ExtractedView>, mut phases: ResMut<ViewSortedRenderPha
     let ev = view.into_inner();
     if set.0.is_empty() { return; }
     let Some(phase) = phases.get_mut(&ev.retained_view_entity) else { return };
-    let keys: Vec<_> = phase.items.keys().filter(|k| set.0.contains_key(&k.1)).copied().collect();
-    if keys.is_empty() { return; }
-    let mut out = SortedRenderPhase::<Transparent3d>::default();
-    for k in keys {
-        if let Some(item) = phase.items.shift_remove(&k) { out.items.insert(k, item); }
-    }
+    // [`order`] put them first: one split instead of a removal (which shifts the rest) per item.
+    let n = phase.items.keys().take_while(|k| set.0.contains_key(&k.1)).count();
+    if n == 0 { return; }
+    let rest = phase.items.split_off(n);
+    let out = SortedRenderPhase::<Transparent3d> { items: std::mem::replace(&mut phase.items, rest), transient_items: Vec::new() };
     stash.0.lock().unwrap_or_else(|e| e.into_inner()).insert(view_entity, out);
 }
 
