@@ -340,7 +340,7 @@ pub fn spawn_tfrags_on(
     let mut n_blend = 0usize;
     let mut n_vertices = 0;
     let n_meshes = batches.len();
-    for ((tex_index, skey), b) in batches {
+    for (bi, ((tex_index, skey), b)) in batches.into_iter().enumerate() {
         let (image, texel_alpha, mxl) = image_cache
             .entry((tex_index, skey))
             .or_insert_with(|| match usize::try_from(tex_index).ok().and_then(|i| level.tfrag_lod.mips.get(i)).and_then(|m| m.as_ref()) {
@@ -405,6 +405,7 @@ pub fn spawn_tfrags_on(
                 })),
                 // Morphing moves vertices toward parents that can lie outside this batch's bounds.
                 NoFrustumCulling,
+                crate::pre_shadow::WorldDrawOrder([crate::pre_shadow::WorldDrawOrder::TFRAG, bi as u32, 0, 0, 0]),
                 Name::new(format!("tfrag tex {tex_index} {pass:?}")),
             ));
             if let Some(l) = layer { e.insert(l.clone()); }

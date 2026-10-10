@@ -52,6 +52,7 @@
 
 use crate::gs_state::{self, AlphaRange, GsPass};
 use crate::level_load::LoadedLevel;
+use crate::pre_shadow::WorldDrawOrder;
 use crate::tfrag_render::game_to_bevy;
 use anyhow::{Context, Result};
 use bevy::asset::RenderAssetUsages;
@@ -623,7 +624,7 @@ fn spawn_shrubs_on(
         // The lean moves the top by up to ~0.1 of the height outside the mesh AABB: no Bevy frustum test.
         let swayed = mode != 0 && sway.enabled;
         if swayed && exact { st.sway_sheared += 1; }
-        for part in &parts[&ci] {
+        for (pi, part) in parts[&ci].iter().enumerate() {
             st.triangles += part.triangles;
             let (image, texel_alpha, mxl) = image_for(part.texture, part.skey, images);
             let lists = [
@@ -652,6 +653,7 @@ fn spawn_shrubs_on(
                         transform,
                         MeshTag(ii as u32),
                         ShrubCull { variant: list, ..culls[ii] },
+                        WorldDrawOrder([WorldDrawOrder::SHRUB, list as u32, ci as u32, pi as u32, ii as u32]),
                         Visibility::Hidden,
                         Name::new(format!("shrub {ii} class {} tex {} list {list} {pass:?}", inst.o_class, part.texture)),
                     ));

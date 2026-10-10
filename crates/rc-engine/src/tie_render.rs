@@ -37,6 +37,7 @@
 
 use crate::gs_state::{self, AlphaRange, GsPass};
 use crate::level_load::LoadedLevel;
+use crate::pre_shadow::WorldDrawOrder;
 use crate::tfrag_render::game_to_bevy;
 use anyhow::{Context, Result};
 use bevy::asset::RenderAssetUsages;
@@ -481,7 +482,7 @@ fn spawn_ties_on(
         if !exact { st.sheared += 1; }
         let colors = &ties.colors[ii];
         let mut spawned = Vec::new();
-        for part in &parts[&ci] {
+        for (pi, part) in parts[&ci].iter().enumerate() {
             for l in 0..3 { st.triangles[l] += part.triangles[l]; }
             // Af of every slot the part reads (fat-vertex morph colours are blends of two of them).
             let vertex_alpha = AlphaRange::of((0..SLOTS).filter(|&s| part.slots & (1 << s) != 0).map(|s| colors[s][3]));
@@ -506,6 +507,7 @@ fn spawn_ties_on(
                     MeshMaterial3d(mat),
                     transform,
                     MeshTag(ii as u32),
+                    WorldDrawOrder([WorldDrawOrder::TIE, ci as u32, pi as u32, ii as u32, 0]),
                     Name::new(format!("tie {ii} class {} tex {} {pass:?}", inst.o_class, part.texture)),
                 ));
                 if !exact { e.insert(NoFrustumCulling); }

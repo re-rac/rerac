@@ -31,7 +31,8 @@
 //! attribute), and the vertex shader (`shrub_billboard.wgsl`) evaluates the list rule, alpha and corners every
 //! frame from a static storage record. Three draws per class (crate::gs_state): pass 1 texels with As ≥ 0x60
 //! (`OpaqueTested`, Z write, AlphaMask3d phase), pass 1 texels below (`ColorOnlyLowAlpha`) and pass 2
-//! (`BlendNoZ`), the last two in Transparent3d ordered with `depth_bias`; all SrcAlpha blended with
+//! (`BlendNoZ`), the last two drawn before the shadows in the game's order (crate::pre_shadow; `depth_bias` orders
+//! them where they stay in Transparent3d); all SrcAlpha blended with
 //! As = At·alpha >> 7, as the GS ALPHA_1 (Cs − Cd)·As + Cd. `RC_GS_ALPHA=0` keeps all three in Transparent3d.
 //! Not modelled: the guard-band test (an instance crossing the 4× guard band goes to the clip program 912339
 //! as a mesh and is never a billboard), the 0x300-entry list limit, and ordering against other translucent draws.
@@ -183,7 +184,7 @@ pub(crate) fn spawn_billboards(
     };
 
     // Pass 1: records (one storage buffer for every class), meshes and textures.
-    struct ClassDraw { o_class: i32, mesh: Handle<Mesh>, image: Handle<Image>, mxl: u32, k: f32, centroid: Vec3 }
+    struct ClassDraw { class: usize, o_class: i32, mesh: Handle<Mesh>, image: Handle<Image>, mxl: u32, k: f32, centroid: Vec3 }
     let mut bytes = Vec::new();
     let mut n_records = 0u32;
     let mut draws = Vec::new();
@@ -224,7 +225,7 @@ pub(crate) fn spawn_billboards(
         );
         let image = images.add(mip_image(levels, sampler.clone()).0);
         let mxl = regs.mxl().min(levels.len() as u32 - 1);
-        draws.push(ClassDraw { o_class: c.o_class, mesh, image, mxl, k: regs.lod_k(), centroid: centroid / members.len() as f32 });
+        draws.push(ClassDraw { class: ci, o_class: c.o_class, mesh, image, mxl, k: regs.lod_k(), centroid: centroid / members.len() as f32 });
     }
     if n_records == 0 {
         println!("shrub billboards: none on this level");
@@ -243,6 +244,8 @@ pub(crate) fn spawn_billboards(
                 // Only the Transparent3d sort reads it (the shader places every corner itself).
                 Transform::from_translation(d.centroid),
                 NoFrustumCulling,
+                // Pass 1 (variants 0 and 1) for every class, then pass 2 (crate::pre_shadow, "Order").
+                crate::pre_shadow::WorldDrawOrder([crate::pre_shadow::WorldDrawOrder::BILLBOARD, if variant == 2 { 2 } else { 1 }, d.class as u32, 0, 0]),
                 Name::new(format!("shrub billboard class {} pass {}", d.o_class, variant)),
             ));
             if let Some(l) = layer { e.insert(l.clone()); }

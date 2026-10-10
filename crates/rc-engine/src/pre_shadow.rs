@@ -8,24 +8,52 @@
 //!
 //! Which entities: [`BeforeShadows`], added when a world entity first gets a material whose GS pass is one of the
 //! two ([`tag`], one system per world material type).
+//!
+//! Order: the game's, not Bevy's back-to-front sort ([`order`], between Bevy's sort and its batching). The GS frame
+//! runs sky → tfrag → tie → shrub → billboards (docs/plan/shadows.md §3.1), and inside each:
+//! * tfrags: the port's texture batches in their build order (the game draws per tfrag; a batch merges many);
+//! * ties: `TieProc` (boot 0x235be8) per class, then per packet across the class's visible instances in list
+//!   order: the port's (class, part, instance);
+//! * shrubs: `ShrubProc` (boot 0x228be8) draws the opaque list class by class, then sends the fading test block
+//!   and draws the fading list class by class: (list, class, part, instance); the game sends all of an instance's
+//!   packets together, the port each part across the class's instances (as in the opaque phase);
+//! * billboards: pass 1 per class in class order, then pass 2 per class.
+//!
+//! Every renderer puts a [`WorldDrawOrder`] on its entities. Besides following the game, the order puts each
+//! class part's instances next to each other, so Bevy draws them as one instanced draw instead of one draw per
+//! instance interleaved by distance (and resets the pipeline only between groups).
 
 use crate::gs_state::GsPass;
 use bevy::core_pipeline::core_3d::{main_opaque_pass_3d, main_transparent_pass_3d, Transparent3d};
 use bevy::core_pipeline::{Core3d, Core3dSystems};
-use bevy::platform::collections::{HashMap, HashSet};
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::camera::ExtractedCamera;
-use bevy::render::render_phase::{SortedRenderPhase, ViewSortedRenderPhases};
+use bevy::render::render_phase::{sort_phase_system, SortedRenderPhase, ViewSortedRenderPhases};
 use bevy::render::render_resource::{RenderPassDescriptor, StoreOp};
 use bevy::render::renderer::{RenderContext, ViewQuery};
 use bevy::render::sync_world::MainEntity;
 use bevy::render::view::{ExtractedView, ViewDepthTexture, ViewTarget};
-use bevy::render::{Extract, ExtractSchedule, RenderApp};
+use bevy::render::{Extract, ExtractSchedule, Render, RenderApp, RenderSystems};
 use std::sync::Mutex;
 
 /// A world entity drawn before the shadow pass (module doc).
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct BeforeShadows;
+
+/// A world entity's place in the game's draw order (module doc, "Order"), compared lexicographically:
+/// `[renderer, …]` with the renderer ranks below.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WorldDrawOrder(pub [u32; 5]);
+
+impl WorldDrawOrder {
+    pub const TFRAG: u32 = 0;
+    pub const TIE: u32 = 1;
+    pub const SHRUB: u32 = 2;
+    pub const BILLBOARD: u32 = 3;
+    /// An entity without an order: after every ordered one.
+    const NONE: Self = Self([u32::MAX; 5]);
+}
 
 /// Tags the new entities of material `M` whose GS pass writes colour only.
 pub fn tag<M: Material>(mut commands: Commands, q: Query<(Entity, &MeshMaterial3d<M>), Added<MeshMaterial3d<M>>>, mats: Res<Assets<M>>)
@@ -52,7 +80,12 @@ impl Plugin for PreShadowPlugin {
             ),
         );
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
-        render_app.init_resource::<Tagged>().init_resource::<Stash>().add_systems(ExtractSchedule, extract).add_systems(
+        render_app
+            .init_resource::<Tagged>()
+            .init_resource::<Stash>()
+            .add_systems(ExtractSchedule, extract)
+            .add_systems(Render, order.in_set(RenderSystems::PhaseSort).after(sort_phase_system::<Transparent3d>))
+            .add_systems(
             Core3d,
             (
                 (split, draw).chain().after(main_opaque_pass_3d).before(crate::shadow_render::ShadowPassSet),
@@ -63,13 +96,24 @@ impl Plugin for PreShadowPlugin {
     }
 }
 
-/// The main-world entities tagged this frame.
+/// The main-world entities tagged this frame, with their draw order.
 #[derive(Resource, Default)]
-struct Tagged(HashSet<MainEntity>);
+struct Tagged(HashMap<MainEntity, WorldDrawOrder>);
 
-fn extract(mut set: ResMut<Tagged>, q: Extract<Query<Entity, With<BeforeShadows>>>) {
+fn extract(mut set: ResMut<Tagged>, q: Extract<Query<(Entity, Option<&WorldDrawOrder>), With<BeforeShadows>>>) {
     set.0.clear();
-    set.0.extend(q.iter().map(MainEntity::from));
+    set.0.extend(q.iter().map(|(e, o)| (MainEntity::from(e), o.copied().unwrap_or(WorldDrawOrder::NONE))));
+}
+
+/// Puts the tagged items first, in the game's order (module doc, "Order"); the others keep Bevy's order (a stable
+/// sort). Before batching, so consecutive items of one mesh and material become one instanced draw.
+fn order(mut phases: ResMut<ViewSortedRenderPhases<Transparent3d>>, set: Res<Tagged>) {
+    if set.0.is_empty() { return; }
+    let key = |k: &(Entity, MainEntity)| set.0.get(&k.1).map_or((1, WorldDrawOrder::NONE), |o| (0, *o));
+    for phase in phases.values_mut() {
+        if !phase.items.keys().any(|k| set.0.contains_key(&k.1)) { continue; }
+        phase.items.sort_by(|a, _, b, _| key(a).cmp(&key(b)));
+    }
 }
 
 /// Per view: the items taken out of its `Transparent3d` phase this frame.
@@ -81,7 +125,7 @@ fn split(view: ViewQuery<&ExtractedView>, mut phases: ResMut<ViewSortedRenderPha
     let ev = view.into_inner();
     if set.0.is_empty() { return; }
     let Some(phase) = phases.get_mut(&ev.retained_view_entity) else { return };
-    let keys: Vec<_> = phase.items.keys().filter(|k| set.0.contains(&k.1)).copied().collect();
+    let keys: Vec<_> = phase.items.keys().filter(|k| set.0.contains_key(&k.1)).copied().collect();
     if keys.is_empty() { return; }
     let mut out = SortedRenderPhase::<Transparent3d>::default();
     for k in keys {
