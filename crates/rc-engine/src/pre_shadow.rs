@@ -100,7 +100,9 @@ impl Plugin for PreShadowPlugin {
 #[derive(Resource, Default)]
 struct Tagged(HashMap<MainEntity, WorldDrawOrder>);
 
-fn extract(mut set: ResMut<Tagged>, q: Extract<Query<(Entity, Option<&WorldDrawOrder>), With<BeforeShadows>>>) {
+type TaggedQuery<'w, 's> = Query<'w, 's, (Entity, Option<&'static WorldDrawOrder>), With<BeforeShadows>>;
+
+fn extract(mut set: ResMut<Tagged>, q: Extract<TaggedQuery>) {
     set.0.clear();
     set.0.extend(q.iter().map(|(e, o)| (MainEntity::from(e), o.copied().unwrap_or(WorldDrawOrder::NONE))));
 }
