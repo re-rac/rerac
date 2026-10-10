@@ -81,6 +81,10 @@ pub mod text {
     pub const TEXTURES: i32 = -0x180;
     pub const SMOOTH: i32 = -0x181;
     pub const SHARP: i32 = -0x182;
+    pub const DETAIL: i32 = -0x190;
+    pub const FAR: i32 = -0x191;
+    pub const FARTHER: i32 = -0x192;
+    pub const MAXIMUM: i32 = -0x193;
     /// The game's own "on" / "off" (20314 / 20315, the Subtitles / HelpDesk toggle values).
     pub const ON: i32 = 20314;
     pub const OFF: i32 = 20315;
@@ -115,6 +119,10 @@ pub mod text {
             TEXTURES => b"Texture filtering",
             SMOOTH => b"Smooth",
             SHARP => b"Sharp",
+            DETAIL => b"Detail distance",
+            FAR => b"Far",
+            FARTHER => b"Farther",
+            MAXIMUM => b"Maximum",
             _ => return None,
         })
     }
@@ -141,6 +149,9 @@ pub enum Setting {
     Hud,
     /// How world textures pick their detail level: value 0 Original (the PS2's rule), 1 Smooth, 2 Sharp.
     Textures,
+    /// How far away models keep their full detail: value 0 Original (the game's distances), 1 Far (×2), 2 Farther (×4),
+    /// 3 Maximum (always).
+    Detail,
 }
 
 /// One row: the setting, its label and the ids of its values (✕ cycles through them).
@@ -155,6 +166,7 @@ pub struct Entry {
 pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::Preset, label: text::PRESET, values: &[text::ORIGINAL, text::ENHANCED, text::CUSTOM] },
     Entry { setting: Setting::Msaa, label: text::ANTI_ALIASING, values: &[text::OFF, text::X2, text::X4, text::X8] },
+    Entry { setting: Setting::Detail, label: text::DETAIL, values: &[text::ORIGINAL, text::FAR, text::FARTHER, text::MAXIMUM] },
     Entry { setting: Setting::Textures, label: text::TEXTURES, values: &[text::ORIGINAL, text::SMOOTH, text::SHARP] },
     Entry { setting: Setting::Hud, label: text::HUD, values: &[text::ORIGINAL, text::SHARP_PIXELS] },
     Entry { setting: Setting::Shadows, label: text::SHADOWS, values: &[text::ON, text::OFF] },

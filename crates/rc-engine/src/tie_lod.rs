@@ -226,15 +226,17 @@ impl TieLodState {
 /// `RC_TIE_LOD_TINT=1`.
 pub fn tint_enabled() -> bool { std::env::var("RC_TIE_LOD_TINT").is_ok_and(|v| v.trim() == "1") }
 
-/// One instance's record: (LOD | F << 8, k, w, z).
-fn record(inp: &TieLodInput, eye: Vec3, rows: [Vec3; 3], fog: &LevelFog, force_lod0: bool, tans: (f32, f32)) -> ([u32; 4], usize) {
+/// One instance's record: (LOD | F << 8, k, w, z). `scale`: the Detail distance option on the class LOD distances
+/// (crate::graphics; 1 = the game's, the draw distance is never scaled).
+fn record(inp: &TieLodInput, eye: Vec3, rows: [Vec3; 3], fog: &LevelFog, force_lod0: bool, tans: (f32, f32), scale: f32) -> ([u32; 4], usize) {
     let [x, y, z, r] = inp.sphere;
     let d = Vec3::new(x, y, z) - eye;
     let p = Vec3::new(rows[0].dot(d), rows[1].dot(d), rows[2].dot(d));
     // The cap 0x160fe0 (720, already in `inp.dist`): 144 in the Visibomb's view (crate::visibomb_view::SHORT_FAR).
     let dist = if crate::visibomb_view::SHORT_FAR.load(std::sync::atomic::Ordering::Relaxed) { inp.dist.min(crate::visibomb_view::SHORT_TIE_CAP) } else { inp.dist };
     let Some(depth) = tie_cull(p, r, dist, tans) else { return ([LOD_CULLED, 0, 0, 0], 0) };
-    let pick = if force_lod0 { TieLodPick::fixed(0) } else { tie_lod(depth, inp.dists) };
+    let dists = if scale == 1.0 { inp.dists } else { inp.dists.map(|d| d * scale) };
+    let pick = if force_lod0 { TieLodPick::fixed(0) } else { tie_lod(depth, dists) };
     let bin = match (pick.lod, pick.w != 0.0) { (0, false) => 1, (0, true) => 2, (1, _) => 3, _ => 4 };
     ([pick.lod | fog_value(depth, fog) << 8, pick.k.to_bits(), pick.w.to_bits(), pick.z.to_bits()], bin)
 }
@@ -244,10 +246,11 @@ pub fn update_tie_lods(
     occl: Option<ResMut<crate::occlusion::OcclusionFrame>>,
     mut buffers: ResMut<Assets<ShaderBuffer>>,
     cams: Query<(&Transform, Option<&Projection>), With<Camera3d>>,
-    time: Res<Time>,
+    (time, gfx): (Res<Time>, Res<crate::graphics::GraphicsSettings>),
     mut last_print: Local<f32>,
     mut vis: Query<&mut Visibility>,
 ) {
+    let scale = gfx.detail.lod_scale();
     let (Some(mut state), Some((cam, proj))) = (state, cams.iter().next()) else { return };
     let tans = game_camera::projection_tans(proj);
     let (eye, [fwd, left, up]) = (game_camera::game_eye(cam), game_camera::game_rows(cam));
@@ -263,7 +266,7 @@ pub fn update_tie_lods(
             words.extend_from_slice(&[LOD_CULLED, 0, 0, 0]);
             continue;
         }
-        let (rec, bin) = record(inp, eye, rows, &state.fog, state.force_lod0, tans);
+        let (rec, bin) = record(inp, eye, rows, &state.fog, state.force_lod0, tans, scale);
         hist[bin + 1] += 1;
         words.extend_from_slice(&rec);
     }

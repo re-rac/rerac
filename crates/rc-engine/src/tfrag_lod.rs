@@ -78,15 +78,16 @@ impl TfragLodUniform {
     pub fn new(block: &TfragBlockHeader, fog: &LevelFog) -> Self {
         let tint = std::env::var("RC_LOD_TINT").is_ok_and(|v| v.trim() == "1");
         let mut u = TfragLodUniform { misc: Vec4::new(0.0, if tint { 1.0 } else { 0.0 }, NEAR, 0.0), ..default() };
-        u.set_fog(block, fog);
+        u.set_fog(block, fog, 1.0);
         u
     }
 
     /// `UpdateViewContext` → `SetTfragDists` for the current view-context fog: rewrites qw666..669 and the
     /// w slope, keeps the tint flag and the batch's `tex`. The game reruns this every frame (`UpdateFog` at
-    /// the end of each frame render), so the LOD distances follow the fog zones and the underwater fog.
-    pub fn set_fog(&mut self, block: &TfragBlockHeader, fog: &LevelFog) {
-        let [d0, d1, d2] = block.lod_distances();
+    /// the end of each frame render), so the LOD distances follow the fog zones and the underwater fog. `scale`: the
+    /// Detail distance option (crate::graphics; 1 = the game's distances).
+    pub fn set_fog(&mut self, block: &TfragBlockHeader, fog: &LevelFog, scale: f32) {
+        let [d0, d1, d2] = block.lod_distances().map(|d| d * scale);
         let cf20 = (fog.far_intensity - fog.near_intensity) / ((fog.far_dist - fog.near_dist) * 0.0009765625);
         let (f0, f1, f2) = (d0 * cf20, d1 * cf20, d2 * cf20);
         let a = 1.0 / (f0 - f1);
@@ -104,14 +105,16 @@ impl TfragLodUniform {
 fn update_lod_constants(
     fog: Res<crate::game_camera::GameFog>,
     state: Option<Res<TfragLodState>>,
+    gfx: Res<crate::graphics::GraphicsSettings>,
     mut materials: ResMut<Assets<crate::tfrag_render::TfragMaterial>>,
 ) {
     let Some(state) = state else { return };
+    let scale = gfx.detail.lod_scale();
     let stale: Vec<_> = materials
         .iter()
         .filter(|(_, m)| {
             let mut want = m.lod;
-            want.set_fog(&state.block, &fog.fog);
+            want.set_fog(&state.block, &fog.fog, scale);
             want != m.lod
         })
         .map(|(id, _)| id)
@@ -119,7 +122,7 @@ fn update_lod_constants(
     for id in stale {
         if let Some(mut m) = materials.get_mut(id) {
             let mut lod = m.lod;
-            lod.set_fog(&state.block, &fog.fog);
+            lod.set_fog(&state.block, &fog.fog, scale);
             m.lod = lod;
         }
     }
@@ -272,10 +275,13 @@ fn update_tfrag_modes(
     occl: Option<ResMut<crate::occlusion::OcclusionFrame>>,
     mut buffers: ResMut<Assets<ShaderBuffer>>,
     cams: Query<(&Transform, Option<&Projection>), With<Camera3d>>,
-    time: Res<Time>,
+    (time, gfx): (Res<Time>, Res<crate::graphics::GraphicsSettings>),
     mut last_print: Local<f32>,
 ) {
     let (Some(mut state), Some((cam, proj))) = (state, cams.iter().next()) else { return };
+    // The Detail distance option (crate::graphics) scales the thresholds `trunc(D·1024)`; ×1 is the game's exactly.
+    let scale = gfx.detail.lod_scale();
+    let thresholds = if scale == 1.0 { state.thresholds } else { state.block.lod_distances().map(|d| (d * scale * 1024.0) as i32) };
     // `UpdateViewContext`'s planes (0x18cdb0 / 0x18cee0) from the view's tangent: a flown ship widens it.
     let tans = game_camera::projection_tans(proj);
     let (eye, [fwd, left, up]) = (game_camera::game_eye(cam), game_camera::game_rows(cam));
@@ -296,7 +302,7 @@ fn update_tfrag_modes(
                 hist[0] += 1;
                 return MODE_CULLED;
             }
-            let mut m = tfrag_proc(info, t, cam_raw, rows, state.thresholds, tans);
+            let mut m = tfrag_proc(info, t, cam_raw, rows, thresholds, tans);
             if state.force_lod0 && m != MODE_CULLED { m = 0x14; }
             hist[match m { 0 => 0, 2 => 1, 6 => 2, 8 => 3, 0xa => 4, 0xe => 5, 0x10 => 6, _ => 7 }] += 1;
             m

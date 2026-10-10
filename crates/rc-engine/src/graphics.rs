@@ -80,6 +80,19 @@ pub enum Detail {
     Maximum,
 }
 
+impl Detail {
+    /// The factor on the game's LOD distances. Maximum: far past every draw distance (the largest is 720 units), finite
+    /// so the morph ramps stay defined.
+    pub fn lod_scale(self) -> f32 {
+        match self {
+            Detail::Original => 1.0,
+            Detail::Far => 2.0,
+            Detail::Farther => 4.0,
+            Detail::Maximum => 1000.0,
+        }
+    }
+}
+
 impl GfxOption for Detail {
     const ALL: &'static [Self] = &[Detail::Original, Detail::Far, Detail::Farther, Detail::Maximum];
     const KEY: &'static str = "detail";
@@ -172,8 +185,14 @@ impl Plugin for GraphicsPlugin {
     fn build(&self, app: &mut App) {
         let s = GraphicsSettings::startup();
         if s != GraphicsSettings::default() { println!("graphics: {s:?} ({:?})", s.preset()); }
-        app.insert_resource(s);
+        app.insert_resource(s).add_systems(PreUpdate, apply_detail);
     }
+}
+
+/// The Detail distance factor into the moby LOD pick (crate::moby_lod reads it from a static; tfrag, tie and shrub
+/// systems and the shaders read the resource or the shared fog buffer).
+fn apply_detail(g: Res<GraphicsSettings>) {
+    if g.is_changed() { crate::moby_lod::set_lod_scale(g.detail.lod_scale()); }
 }
 
 #[cfg(test)]

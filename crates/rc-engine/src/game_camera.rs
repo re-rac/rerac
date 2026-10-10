@@ -76,18 +76,19 @@ static FOG_BUFFER: std::sync::OnceLock<Handle<bevy::render::storage::ShaderBuffe
 /// The shared fog buffer ([`FOG_BUFFER`]) for a new material.
 pub fn fog_buffer() -> Handle<bevy::render::storage::ShaderBuffer> { FOG_BUFFER.get().cloned().expect("GameCameraPlugin creates the fog buffer") }
 
-/// The fog (colour, params), then the texture option for the world shaders' `sample_world` (`tex_mode.x`: 0 Original, 1 Smooth,
-/// 2 Sharp; crate::graphics) — every world material binds this buffer.
-fn fog_bytes(f: &TfragFog, textures: crate::graphics::Textures) -> Vec<u8> {
+/// The fog (colour, params), then the graphics options the world shaders read (crate::graphics; every world material
+/// binds this buffer): `tex_mode.x` the texture option for `sample_world` (0 Original, 1 Smooth, 2 Sharp), `.y` the
+/// Detail distance factor (1 = the game's; the shrub and billboard fade distance).
+fn fog_bytes(f: &TfragFog, g: &crate::graphics::GraphicsSettings) -> Vec<u8> {
     use crate::graphics::GfxOption;
-    let filter = [textures.index() as f32, 0.0, 0.0, 0.0];
+    let filter = [g.textures.index() as f32, g.detail.lod_scale(), 0.0, 0.0];
     f.color.to_array().iter().chain(&f.params.to_array()).chain(&filter).flat_map(|v| v.to_le_bytes()).collect()
 }
 
 /// Rewrites the shared fog buffer when the frame's fog or the texture option changes.
 fn upload_fog(fog: Res<GameFog>, gfx: Res<crate::graphics::GraphicsSettings>, mut buffers: ResMut<Assets<bevy::render::storage::ShaderBuffer>>) {
     if !fog.is_changed() && !gfx.is_changed() { return; }
-    if let Some(h) = FOG_BUFFER.get() { crate::asset_write::set_buffer(&mut buffers, h, &fog_bytes(&fog.uniform, gfx.textures)); }
+    if let Some(h) = FOG_BUFFER.get() { crate::asset_write::set_buffer(&mut buffers, h, &fog_bytes(&fog.uniform, &gfx)); }
 }
 
 impl Plugin for GameCameraPlugin {
@@ -99,7 +100,7 @@ impl Plugin for GameCameraPlugin {
             if std::env::var("RC_FOG").is_ok_and(|v| v.trim() == "0") { " (disabled by RC_FOG=0)" } else { "" }
         );
         let fog = GameFog::new(self.fog, rc_game::fog_zones::PARTICLE_FAR12);
-        let buf = bevy::render::storage::ShaderBuffer::new(&fog_bytes(&fog.uniform, crate::graphics::Textures::Original), bevy::asset::RenderAssetUsages::default());
+        let buf = bevy::render::storage::ShaderBuffer::new(&fog_bytes(&fog.uniform, &crate::graphics::GraphicsSettings::default()), bevy::asset::RenderAssetUsages::default());
         let h = app.world_mut().resource_mut::<Assets<bevy::render::storage::ShaderBuffer>>().add(buf);
         let _ = FOG_BUFFER.set(h);
         app.insert_resource(fog).add_systems(Update, print_game_camera).add_systems(PostUpdate, upload_fog.before(bevy::asset::AssetEventSystems));

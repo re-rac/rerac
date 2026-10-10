@@ -235,18 +235,30 @@ struct ShrubCull {
 /// World units of slack for the CPU test (camera `Transform` of the current `Update`, not the rendered one).
 const CULL_MARGIN: f32 = 2.0;
 
+/// The billboard fade distance F under the Detail distance option (crate::graphics, `scale`; 1 = the game's, F kept):
+/// F' = F × scale, or −1 (no billboard: the mesh fades over D's last 8 units) when F' comes within 24 units of D.
+/// shrub.wgsl and shrub_billboard.wgsl apply the same rule.
+pub fn detail_fade(f: f32, d: f32, scale: f32) -> f32 {
+    if f <= 0.0 || scale <= 1.0 { return f; }
+    let fs = f * scale;
+    if fs >= d - 24.0 { -1.0 } else { fs }
+}
+
 fn cull_system(
     cams: Query<&Transform, (With<Camera3d>, Without<crate::sky_render::SkyCamera>)>,
     mut q: Query<(&ShrubCull, &mut Visibility)>,
+    gfx: Res<crate::graphics::GraphicsSettings>,
 ) {
     let Some(cam) = cams.iter().next() else { return };
     let (eye, fwd) = (cam.translation, *cam.forward());
+    let scale = gfx.detail.lod_scale();
     for (c, mut vis) in &mut q {
         let z = (c.centre - eye).dot(fwd);
         let mut show = z <= c.d + CULL_MARGIN;
-        if c.f >= 0.0 {
-            show &= z < c.f + 8.0 + CULL_MARGIN;
-            if c.variant == 2 { show &= z > c.f - CULL_MARGIN; }
+        let f = detail_fade(c.f, c.d, scale);
+        if f >= 0.0 {
+            show &= z < f + 8.0 + CULL_MARGIN;
+            if c.variant == 2 { show &= z > f - CULL_MARGIN; }
         } else if c.variant == 2 {
             show &= z > c.d - 8.0 - CULL_MARGIN;
         }

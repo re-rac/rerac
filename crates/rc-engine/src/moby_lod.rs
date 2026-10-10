@@ -149,10 +149,23 @@ pub fn moby_proc_view(v: [f32; 3], r: f32, inp: &ProcInput, tans: (f32, f32)) ->
         return Err(Cull::Frustum);
     }
     let depth = ftoi0(v[2] - r);
-    let low_lod = depth.clamp(0, LOD_DEPTH_MAX) - ((inp.lod_trans as i32) << 10) > 0;
+    let low_lod = low_lod(depth, inp.lod_trans);
     let fade = ((ftoi0(far) as u32) >> 7).min(0x80);
     let alpha = ((fade * inp.alpha as u32) >> 7) as u8;
     Ok(ProcPick { low_lod, alpha, fading: fade < 0x80, shine: shine_alpha(depth, inp.shine_distance) })
+}
+
+/// The Detail distance option's factor on the LOD switch depth (crate::graphics; f32 bits, 1.0 = the game's): drawing
+/// only — the port evaluates every joint whatever LOD is drawn, and no game code reads the pick.
+static LOD_SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
+
+pub fn set_lod_scale(s: f32) { LOD_SCALE.store(s.to_bits(), std::sync::atomic::Ordering::Relaxed); }
+
+/// The LOD pick: low past `lod_trans << 10` (× the Detail factor) of the clamped depth.
+fn low_lod(depth: i32, lod_trans: u8) -> bool {
+    let d = depth.clamp(0, LOD_DEPTH_MAX);
+    let s = f32::from_bits(LOD_SCALE.load(std::sync::atomic::Ordering::Relaxed));
+    if s == 1.0 { d - ((lod_trans as i32) << 10) > 0 } else { d as f32 > ((lod_trans as i32) << 10) as f32 * s }
 }
 
 /// `ftoi0(v.z − r)`: the depth the LOD and shine tests use.

@@ -522,18 +522,20 @@ fn sync_graphics_rows(menu: &mut PageMenu, g: &crate::graphics::GraphicsSettings
     menu.set_port_value(Setting::Preset, g.preset().index());
     menu.set_port_value(Setting::Hud, g.hud.index());
     menu.set_port_value(Setting::Textures, g.textures.index());
+    menu.set_port_value(Setting::Detail, g.detail.index());
 }
 
 /// The graphics rows back into the settings after the menu tick: a new preset sets every option; otherwise each row is
 /// read. A change is saved to the port settings file.
 fn read_graphics_rows(menu: &PageMenu, g: &mut crate::graphics::GraphicsSettings, before: &crate::graphics::GraphicsSettings, frame: u64) {
-    use crate::graphics::{GfxOption, Hud, Preset, Textures};
+    use crate::graphics::{Detail, GfxOption, Hud, Preset, Textures};
     let preset = menu.port_value(Setting::Preset).map(Preset::from_index);
     match preset {
         Some(p) if p != Preset::Custom && p != before.preset() => *g = before.with_preset(p),
         _ => {
             if let Some(v) = menu.port_value(Setting::Hud) { g.hud = Hud::from_index(v); }
             if let Some(v) = menu.port_value(Setting::Textures) { g.textures = Textures::from_index(v); }
+            if let Some(v) = menu.port_value(Setting::Detail) { g.detail = Detail::from_index(v); }
         }
     }
     if *g != *before {

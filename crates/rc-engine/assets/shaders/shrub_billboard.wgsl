@@ -90,7 +90,15 @@ fn vertex(v: BillboardVertex) -> BillboardVertexOutput {
     let d = (*inst).centre.w;
     if (d - z < 0.0) { return culled(); }
     let far = min(i32(trunc((d - z) * 4096.0)) >> 1u, 0x8000) >> 8u;
-    let f = i32((*inst).origin.w);
+    // The Detail distance option (crate::graphics, fog.tex_mode.y; 1 = the game's): the mesh keeps to F' = F × scale (the
+    // cross-fade moves there); within 24 units of D the class has no billboard (shrub.wgsl fades the mesh instead).
+    var f = i32((*inst).origin.w);
+    let detail = fog.tex_mode.y;
+    if (f != 0 && detail > 1.0) {
+        let fs = f32(f) * detail;
+        if (fs >= d - 24.0) { return culled(); }
+        f = i32(fs);
+    }
     var a = far;
     if (f != 0) {
         let iz = i32(trunc(max(z, 0.0) * 4096.0)) - f * 4096;

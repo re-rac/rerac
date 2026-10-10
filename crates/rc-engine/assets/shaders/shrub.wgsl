@@ -127,7 +127,14 @@ fn vertex(v: ShrubVertex) -> ShrubVertexOutput {
     let z = -position_world_to_view((*inst).centre.xyz).z;
     let d = (*inst).centre.w;
     if (d - z < 0.0) { return culled(); }
-    let f = (*inst).origin.w;
+    // The Detail distance option (crate::graphics, fog.tex_mode.y; 1 = the game's): the mesh keeps to F' = F × scale; when
+    // F' comes within 24 units of D the class draws as one without a billboard (the mesh fades over D's last 8 units).
+    var f = (*inst).origin.w;
+    let detail = fog.tex_mode.y;
+    if (f > 0.0 && detail > 1.0) {
+        f = f * detail;
+        if (f >= d - 24.0) { f = -1.0; }
+    }
     var alpha: f32;
     if (f < 0.0) {
         alpha = floor(min(trunc((d - z) * 4096.0), 32768.0) / 256.0);
