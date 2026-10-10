@@ -214,7 +214,10 @@ impl SamplerKey {
             address_mode_v: wrap(self.clamp_t),
             mag_filter: ImageFilterMode::Linear,
             min_filter: ImageFilterMode::Linear,
-            mipmap_filter: ImageFilterMode::Nearest,
+            // Linear between levels and anisotropic: the shader picks the level (an integer one is read alone, the GS's
+            // LINEAR_MIPMAP_NEAREST); the texture option (crate::graphics) blends or lets the GPU choose.
+            mipmap_filter: ImageFilterMode::Linear,
+            anisotropy_clamp: 16,
             ..default()
         }
     }

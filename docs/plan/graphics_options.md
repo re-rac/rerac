@@ -18,7 +18,7 @@ stored; it is read back from the options. Options never change game state: the g
 | Preset | Original / Enhanced / (Custom) | every row Original | done |
 | Anti-aliasing | Original / Off / 2x / 4x / 8x | the game's own frame-end softening blit (the "AA blit", G-REN-017), scaled to the frame | rows Off..8x exist (MSAA); Original planned |
 | Detail distance | Original / Far / Farther / Maximum | the game's LOD distances (×1, ×2, ×4, never lower) | planned |
-| Texture filtering | Original / Smooth / Sharp | the GS mip rule: one level from depth, `round(log2(z/32)+K)`; Smooth = the same level unrounded, two levels blended; Sharp = the GPU's footprint level + anisotropic | planned |
+| Texture filtering | Original / Smooth / Sharp | the GS mip rule: one level from depth, `round(log2(z/32)+K)`; Smooth = the same level unrounded, two levels blended; Sharp = the GPU's footprint level + anisotropic | done (tfrag, tie, shrub, shrub billboard: `sample_world`; the mode rides in the shared fog buffer's third vec4 `tex_mode`; samplers linear between levels + anisotropy 16, an integer level reads one level: Original verified byte-identical to the earlier build on a Novalis walk) |
 | HUD | Original / Sharp pixels / High resolution | the 512×416 screen scaled up with bilinear filtering, as the TV and an emulator's display showed it; Sharp pixels = nearest (the port's earlier look); High resolution = drawn at the frame's resolution | Original / Sharp pixels done |
 | Shadows | on / off | on | exists |
 | Aspect ratio, Resolution, Fullscreen | | | exist (not part of the preset: they depend on the screen) |

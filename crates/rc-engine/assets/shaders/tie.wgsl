@@ -30,6 +30,8 @@
 struct TieFog {
     color: vec4<f32>,
     params: vec4<f32>,
+    // x: the texture option (crate::graphics; sample_world).
+    tex_mode: vec4<f32>,
 }
 
 struct TieParams {
@@ -55,6 +57,19 @@ struct TieInst {
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var<storage, read> insts: array<TieInst>;
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(5) var<storage, read> lods: array<vec4<u32>>;
+
+// The texture option (crate::graphics, `fog.tex_mode.x`): 0 Original = the GS level round(L) clamped to 0..MXL (one
+// level, bilinear inside it); 1 Smooth = L unrounded, the two nearest levels blended by the sampler (no switch line);
+// 2 Sharp = the GPU's own level from the UV footprint `duv` (dx, dy), anisotropic. The sampler's mip filter is linear:
+// an integer level reads that level alone, as the GS does.
+fn sample_world(uv: vec2<f32>, l: f32, mxl: f32, duv: vec4<f32>) -> vec4<f32> {
+    let mode = fog.tex_mode.x;
+    if mode > 1.5 {
+        return textureSampleGrad(tex, tex_sampler, uv, duv.xy, duv.zw);
+    }
+    let level = select(clamp(floor(l + 0.5), 0.0, mxl), clamp(l, 0.0, mxl), mode > 0.5);
+    return textureSampleLevel(tex, tex_sampler, uv, level);
+}
 
 // `lods` = n instance words, n (nibble list, -, -, -), then the bank.
 fn tie_count() -> u32 { return (arrayLength(&lods) - 16u) / 2u; }
@@ -205,8 +220,8 @@ fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fragment(in: TieVertexOutput) -> @location(0) vec4<f32> {
-    let level = clamp(floor(log2(in.depth / params.misc.x) + in.k + 0.5), 0.0, params.misc.y);
-    let t = textureSampleLevel(tex, tex_sampler, in.uv, level);
+    let duv = vec4<f32>(dpdx(in.uv), dpdy(in.uv));
+    let t = sample_world(in.uv, log2(in.depth / params.misc.x) + in.k, params.misc.y, duv);
     var rgb = min(t.rgb * in.color.rgb, vec3<f32>(1.0));
     if (fog.color.w > 0.5) {
         rgb = mix(fog.color.rgb, rgb, in.fog);

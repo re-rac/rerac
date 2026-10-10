@@ -179,7 +179,10 @@ pub(crate) fn spawn_billboards(
         address_mode_v: ImageAddressMode::ClampToEdge,
         mag_filter: ImageFilterMode::Linear,
         min_filter: ImageFilterMode::Linear,
-        mipmap_filter: ImageFilterMode::Nearest,
+        // MMIN = 4 (LINEAR_MIPMAP_NEAREST): the shader picks the level (an integer one is read alone). Linear between
+        // levels and anisotropic for the texture option (crate::graphics).
+        mipmap_filter: ImageFilterMode::Linear,
+        anisotropy_clamp: 16,
         ..default()
     };
 

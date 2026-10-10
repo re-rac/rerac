@@ -78,6 +78,9 @@ pub mod text {
     pub const CUSTOM: i32 = -0x163;
     pub const HUD: i32 = -0x170;
     pub const SHARP_PIXELS: i32 = -0x171;
+    pub const TEXTURES: i32 = -0x180;
+    pub const SMOOTH: i32 = -0x181;
+    pub const SHARP: i32 = -0x182;
     /// The game's own "on" / "off" (20314 / 20315, the Subtitles / HelpDesk toggle values).
     pub const ON: i32 = 20314;
     pub const OFF: i32 = 20315;
@@ -109,6 +112,9 @@ pub mod text {
             CUSTOM => b"Custom",
             HUD => b"HUD",
             SHARP_PIXELS => b"Sharp pixels",
+            TEXTURES => b"Texture filtering",
+            SMOOTH => b"Smooth",
+            SHARP => b"Sharp",
             _ => return None,
         })
     }
@@ -133,6 +139,8 @@ pub enum Setting {
     Aspect,
     /// How the game's 2D screen reaches the frame: value 0 Original (scaled smoothly, as on a TV), 1 Sharp pixels.
     Hud,
+    /// How world textures pick their detail level: value 0 Original (the PS2's rule), 1 Smooth, 2 Sharp.
+    Textures,
 }
 
 /// One row: the setting, its label and the ids of its values (✕ cycles through them).
@@ -147,6 +155,7 @@ pub struct Entry {
 pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::Preset, label: text::PRESET, values: &[text::ORIGINAL, text::ENHANCED, text::CUSTOM] },
     Entry { setting: Setting::Msaa, label: text::ANTI_ALIASING, values: &[text::OFF, text::X2, text::X4, text::X8] },
+    Entry { setting: Setting::Textures, label: text::TEXTURES, values: &[text::ORIGINAL, text::SMOOTH, text::SHARP] },
     Entry { setting: Setting::Hud, label: text::HUD, values: &[text::ORIGINAL, text::SHARP_PIXELS] },
     Entry { setting: Setting::Shadows, label: text::SHADOWS, values: &[text::ON, text::OFF] },
     Entry { setting: Setting::Aspect, label: text::ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9] },

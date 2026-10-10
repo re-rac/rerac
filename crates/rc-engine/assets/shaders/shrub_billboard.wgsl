@@ -23,6 +23,8 @@
 struct BillboardFog {
     color: vec4<f32>,
     params: vec4<f32>,
+    // x: the texture option (crate::graphics; sample_world).
+    tex_mode: vec4<f32>,
 }
 
 struct BillboardParams {
@@ -46,6 +48,19 @@ struct BillboardInst {
 @group(#{MATERIAL_BIND_GROUP}) @binding(2) var<storage, read> fog: BillboardFog;
 @group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> params: BillboardParams;
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var<storage, read> insts: array<BillboardInst>;
+
+// The texture option (crate::graphics, `fog.tex_mode.x`): 0 Original = the GS level round(L) clamped to 0..MXL (one
+// level, bilinear inside it); 1 Smooth = L unrounded, the two nearest levels blended by the sampler (no switch line);
+// 2 Sharp = the GPU's own level from the UV footprint `duv` (dx, dy), anisotropic. The sampler's mip filter is linear:
+// an integer level reads that level alone, as the GS does.
+fn sample_world(uv: vec2<f32>, l: f32, mxl: f32, duv: vec4<f32>) -> vec4<f32> {
+    let mode = fog.tex_mode.x;
+    if mode > 1.5 {
+        return textureSampleGrad(tex, tex_sampler, uv, duv.xy, duv.zw);
+    }
+    let level = select(clamp(floor(l + 0.5), 0.0, mxl), clamp(l, 0.0, mxl), mode > 0.5);
+    return textureSampleLevel(tex, tex_sampler, uv, level);
+}
 
 struct BillboardVertex {
     @location(0) position: vec3<f32>,
@@ -126,8 +141,8 @@ fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fragment(in: BillboardVertexOutput) -> @location(0) vec4<f32> {
-    let level = clamp(floor(log2(in.depth / params.misc.w) + params.misc.z + 0.5), 0.0, params.misc.y);
-    let t = textureSampleLevel(tex, tex_sampler, in.uv, level);
+    let duv = vec4<f32>(dpdx(in.uv), dpdy(in.uv));
+    let t = sample_world(in.uv, log2(in.depth / params.misc.w) + params.misc.z, params.misc.y, duv);
     let a_s = min(floor(round(t.a * 255.0) * round(in.color.a * 128.0) / 128.0), 255.0);
     // GS TEST_1 alpha test (ATST GEQUAL AREF, AFAIL RGB_ONLY): which half of the split this draw is (gs_state.rs).
 #ifdef GS_ATEST_PASS

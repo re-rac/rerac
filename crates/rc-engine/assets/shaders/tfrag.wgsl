@@ -57,6 +57,8 @@ struct TfragFog {
     color: vec4<f32>,
     // (slope per integer unit of depth, offset qw661.w, lower clamp qw656.y, upper clamp qw656.z).
     params: vec4<f32>,
+    // x: the texture option (crate::graphics; sample_world).
+    tex_mode: vec4<f32>,
 }
 
 struct TfragLod {
@@ -97,6 +99,19 @@ struct VInfo {
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var<storage, read> slots: array<Slot>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(5) var<storage, read> vinfos: array<VInfo>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(6) var<storage, read> modes: array<u32>;
+
+// The texture option (crate::graphics, `fog.tex_mode.x`): 0 Original = the GS level round(L) clamped to 0..MXL (one
+// level, bilinear inside it); 1 Smooth = L unrounded, the two nearest levels blended by the sampler (no switch line);
+// 2 Sharp = the GPU's own level from the UV footprint `duv` (dx, dy), anisotropic. The sampler's mip filter is linear:
+// an integer level reads that level alone, as the GS does.
+fn sample_world(uv: vec2<f32>, l: f32, mxl: f32, duv: vec4<f32>) -> vec4<f32> {
+    let mode = fog.tex_mode.x;
+    if mode > 1.5 {
+        return textureSampleGrad(tex, tex_sampler, uv, duv.xy, duv.zw);
+    }
+    let level = select(clamp(floor(l + 0.5), 0.0, mxl), clamp(l, 0.0, mxl), mode > 0.5);
+    return textureSampleLevel(tex, tex_sampler, uv, level);
+}
 
 // `modes` = n draw modes, n nibble lists, then the bank.
 fn tfrag_count() -> u32 { return (arrayLength(&modes) - 64u) / 2u; }
@@ -237,9 +252,9 @@ fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fragment(in: TfragVertexOutput) -> @location(0) vec4<f32> {
-    // GS mip level: round(log2(z / n) + K), clamped to 0..MXL.
-    let level = clamp(floor(log2(in.depth / lod.misc.z) + in.k + 0.5), 0.0, lod.tex.y);
-    let t = textureSampleLevel(tex, tex_sampler, in.uv, level);
+    let duv = vec4<f32>(dpdx(in.uv), dpdy(in.uv));
+    // GS mip level: round(log2(z / n) + K), clamped to 0..MXL (or the texture option's level: sample_world).
+    let t = sample_world(in.uv, log2(in.depth / lod.misc.z) + in.k, lod.tex.y, duv);
     var rgb = min(t.rgb * in.color.rgb, vec3<f32>(1.0));
     if (fog.color.w > 0.5) {
         rgb = mix(fog.color.rgb, rgb, in.fog);

@@ -269,8 +269,10 @@ impl SamplerKey {
             address_mode_v: wrap(self.clamp_t),
             mag_filter: ImageFilterMode::Linear,
             min_filter: ImageFilterMode::Linear,
-            // TEX1 MMIN = 4 (LINEAR_MIPMAP_NEAREST) on every retail shrub ad-gif; shrub.wgsl picks the level.
-            mipmap_filter: ImageFilterMode::Nearest,
+            // TEX1 MMIN = 4 (LINEAR_MIPMAP_NEAREST) on every retail shrub ad-gif; shrub.wgsl picks the level (an integer one
+            // is read alone). Linear between levels and anisotropic for the texture option (crate::graphics).
+            mipmap_filter: ImageFilterMode::Linear,
+            anisotropy_clamp: 16,
             ..default()
         }
     }
