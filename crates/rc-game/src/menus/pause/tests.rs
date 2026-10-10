@@ -104,6 +104,58 @@ fn open(m: &mut PageMenu, g: &mut GameState, kind: i32) -> Vec<MenuOut> {
     (0..13).map(|_| m.tick(&NONE, g, &MenuEnv::default())).collect()
 }
 
+/// The flags-0x40 labels (the map and confirm pages' location / planet names) carry a table base one record past
+/// the level-0 entry (`0x1c22c0 + 12` / `+16`) with content `dest − 1`: on Veldin (dest 0) the content is −1 and the
+/// game reads level 0's record one before the base. The draw must read it, not fall back to "default".
+#[test]
+fn label_content_minus_one_reads_before_the_table_base() {
+    use rc_formats::font::{Glyph, OverlaySection};
+    use rc_formats::strings::Message;
+    // 12-byte records: level 0 (location 20153, planet 20190) at the base, level 1 (20154, 20173) after it.
+    let base = 0x1000u32;
+    let mut data = vec![0u8; 0x40];
+    for (off, id) in [(0usize, 20153u32), (4, 20190), (12, 20154), (16, 20173)] {
+        data[off..off + 4].copy_from_slice(&id.to_le_bytes());
+    }
+    let overlay = crate::menus::Overlay::from_sections(vec![OverlaySection { dest: base, kind: 1, entry: 1, data }]);
+    let msg = |id: i32, t: &[u8]| Message { id, text: t.to_vec(), help_audio: -1 };
+    let messages = vec![msg(20153, b"Kyzil Plateau"), msg(20190, b"Veldin"), msg(20154, b"Tobruk Crater"), msg(20173, b"Novalis"), msg(0x4ecc, b"Planet")];
+    let glyphs: [rc_formats::font::GlyphTable; 3] = std::array::from_fn(|_| std::array::from_fn(|_| Glyph::default()));
+    let hud = crate::hud::HudAssets { icons: Vec::new(), frame_sizes: Vec::new(), glyphs, messages };
+    let a = crate::menus::MenuAssets::new(hud, overlay);
+    let mut m = menu();
+    let label = |w: u32, id: u32, flags: u32| Widget {
+        addr: w,
+        update: func::LABEL_UPDATE,
+        draw: func::LABEL_DRAW,
+        enter: 0,
+        leave: 0,
+        dflags: 0,
+        moby: 0,
+        rect: [0, 0, 200, 40],
+        raw: [0; 8],
+        data: Data::Label(Label { flags, id, stride: 12, scroll: 0, timer: -1, content: -1, variant: 0, table: None }),
+    };
+    // The map page's W0 (location) and W1 (planet, "Planet %s"), as the disc's records 0x1b3a20 / 0x1b3a78.
+    m.widgets.insert(0x1b3a20, label(0x1b3a20, base + 12, 0x4b));
+    m.widgets.insert(0x1b3a78, label(0x1b3a78, base + 16, 0x24b));
+    m.dest = 0;
+    let g = gs();
+    let mut out = Vec::new();
+    m.label_draw(0x1b3a20, &a, &g, &mut out);
+    m.label_draw(0x1b3a78, &a, &g, &mut out);
+    let texts: Vec<String> = out
+        .iter()
+        .filter_map(|d| match d {
+            MenuDraw::Hud(crate::hud::Draw::TextWindow { text, .. }) => Some(String::from_utf8_lossy(text).to_string()),
+            _ => None,
+        })
+        .collect();
+    assert!(texts.iter().any(|t| t == "Kyzil Plateau"), "{texts:?}");
+    assert!(texts.iter().any(|t| t == "Planet Veldin"), "{texts:?}");
+    assert!(!texts.iter().any(|t| t == "default"), "{texts:?}");
+}
+
 fn list_of(m: &PageMenu, w: u32) -> &List {
     match &m.widgets[&w].data {
         Data::List(l) => l,
