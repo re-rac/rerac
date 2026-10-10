@@ -515,18 +515,21 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   as on the disc; the list draws 8 rows with the game's own `h/(n+1)` spacing. The description label W1 (0x1b4fe8, flags 0x90,
   id table 0x1b4fc8 indexed by the list cursor) gets a patched copy of its table (`Label::table`) with the port description at
   the same index, so the table read never runs past the disc's 7 ids.
-* **Page**: a page record (kind 0x7f, parent Options, focus the list) whose 14 frame-moby seqs, filler widgets W1/W2
-  (0x1b2878) and hint list W4 (0x1b2920, "✕ Toggle / △ Exit") are those of Subtitles 0x1b5788 (≤ 2 rows; Camera 0x1b5ee0's
-  for 3+). W0 is a clone of the sub-page title label (flags 0xf: large, centred) with the port title; W3 is the port list,
+* **Page**: a page record (kind 0x7f, parent Options, focus the list) whose 14 frame-moby seqs and widget slots are those of
+  Subtitles 0x1b5788 (≤ 2 rows) or Goodies / Cheats 0x1b7fb0 (3+: one wide panel, seqs 153..157, title / list / hints in
+  slots 0 / 1 / 2). W0 is a clone of the model's title label (flags 0xf: large, centred) with the port title; the port list
+  takes the slot of the model's own list (its focus) and the sub-pages' hint list (Subtitles' W4 0x1b2920, "✕ Toggle /
+  △ Exit") the model's last slot. The port list is
   updated and drawn exactly like the camera list 0x294cc0 / 0x294e68 (rows `h/(n+1)`, first y `h/(n+1) − 8`, label regular at
   (12, y) 0x8020ffff selected / 0x80ffa888, value right-aligned at (w − 12, y) 0x80ffa888; Up/Down without wrap + sound 1; ✕
   cycles the value + sound 0; generic Start/Select/R3 close and △ → Options). Transitions (12 ticks, seqs forward / reversed),
   panels, fonts and colours are `PageMenu`'s.
 * **Strings**: the port's own text, negative ids (−0x100..) resolved by `MenuAssets::msg` before the level's table (the
   disc's ids are 0..21500); "off" is the game's 20315. Records use addresses 0x7f00_xxxx, which no EE pointer can hold.
-* **Rows** (`port::ENTRIES`, one entry per option): Anti-aliasing: off / 2x / 4x / 8x → `render_settings::RenderSettings::msaa`
-  (engine `menu_render.rs` syncs the row with the resource around each menu tick; a change is applied by
-  `render_settings::apply` and saved). Shadows: on / off. Aspect ratio: 4:3 / 16:10 / 16:9, Resolution: Window / 416p / 720p /
+* **Rows** (`port::ENTRIES`, one entry per option): the graphics rows (Preset, Anti-aliasing: Original / off / 2x / 4x / 8x,
+  Detail distance, Texture filtering, HUD; docs/plan/graphics_options.md) → `graphics::GraphicsSettings` (engine
+  `menu_render.rs` syncs the rows with the resource around each menu tick; a change is saved; the anti-aliasing samples
+  reach the cameras through `render_settings::RenderSettings::msaa`). Shadows: on / off. Aspect ratio: 4:3 / 16:10 / 16:9, Resolution: Window / 416p / 720p /
   1080p / 1440p / 2160p and Fullscreen: off / on → `display::DisplaySettings` (the game frame every camera renders into, presented
   on black at the window's size; keys `aspect` / `resolution` / `fullscreen` in the settings file). 16:10 / 16:9 are Hor+: the
   world projection's x tangent is the game's × 6/5 / × 4/3 and culling reads the live projection; the 512×416 screen maps to
@@ -541,7 +544,7 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   below it with one warning line (8 → 4 on M-series); the file is not rewritten at start, only by a change on the page.
 * **Persistence** (`render_settings.rs`): plain `key = value` text, `~/Library/Application Support/rerac/settings.toml` on
   macOS (`$XDG_CONFIG_HOME`/`~/.config` elsewhere, `%APPDATA%` on Windows), read at start, rewritten on change (unknown
-  keys / comments kept). `RC_MSAA` overrides the file at start; `RC_SETTINGS_FILE=<path>` picks another file, `=0` disables
+  keys / comments kept). `RC_MSAA` / `RC_GFX_*` override the file at start; `RC_SETTINGS_FILE=<path>` picks another file, `=0` disables
   it; frame-exact runs (`RC_SCREENSHOT_FRAME` / `RC_DETERMINISTIC=1`) ignore the default file.
 * `RC_SETTINGS_PAGE=0`: no entry, no page: every record is as read from the overlay (Options frames byte-identical to the
   game's layout). Without the variable, frames of every page but Options (8 rows instead of 7) are unchanged.

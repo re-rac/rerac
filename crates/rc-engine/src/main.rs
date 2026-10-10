@@ -23,7 +23,7 @@
 //! - `RC_UNLOCK_PLANETS=<p>,…` planets unlocked from the start (the ship's planet page), crate::gameplay;
 //!   `RC_TRAVEL_TRACE=1` the ship / mode-6 / transition trace, crate::travel_render
 //! - `RC_HUD=0`, `RC_HUD_DEMO=1`, `RC_HUD_TEXT`, `RC_HUD_HELP=<id>`, `RC_LANG` the HUD and its demos, crate::hud_render
-//! - `RC_MSAA=0|2|4|8` world-camera multisampling at start (default 0 = off, like the GS), crate::render_settings
+//! - `RC_MSAA=0|2|4|8` the Anti-aliasing option at start: Off or that multisampling (default: Original, the game's own softening passes), crate::graphics
 //! - `RC_SETTINGS_FILE=<path>` the port-settings file (`0` or empty: none), crate::render_settings;
 //!   `RC_SETTINGS_PAGE=0` no "Port Options" page in the Options menu, crate::menu_render
 //! - `RC_SHADOWS=0|1`, `RC_SHADOW_DEBUG=1`, `RC_SHADOW_TRACE=1` the moby shadows, crate::shadow_render
@@ -98,6 +98,7 @@ mod flight_render;
 mod title_world;
 mod vendor_render;
 mod water_render;
+mod aa_blit;
 mod afterimage_render;
 mod thruster_render;
 mod world_lights;
@@ -222,6 +223,7 @@ fn main() -> anyhow::Result<()> {
     // PSS movies (mode 1) played from the original files (crate::movie_render; RC_PLAY_MOVIE=<n>).
     .add_plugins(movie_render::MovieRenderPlugin)
     .add_plugins(mirror_render::MirrorRenderPlugin)
+    .add_plugins(aa_blit::AaBlitPlugin)
     // Sound slots, 989snd, music and the software SPU2 mixed per game tick (crate::audio_out; RC_AUDIO=0 off).
     .add_plugins(audio_out::AudioOutPlugin::new(level.audio.take()))
     .insert_resource(fog_state)

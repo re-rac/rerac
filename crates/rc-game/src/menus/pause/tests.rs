@@ -327,7 +327,7 @@ fn port_page_from_the_disc() {
     let ov = Overlay::parse(&bytes).unwrap();
     let mut m = PageMenu::load(&ov).unwrap();
     let before = (m.pages.clone(), m.widgets.clone());
-    assert_eq!(m.port_value(Setting::Msaa), None);
+    assert_eq!(m.port_value(Setting::AntiAliasing), None);
     assert!(m.install_port_page(&ov));
     assert!(m.install_port_page(&ov), "idempotent");
     // Every disc record but the Options list and its description label is untouched.
@@ -340,10 +340,11 @@ fn port_page_from_the_disc() {
     assert_eq!(opts, vec![(20254, 3), (20255, 4), (20256, 5), (20258, 3), (20259, 3), (20260, 3), (port::text::ENTRY as i16, 3), (20262, 3)]);
     let Data::Label(l) = &m.widgets[&port::OPTIONS_LABEL].data else { panic!() };
     assert_eq!(l.table.as_deref(), Some(&[20273, 20274, 20275, 20277, 20278, 20279, port::text::DESCRIPTION as u32, 20281][..]));
-    // The page: Camera's frames (more than two rows), filler and hint widgets, parent Options.
+    // The page: Cheats' frames (more than two rows: one wide panel), the list in its list's slot, the sub-pages' hint
+    // list (Subtitles' W4) in its hint slot, parent Options.
     let (pg, sub) = (&m.pages[&port::PAGE], m.pages[&port::MODEL_MANY].clone());
     assert_eq!((pg.seqs, pg.parent, pg.focus), (sub.seqs, port::OPTIONS, port::LIST_W));
-    assert_eq!((pg.widgets[1], pg.widgets[2], pg.widgets[4]), (sub.widgets[1], sub.widgets[2], sub.widgets[4]));
+    assert_eq!((pg.widgets[1], pg.widgets[2], pg.widgets[3]), (port::LIST_W, m.pages[&port::MODEL_FEW].widgets[4], 0));
     assert!(matches!(&m.widgets[&port::TITLE_W].data, Data::Label(t) if t.flags == 0xf && t.id == port::text::TITLE as u32));
 
     // Pause → Options → Up twice (wrap to Quit Game, then Port Options) → ✕ → the page; ✕ cycles; △ back.
@@ -364,16 +365,15 @@ fn port_page_from_the_disc() {
     for _ in 0..12 { m.tick(&NONE, &mut g, &env); }
     assert_eq!((m.current, m.kind), (port::PAGE, port::KIND));
     // The cursor starts on the first row; down to the anti-aliasing row.
-    let aa = port::row_of(Setting::Msaa).unwrap();
+    let aa = port::row_of(Setting::AntiAliasing).unwrap();
     for _ in 0..aa { m.tick(&press(button::DOWN), &mut g, &env); }
-    m.set_port_value(Setting::Msaa, 9);
-    assert_eq!(m.port_value(Setting::Msaa), Some(3), "clamped");
-    m.set_port_value(Setting::Msaa, 1);
+    m.set_port_value(Setting::AntiAliasing, 9);
+    assert_eq!(m.port_value(Setting::AntiAliasing), Some(4), "clamped");
+    m.set_port_value(Setting::AntiAliasing, 1);
     let o = m.tick(&press(button::CROSS), &mut g, &env);
-    assert_eq!((o.sounds, m.port_value(Setting::Msaa)), (vec![MenuSound::Confirm], Some(2)));
-    m.tick(&press(button::CROSS), &mut g, &env);
-    m.tick(&press(button::CROSS), &mut g, &env);
-    assert_eq!(m.port_value(Setting::Msaa), Some(0), "wraps after 8x");
+    assert_eq!((o.sounds, m.port_value(Setting::AntiAliasing)), (vec![MenuSound::Confirm], Some(2)));
+    for _ in 0..3 { m.tick(&press(button::CROSS), &mut g, &env); }
+    assert_eq!(m.port_value(Setting::AntiAliasing), Some(0), "wraps after 8x");
     // Down moves through the rows and stops at the last one (port::ENTRIES); back up to the shadows row (default on =
     // value 0), ✕ toggles it off and back on.
     assert_eq!(m.port_value(Setting::Shadows), Some(0));
@@ -385,7 +385,7 @@ fn port_page_from_the_disc() {
     assert!(o.sounds.is_empty(), "last row: no cursor move");
     for _ in port::row_of(Setting::Shadows).unwrap() + 1..port::ENTRIES.len() { m.tick(&press(button::UP), &mut g, &env); }
     m.tick(&press(button::CROSS), &mut g, &env);
-    assert_eq!((m.port_value(Setting::Shadows), m.port_value(Setting::Msaa)), (Some(1), Some(0)));
+    assert_eq!((m.port_value(Setting::Shadows), m.port_value(Setting::AntiAliasing)), (Some(1), Some(0)));
     m.tick(&press(button::CROSS), &mut g, &env);
     assert_eq!(m.port_value(Setting::Shadows), Some(0), "on / off wrap");
     // Its values are the game's own on / off strings (the Subtitles toggle's).
@@ -394,3 +394,4 @@ fn port_page_from_the_disc() {
     m.tick(&press(button::TRIANGLE), &mut g, &env);
     assert_eq!(m.target, port::OPTIONS);
 }
+

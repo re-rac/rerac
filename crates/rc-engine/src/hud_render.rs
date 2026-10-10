@@ -31,8 +31,9 @@
 //! (the target keeps `Σ Cs·As` in RGB and the coverage in A), which is exact for HUD-on-HUD overlaps and
 //! keeps As > 0x80 (orb glow) as the GS computes it over opaque HUD pixels. The result is composited onto the
 //! main camera by a Bevy UI node ([`HudComposite`], `UiMaterial`) filling the camera's letterboxed 512×416
-//! viewport (`game_camera::letterbox`), sampled as the HUD option says (crate::graphics: Original bilinear, as the TV
-//! showed the 512×416 picture; Sharp pixels nearest), in the UI
+//! viewport (`game_camera::letterbox`), sampled as the HUD option says (crate::graphics: Original bilinear half a pixel
+//! to the left, as the game's display copy and the TV showed the 512×416 picture, crate::aa_blit; Sharp pixels
+//! nearest), in the UI
 //! pass: after every 3D pass and before the underwater tint (`fog_state::UnderwaterTint`, scheduled after
 //! `ui_pass`), which is the game's order (the tint is in the `0x15f3f4 & 0x40` pass after the HUD's `& 0x80`).
 //! The composite mixes in linear light on the sRGB target (exact where the HUD coverage is 0 or 1; the GS

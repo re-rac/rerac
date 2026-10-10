@@ -66,10 +66,11 @@
 //! (0..524288, F 255..0): at the frames' depth (≈ 5 units) the two differ by at most one step of F.
 //!
 //! **Port Options** (port-only, `rc_game::menus::pause::port`): an extra "Port Options" entry in the Options
-//! list opens a page built from the game's machinery; its anti-aliasing row is synced with
-//! [`RenderSettings::msaa`] around every menu tick (the shadows row likewise with `shadow_render::ShadowSettings`) (the resource's value is shown; a ✕ writes it back, applied
-//! by `render_settings::apply` and saved to the port settings file). The row offers only the sample counts the
-//! GPU supports ([`SupportedMsaa`]; ✕ skips the rest, e.g. 8x on Apple M-series).
+//! list opens a page built from the game's machinery; its graphics rows are synced with crate::graphics's
+//! `GraphicsSettings` around every menu tick (the shadows row likewise with `shadow_render::ShadowSettings`, the display
+//! rows with `display::DisplaySettings`): the resource's value is shown, a ✕ writes it back and saves it to the port
+//! settings file. The anti-aliasing row offers only the sample counts the GPU supports ([`SupportedMsaa`]; ✕ skips the
+//! rest, e.g. 8x on Apple M-series).
 //!
 //! Environment: `RC_MENU_TRACE=1` prints menu events (open, transitions, sounds, equip requests, close);
 //! `RC_SETTINGS_PAGE=0` leaves the Options page as on the disc (no Port Options entry).
@@ -78,7 +79,7 @@ use crate::gameplay::{Persistent, Play, Session};
 use crate::hud_render::{Hud2d, Hud2dHook, HudBuild, Prim, Tex, H, W};
 use crate::input_map::{PadFrame, Script};
 use crate::moby_render::{self, ExtraMobys, MobyMaterial};
-use crate::render_settings::{self, RenderSettings, SupportedMsaa};
+use crate::render_settings::SupportedMsaa;
 use crate::text_render::{self, TextState};
 use anyhow::{anyhow, Context};
 use bevy::camera::visibility::RenderLayers;
@@ -511,15 +512,15 @@ fn target_main_camera(mut commands: Commands, nodes: Query<Entity, (With<MenuLay
     for n in &nodes { commands.entity(n).insert(UiTargetCamera(cam)); }
 }
 
-/// The anti-aliasing row's values (Off, 2x, 4x, 8x) as sample counts.
-const AA_SAMPLES: [u32; 4] = [1, 2, 4, 8];
-
 /// The graphics rows (crate::graphics) from the settings, before the menu tick: the preset row shows the preset the
-/// options are (Custom included) but ✕ offers only Original and Enhanced.
-fn sync_graphics_rows(menu: &mut PageMenu, g: &crate::graphics::GraphicsSettings) {
+/// options are (Custom included) but ✕ offers only Original and Enhanced; the anti-aliasing row offers the
+/// multisampling counts the GPU supports.
+fn sync_graphics_rows(menu: &mut PageMenu, g: &crate::graphics::GraphicsSettings, supported: &SupportedMsaa) {
     use crate::graphics::GfxOption;
     menu.set_port_choices(Setting::Preset, 0b011);
     menu.set_port_value(Setting::Preset, g.preset().index());
+    menu.set_port_choices(Setting::AntiAliasing, aa_choices(supported));
+    menu.set_port_value(Setting::AntiAliasing, g.aa.index());
     menu.set_port_value(Setting::Hud, g.hud.index());
     menu.set_port_value(Setting::Textures, g.textures.index());
     menu.set_port_value(Setting::Detail, g.detail.index());
@@ -528,11 +529,12 @@ fn sync_graphics_rows(menu: &mut PageMenu, g: &crate::graphics::GraphicsSettings
 /// The graphics rows back into the settings after the menu tick: a new preset sets every option; otherwise each row is
 /// read. A change is saved to the port settings file.
 fn read_graphics_rows(menu: &PageMenu, g: &mut crate::graphics::GraphicsSettings, before: &crate::graphics::GraphicsSettings, frame: u64) {
-    use crate::graphics::{Detail, GfxOption, Hud, Preset, Textures};
+    use crate::graphics::{AntiAliasing, Detail, GfxOption, Hud, Preset, Textures};
     let preset = menu.port_value(Setting::Preset).map(Preset::from_index);
     match preset {
         Some(p) if p != Preset::Custom && p != before.preset() => *g = before.with_preset(p),
         _ => {
+            if let Some(v) = menu.port_value(Setting::AntiAliasing) { g.aa = AntiAliasing::from_index(v); }
             if let Some(v) = menu.port_value(Setting::Hud) { g.hud = Hud::from_index(v); }
             if let Some(v) = menu.port_value(Setting::Textures) { g.textures = Textures::from_index(v); }
             if let Some(v) = menu.port_value(Setting::Detail) { g.detail = Detail::from_index(v); }
@@ -544,11 +546,11 @@ fn read_graphics_rows(menu: &PageMenu, g: &mut crate::graphics::GraphicsSettings
     }
 }
 
-fn aa_index(m: Msaa) -> u8 { AA_SAMPLES.iter().position(|&n| n == m.samples()).unwrap_or(0) as u8 }
-
-/// The anti-aliasing row's selectable values (bit k = `AA_SAMPLES[k]`) on this device.
+/// The anti-aliasing row's selectable values (bit k = `AntiAliasing::ALL[k]`) on this device: Original and Off, and the
+/// multisampling counts it supports.
 fn aa_choices(s: &SupportedMsaa) -> u32 {
-    AA_SAMPLES.iter().enumerate().filter(|(_, n)| s.0.contains(n)).fold(0, |m, (k, _)| m | 1 << k)
+    use crate::graphics::{AntiAliasing, GfxOption};
+    AntiAliasing::ALL.iter().enumerate().filter(|(_, a)| a.samples() == 1 || s.0.contains(&a.samples())).fold(0, |m, (k, _)| m | 1 << k)
 }
 
 /// The hand item shown now (0x140408): the wrench while `0x15ed90` (wrench held) is set, else the
@@ -572,7 +574,6 @@ fn menu_frame(
     sess: Option<ResMut<Session>>,
     pad: Res<PadFrame>,
     source: Res<crate::game_camera::CameraSource>,
-    mut render: Option<ResMut<RenderSettings>>,
     supported: Option<Res<SupportedMsaa>>,
     (mut vr, mut feed, mut view, mut audio): InteractParams,
     (mut shadows, mut display, mut gfx): (
@@ -712,14 +713,12 @@ fn menu_frame(
                 // The close's post-action 3 / 4 / 5 / 6 / 7: `FadeToBlack(ticks(16))` over the menu image, then the action.
                 post_fade_step(rt, &mut mm, &mut play, gs, sess.hp, audio.as_deref_mut(), frame, true);
             } else if let Some(menu) = rt.menu.as_mut() {
-                menu.set_port_choices(Setting::Msaa, supported.as_deref().map_or_else(|| aa_choices(&SupportedMsaa::default()), aa_choices));
-                if let Some(r) = render.as_deref() { menu.set_port_value(Setting::Msaa, aa_index(r.msaa)); }
                 if let Some(s) = shadows.as_deref() { menu.set_port_value(Setting::Shadows, !s.enabled as u8); }
                 menu.set_port_value(Setting::Resolution, display.resolution.index());
                 menu.set_port_value(Setting::Aspect, display.aspect.index());
                 menu.set_port_value(Setting::Fullscreen, display.fullscreen as u8);
                 let gfx_before = *gfx;
-                sync_graphics_rows(menu, &gfx_before);
+                sync_graphics_rows(menu, &gfx_before, &supported.as_deref().cloned().unwrap_or_default());
                 // The card and the save inputs moved into the menu for its tick (crate::saves).
                 saves_in(menu, &play);
                 // 0x15172a as the widgets read it (the Helpdesk girl).
@@ -744,14 +743,6 @@ fn menu_frame(
                         (display.aspect, display.resolution, display.fullscreen) = (aspect, res, full);
                         println!("menus: frame {frame}: Port Options: aspect {aspect:?}, resolution {res:?}, fullscreen {full}");
                         display.save();
-                    }
-                }
-                if let (Some(v), Some(r)) = (menu.port_value(Setting::Msaa), render.as_mut()) {
-                    let msaa = render_settings::msaa_from_samples(AA_SAMPLES[v as usize % AA_SAMPLES.len()]);
-                    if r.msaa != msaa {
-                        r.msaa = msaa;
-                        println!("menus: frame {frame}: Port Options: anti-aliasing {} samples", msaa.samples());
-                        render_settings::save(r);
                     }
                 }
                 if trace && !out.sounds.is_empty() { println!("menus: frame {frame}: sounds {:?}", out.sounds); }

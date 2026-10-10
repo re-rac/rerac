@@ -5,7 +5,8 @@
 //!
 //! It is built entirely from the game's own machinery so it looks and behaves like the Options sub-pages:
 //! a page record whose frame-moby seqs, filler widgets and "✕ Toggle / △ Exit" hint list are those of a
-//! game sub-page ([`MODEL_FEW`] Subtitles for ≤ 2 rows, [`MODEL_MANY`] Camera for more), a title label with
+//! game sub-page ([`MODEL_FEW`] Subtitles for ≤ 2 rows, [`MODEL_MANY`] Cheats for more; the list takes the slot of
+//! the model's own list), a title label with
 //! the sub-pages' flags (0xf), and a list drawn and driven exactly like the camera list (update 0x294cc0 /
 //! draw 0x294e68: label left at 12 in yellow / light blue, value right-aligned at w − 12, rows h/(n+1),
 //! Up/Down without wrap with sound 1, ✕ cycles the value with sound 0, generic Start/Select/R3 and △ keys).
@@ -46,9 +47,10 @@ pub const OPTIONS: u32 = 0x1b4dd0;
 pub const OPTIONS_LIST: u32 = 0x1b4f78;
 pub const OPTIONS_LABEL: u32 = 0x1b4fe8;
 pub const QUIT_PAGE: u32 = 0x1b6060;
-/// Subtitles 0x1b5788 (seqs 73..77: the one/two-row sub-page frames) and Camera 0x1b5ee0 (118..122, three rows).
+/// Subtitles 0x1b5788 (seqs 73..77: the one/two-row sub-page frames) and Goodies / Cheats 0x1b7fb0 (153..157: one wide
+/// panel tall enough for a long list, its toggle list in slot 1, its hints in slot 2).
 pub const MODEL_FEW: u32 = 0x1b5788;
-pub const MODEL_MANY: u32 = 0x1b5ee0;
+pub const MODEL_MANY: u32 = 0x1b7fb0;
 
 /// The port's own strings (not in the game's text table). Ids are negative; [`MenuAssets::msg`] resolves them.
 pub mod text {
@@ -134,8 +136,8 @@ pub enum Setting {
     /// The graphics preset: value 0 Original, 1 Enhanced, 2 Custom (shown when the rows match no preset; ✕ skips it,
     /// the engine restricts the row).
     Preset,
-    /// World-camera multisampling: value 0 off, 1 2x, 2 4x, 3 8x.
-    Msaa,
+    /// Anti-aliasing: value 0 Original (the game's own softening passes), 1 off, 2 2x, 3 4x, 4 8x multisampling.
+    AntiAliasing,
     /// The moby shadows (docs/plan/shadows.md): value 0 on (the game's look, the default), 1 off.
     Shadows,
     /// The render resolution (the engine's game frame): value 0 fits the window, 1..5 a height of 416 (the PS2's lines), 720, 1080, 1440 or 2160 (the width
@@ -165,7 +167,7 @@ pub struct Entry {
 /// The rows, in order.
 pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::Preset, label: text::PRESET, values: &[text::ORIGINAL, text::ENHANCED, text::CUSTOM] },
-    Entry { setting: Setting::Msaa, label: text::ANTI_ALIASING, values: &[text::OFF, text::X2, text::X4, text::X8] },
+    Entry { setting: Setting::AntiAliasing, label: text::ANTI_ALIASING, values: &[text::ORIGINAL, text::OFF, text::X2, text::X4, text::X8] },
     Entry { setting: Setting::Detail, label: text::DETAIL, values: &[text::ORIGINAL, text::FAR, text::FARTHER, text::MAXIMUM] },
     Entry { setting: Setting::Textures, label: text::TEXTURES, values: &[text::ORIGINAL, text::SMOOTH, text::SHARP] },
     Entry { setting: Setting::Hud, label: text::HUD, values: &[text::ORIGINAL, text::SHARP_PIXELS] },
@@ -234,9 +236,16 @@ impl PageMenu {
             raw: [0; 8],
             data: Data::Port(PortList { cursor: 0, values: vec![0; ENTRIES.len()], choices: vec![u32::MAX; ENTRIES.len()] }),
         };
+        // The list takes the slot of the model's own list (its focus): its panel. The hints are the sub-pages'
+        // "✕ Toggle / △ Exit" list (Subtitles' W4) in the model's last slot.
+        let slot = model.widgets.iter().position(|&w| w == model.focus).unwrap_or(3);
+        let hints = self.pages.get(&ad.port_model_few).map(|p| p.widgets[4]);
         let mut widgets = model.widgets;
         widgets[0] = TITLE_W;
-        widgets[3] = LIST_W;
+        widgets[slot] = LIST_W;
+        if let (Some(h), Some(last)) = (hints, widgets.iter().rposition(|&w| w != 0)) {
+            if last != slot { widgets[last] = h; }
+        }
         let page = Page { addr: PAGE, seqs: model.seqs, parent: ad.port_options, kind: KIND, focus: LIST_W, widgets, pending: 0 };
         // The Options description label: the disc table (one id per item, variant 0) with ours inserted.
         if let Some(Data::Label(l)) = self.widgets.get_mut(&ad.port_options_label).map(|w| &mut w.data) {

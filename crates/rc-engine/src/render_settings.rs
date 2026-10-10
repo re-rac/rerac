@@ -1,9 +1,9 @@
 //! Player-facing render settings, applied to the world cameras at start and whenever they change.
 //!
-//! **Anti-aliasing.** The GS has no multisampling: every world pass draws one sample per pixel, so the default
-//! is [`Msaa::Off`] (faithful, and cheaper: no 4× colour/depth load/store, writeback and resolve per pass).
-//! `RC_MSAA=0|2|4|8` picks the start value (0 = off; anything else unparsable = off); a menu option can change
-//! [`RenderSettings::msaa`] at run time (`ResMut<RenderSettings>`), and [`apply`] then sets it on the main and
+//! **Multisampling.** The GS has no multisampling: every world pass draws one sample per pixel, so the default
+//! is [`Msaa::Off`] (faithful, and cheaper: no 4× colour/depth load/store, writeback and resolve per pass). The
+//! samples come from the Anti-aliasing option (crate::graphics: Original and Off draw one; `RC_MSAA=0|2|4|8` there);
+//! the option changes [`RenderSettings::msaa`] at run time, and [`apply`] then sets it on the main and
 //! sky cameras together (they share the depth buffer: the main camera loads what the sky pass cleared).
 //! Changing it re-specialises every world pipeline once (a hitch of the first frame after the change).
 //! `RC_MSAA_SWITCH=<frame>:<samples>` changes the setting at that frame (a test of the run-time path).
@@ -18,9 +18,8 @@
 //! start and the file is not rewritten then (only a change on the Port Options page writes it, and that page offers
 //! supported counts only).
 //!
-//! **Persistence** (port-only; the "Port Options" page, `rc_game::menus::pause::port`): the start value comes
-//! from the port settings file, then `RC_MSAA` overrides it; a change made on that page is written back
-//! ([`save`]). The file is plain `key = value` text (std only): `~/Library/Application Support/rerac/
+//! **Persistence** (port-only; the "Port Options" page, `rc_game::menus::pause::port`): the options are kept in the
+//! port settings file ([`load_key`] / [`save_key`]; the Anti-aliasing option's own key: crate::graphics). The file is plain `key = value` text (std only): `~/Library/Application Support/rerac/
 //! settings.toml` on macOS, `$XDG_CONFIG_HOME` (or `~/.config`) `/rerac/settings.toml` elsewhere,
 //! `%APPDATA%\rerac\settings.toml` on Windows. When that file is missing and the pre-rename `randcrw/settings.toml`
 //! exists, the old file is copied over once and kept ([`migrate_legacy`]). `RC_SETTINGS_FILE=<path>` picks another
@@ -55,20 +54,12 @@ impl Default for RenderSettings {
 }
 
 impl RenderSettings {
-    /// The start settings: the port settings file ([`settings_path`]), then `RC_MSAA` over it.
+    /// The start settings: the Anti-aliasing option's sample count (crate::graphics: the port settings file, then
+    /// `RC_GFX_ANTI_ALIASING` / `RC_MSAA` over it).
     pub fn startup() -> (Self, &'static str) {
-        if std::env::var_os("RC_MSAA").is_some() { return (Self::from_env(), "RC_MSAA"); }
-        let file = settings_path().and_then(|p| std::fs::read_to_string(p).ok());
-        match file.as_deref().and_then(|t| read_key(t, "msaa")).and_then(|v| v.parse::<u32>().ok()) {
-            Some(n) => (RenderSettings { msaa: msaa_from_samples(n) }, "settings file"),
-            None => (Self::default(), "default"),
-        }
-    }
-
-    /// The start settings from the environment (`RC_MSAA`).
-    pub fn from_env() -> Self {
-        let msaa = std::env::var("RC_MSAA").ok().map_or(Msaa::Off, |v| msaa_from_samples(v.trim().parse().unwrap_or(0)));
-        RenderSettings { msaa }
+        let aa = crate::graphics::GraphicsSettings::startup().aa;
+        let source = if std::env::var_os("RC_MSAA").is_some() { "RC_MSAA" } else { "settings" };
+        (RenderSettings { msaa: msaa_from_samples(aa.samples()) }, source)
     }
 }
 
@@ -206,13 +197,10 @@ fn write_key(text: &str, key: &str, value: &str) -> String {
             _ => l.to_string(),
         })
         .collect();
-    if out.is_empty() { out.push("# ReRAC port settings (Port Options page; RC_MSAA overrides msaa at start)".into()); }
+    if out.is_empty() { out.push("# ReRAC port settings (Port Options page; RC_GFX_* switches override at start)".into()); }
     if !found { out.push(format!("{key} = {value}")); }
     out.join("\n") + "\n"
 }
-
-/// Writes the settings into the port settings file (a no-op when it is disabled); errors are reported, not fatal.
-pub fn save(s: &RenderSettings) { save_key("msaa", &s.msaa.samples().to_string()); }
 
 /// The value of `key` in the port settings file (None: no file, or no such key).
 pub fn load_key(key: &str) -> Option<String> {

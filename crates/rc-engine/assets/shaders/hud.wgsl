@@ -107,14 +107,17 @@ fn fragment(in: HudVarying) -> @location(0) vec4<f32> {
 @group(1) @binding(1) var<uniform> scaling: vec4<f32>;
 
 // The image at `uv`: the pixel under it (nearest), or the four around it weighted (bilinear, edges clamped). Both on
-// the stored values (premultiplied display bytes), as a display scaler works on the signal.
+// the stored values (premultiplied display bytes), as a display scaler works on the signal. Bilinear reads half a pixel
+// to the left: the game's display copy (crate::aa_blit, B) passes the finished screen, HUD included, through a GS
+// bilinear tap at U = X, which reads texels x − 1 and x half each; as a box of one game pixel at the frame's
+// resolution that is the bilinear sample half a pixel left. Down, the copy's stretch is centred (the plain sample).
 fn sample_layer(uv: vec2<f32>) -> vec4<f32> {
     let size = vec2<i32>(textureDimensions(hud_image));
     if scaling.x < 0.5 {
         let p = clamp(vec2<i32>(floor(uv * vec2<f32>(size))), vec2<i32>(0), size - vec2<i32>(1));
         return textureLoad(hud_image, p, 0);
     }
-    let q = uv * vec2<f32>(size) - 0.5;
+    let q = uv * vec2<f32>(size) - vec2<f32>(1.0, 0.5);
     let p0 = vec2<i32>(floor(q));
     let f = q - floor(q);
     let hi = size - vec2<i32>(1);
