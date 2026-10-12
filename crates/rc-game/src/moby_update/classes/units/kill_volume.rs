@@ -10,7 +10,7 @@
 //! | address | what | port |
 //! |---|---|---|
 //! | state 0 | +0x30 (update distance) = 0xff, → 1 | [`update`] |
-//! | state 1, gate | skipped while `0x1413d4` = 0x32 **and** `0x140940` ≠ 0 **and** that moby's state is not −2 / −3 **and** `0x140944` (its class) = 0x45 | [`update`]: the state test reads the hero ([`MOUNTED`]); the vehicle word `0x140940` is written only by the ships 1242 / 69 / 1379 (unported, G-LVL-009), so it is 0 in the port and the cuboids stay on (the game's own outcome whenever no ship is flown, e.g. Batalia's turret, which mounts him without it) |
+//! | state 1, gate | skipped while `0x1413d4` = 0x32 **and** `0x140940` ≠ 0 **and** that moby's state is not −2 / −3 **and** `0x140944` (its class) = 0x45 | [`update`]: the state test reads the hero ([`MOUNTED`]) and `0x140940` / `0x140944` the ridden vehicle's record ([`vehicle`], [`crate::vehicle::Record`]) — Gemlik's ship 69 is class 0x45, so the cuboids go off while Ratchet flies it (Pokitaru's jet 1242 and the fleet's ship 1379 write the same record) |
 //! | first list | per cuboid ≥ 0: `PointInCuboid(0x13f3d0, c)` (0x274820); body `0x1413f4` = 0: state ≠ 0x77 → `SetState(0x77, 1)` (the level's copy: the port's SetState, level_generalisation.md H2); other bodies: `FadeToBlack(ticks(10))`, the death sequence `0x2319b0` (L06 `0x228230`) | [`update`] (`HeroCall::SetState`, `cinematic::fade_to_black`, `HeroCall::Death`) |
 //! | second list | per cuboid ≥ 0 inside: `FadeToBlack(ticks(10))`, the death sequence | [`update`] |
 //! | | no sound, particle, light, HUD, save flag, other moby; the death sequence counts the deaths (`hero::damage::death_fade`) | n/a |
@@ -34,9 +34,12 @@ const FADE: i32 = 10;
 /// Cuboids per list.
 const PER_LIST: usize = 32;
 
-/// `0x140940` / `0x140944`: the vehicle moby and its class. Written only by the ship classes (G-LVL-009), none of which
-/// the port has: no vehicle.
-fn vehicle(_w: &World) -> Option<(MobyId, i16)> { None }
+/// `0x140940` / `0x140944`: the ridden vehicle's moby and its class, as the mounts leave them in
+/// [`crate::vehicle::Record`] (Gemlik's ship 69, Pokitaru's jet 1242 and the fleet's ship 1379 write the record).
+/// Class 69 is ported, so the gate below sees the ship Ratchet rides.
+fn vehicle(w: &World) -> Option<(MobyId, i16)> {
+    w.svc.vehicle.moby.map(|m| (m, w.svc.vehicle.class))
+}
 
 /// The gate of state 1 (module doc): true while he flies a live ship of class 0x45.
 fn in_ship(w: &World) -> bool {

@@ -192,6 +192,19 @@ fn kill_cuboids_on(level: u32) {
         m.state = rc_game::hero::scripted::MOUNTED;
         lv.tick(&m);
         assert_eq!(lv.calls(), vec![HeroCall::SetState { id: kv::DEATH_FALL, play: true }], "level {level:02}: on without a ship");
+        // Mounted with the ridden vehicle's record naming a live ship of class 0x45 (Gemlik's 69, 0x140940 / 0x140944):
+        // off — the ship flies through the level's kill cuboids.
+        let ship = (0..lv.table.mobys.len()).find(|&i| i != k && lv.table.mobys[i].state < 0xfe).expect("a live moby");
+        lv.svc.vehicle.moby = Some(ship);
+        lv.svc.vehicle.class = kv::SHIP_CLASS;
+        lv.tick(&m);
+        assert!(lv.calls().is_empty() && fades(&lv).is_empty(), "level {level:02}: off while flying a 0x45 ship");
+        // Any other class (Hoven's turret 1267, Batalia's 440): on again.
+        lv.svc.vehicle.class = kv::SHIP_CLASS + 1;
+        lv.tick(&m);
+        assert_eq!(lv.calls(), vec![HeroCall::SetState { id: kv::DEATH_FALL, play: true }], "level {level:02}: on for another class");
+        lv.svc.vehicle.moby = None;
+        lv.svc.vehicle.class = 0;
     }
     for &c in &deaths {
         let q = lv.cuboid_centre(c).expect("cuboid");
