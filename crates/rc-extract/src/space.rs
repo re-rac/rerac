@@ -11,7 +11,7 @@ pub fn available_bytes(path: &Path) -> Option<u64> {
     imp::available(p)
 }
 
-#[cfg(all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64")))]
+#[cfg(any(all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64")), all(target_os = "ios", target_arch = "aarch64")))]
 mod imp {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
@@ -115,6 +115,7 @@ mod imp {
 
 #[cfg(not(any(
     all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64")),
+    all(target_os = "ios", target_arch = "aarch64"),
     all(target_os = "linux", target_pointer_width = "64"),
     windows
 )))]

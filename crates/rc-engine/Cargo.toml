@@ -24,3 +24,10 @@ rc-data = { path = "../rc-data" }
 # The movies (FMV): MPEG-2 video decoder and PSS player core, ours (docs/formats/pss.md).
 rc-video = { path = "../rc-video" }
 anyhow.workspace = true
+
+# iOS port (crate::ios, crate::gc_pad): the first-run disc extraction and Bluetooth / MFi controllers.
+[target.'cfg(target_os = "ios")'.dependencies]
+rc-extract = { path = "../rc-extract" }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString"] }
+objc2-game-controller = { version = "0.3", default-features = false, features = ["std", "GCController", "GCExtendedGamepad", "GCPhysicalInputProfile", "GCControllerElement", "GCControllerButtonInput", "GCControllerAxisInput", "GCControllerDirectionPad", "GCDevice"] }

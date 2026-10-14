@@ -81,6 +81,10 @@ mod screen_canvas;
 mod shadow_render;
 mod pre_shadow;
 mod frame_log;
+mod gc_pad;
+#[cfg(target_os = "ios")]
+mod ios;
+mod touch_pad;
 mod shrub_billboard;
 mod shrub_light;
 mod shrub_render;
@@ -126,6 +130,9 @@ struct ScreenshotRequest {
 
 fn main() -> anyhow::Result<()> {
     crash_log::install();
+    // iOS: the sandbox folders and, on the first run, the disc extraction (never returns until the data is ready).
+    #[cfg(target_os = "ios")]
+    ios::startup();
     // `--version-json` exits here; a missing or wrong data folder exits with a clear error (crate::disc_source).
     let root = disc_source::startup();
     let index = level_load::level_index();
@@ -150,8 +157,7 @@ fn main() -> anyhow::Result<()> {
     app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {
-                // 4:3, as the TV showed the 512x416 GS draw buffer (crate::display; docs/plan/render_pipeline.md).
-                primary_window: Some(Window { title: "ReRAC".into(), resolution: (1024u32, 768u32).into(), ..default() }),
+                primary_window: Some(primary_window()),
                 ..default()
             })
             .set(AssetPlugin { file_path: asset_dir(), ..default() })
@@ -212,6 +218,8 @@ fn main() -> anyhow::Result<()> {
     // The game tick (hero, pad, follow camera) driving Ratchet and the view; RC_PLAY=0 keeps the fly camera only.
     .add_plugins(gameplay::GameplayPlugin { boot: std::sync::Mutex::new(boot) })
     .add_plugins(menu_render::MenuPlugin)
+    // Port-only input: on-screen touch controls (iOS, RC_TOUCH=1) and Apple game controllers (iOS).
+    .add_plugins((touch_pad::TouchPadPlugin, gc_pad::GcPadPlugin))
     .add_plugins((screen_canvas::CanvasPlugin, vendor_render::VendorRenderPlugin))
     // The Gadgets / Weapons pages' 3D Ratchet and item preview (crate::menu_models, on crate::screen_canvas).
     .add_plugins(menu_models::MenuModelsPlugin)
@@ -257,6 +265,15 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn ms(d: Duration) -> f64 { d.as_secs_f64() * 1e3 }
+
+/// The game window: 4:3, as the TV showed the 512x416 GS draw buffer (crate::display; docs/plan/render_pipeline.md);
+/// full screen on iOS (crate::ios).
+fn primary_window() -> Window {
+    #[cfg(target_os = "ios")]
+    return ios::window("ReRAC");
+    #[cfg(not(target_os = "ios"))]
+    Window { title: "ReRAC".into(), resolution: (1024u32, 768u32).into(), ..default() }
+}
 
 /// The shader folder: `assets/` next to the executable (a packaged version, `tools/package`), or
 /// `../Resources/assets` inside a macOS `.app`; otherwise the repo's `crates/rc-engine/assets` (`cargo dev`,

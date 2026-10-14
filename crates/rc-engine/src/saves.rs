@@ -73,7 +73,7 @@ pub fn clock_now() -> [u8; 8] {
 fn config_base() -> Option<std::path::PathBuf> {
     if crate::determinism::deterministic() { return None; }
     let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
-    if cfg!(target_os = "macos") {
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
         Some(var("HOME")?.join("Library/Application Support"))
     } else if cfg!(windows) {
         var("APPDATA")

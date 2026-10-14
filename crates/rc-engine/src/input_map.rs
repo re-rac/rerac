@@ -42,7 +42,7 @@ const MOUSE_FULL: f32 = 12.0;
 pub struct PadFrame(pub PadInput);
 
 /// A Bevy stick value in [−1, 1] (y up) → the raw libpad2 byte (y down).
-fn raw_axis(v: f32) -> u8 { (127.5 + 127.5 * v.clamp(-1.0, 1.0)).round().clamp(0.0, 255.0) as u8 }
+pub(crate) fn raw_axis(v: f32) -> u8 { (127.5 + 127.5 * v.clamp(-1.0, 1.0)).round().clamp(0.0, 255.0) as u8 }
 
 /// Keyboard + mouse + the first gamepad → one pad read.
 pub fn sample(keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, motion: &AccumulatedMouseMotion, gamepad: Option<&Gamepad>) -> PadInput {

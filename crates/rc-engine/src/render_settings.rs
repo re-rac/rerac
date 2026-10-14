@@ -136,7 +136,7 @@ pub fn settings_path() -> Option<std::path::PathBuf> {
     }
     if crate::determinism::deterministic() { return None; }
     let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    let base = if cfg!(target_os = "macos") {
+    let base = if cfg!(any(target_os = "macos", target_os = "ios")) {
         var("HOME")?.join("Library/Application Support")
     } else if cfg!(windows) {
         var("APPDATA")?

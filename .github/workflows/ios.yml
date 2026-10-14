@@ -1,0 +1,61 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths: ["crates/**", "Cargo.lock", "Cargo.toml", "tools/ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+      - name: Build for iPhone (unsigned .ipa)
+        run: tools/ios/build.sh device
+      - name: Build for the iOS Simulator
+        run: tools/ios/build.sh simulator
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReRAC-ipa
+          path: dist/ios/ReRAC.ipa
+      - name: Zip the simulator app
+        run: cd dist/ios-sim && ditto -c -k --keepParent ReRAC.app ReRAC-simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReRAC-simulator
+          path: dist/ios-sim/ReRAC-simulator.zip
+      # Smoke test: no disc image here, so the app must reach its setup screen and keep running.
+      - name: Simulator smoke test (iPhone 16 Pro Max)
+        continue-on-error: true
+        run: |
+          set -x
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devs = [d for rt, ds in json.load(sys.stdin)["devices"].items() if "iOS" in rt for d in ds if d["name"] == "iPhone 16 Pro Max"]
+          print(devs[-1]["udid"])')"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" dist/ios-sim/ReRAC.app
+          xcrun simctl launch --stdout=$PWD/dist/sim-stdout.log --stderr=$PWD/dist/sim-stderr.log "$udid" com.rerac.ios
+          sleep 25
+          xcrun simctl io "$udid" screenshot dist/sim-setup.png
+          cat dist/sim-stdout.log dist/sim-stderr.log || true
+          xcrun simctl spawn "$udid" launchctl list | grep -i rerac
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulator-smoke
+          path: |
+            dist/sim-setup.png
+            dist/sim-*.log
+          if-no-files-found: ignore
