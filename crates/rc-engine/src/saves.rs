@@ -85,7 +85,7 @@ fn local_time() -> Option<[u64; 6]> {
     // SAFETY: GetLocalTime only writes the SYSTEMTIME it is given.
     unsafe { GetLocalTime(&mut st) };
     let [y, mo, _, d, h, mi, s, _] = st.0;
-    (y != 0).then(|| [y as u64, mo as u64, d as u64, h as u64, mi as u64, s as u64])
+    (y != 0).then_some([y as u64, mo as u64, d as u64, h as u64, mi as u64, s as u64])
 }
 
 /// The host's local date and time now: year, month, day, hour, minute, second.
