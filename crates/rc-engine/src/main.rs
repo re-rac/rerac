@@ -81,6 +81,7 @@ mod screen_canvas;
 mod shadow_render;
 mod pre_shadow;
 mod frame_log;
+mod pipeline_overlay;
 mod shrub_billboard;
 mod shrub_light;
 mod shrub_render;
@@ -178,7 +179,7 @@ fn main() -> anyhow::Result<()> {
     .add_plugins(draw_stats::DrawStatsPlugin)
     // MSAA of the world cameras (default off; `RenderSettings` can change it at run time).
     .add_plugins(render_settings::RenderSettingsPlugin)
-    .add_plugins((MaterialPlugin::<TfragMaterial>::default(), FlyCamPlugin, game_camera::GameCameraPlugin { fog: level.fog }))
+    .add_plugins((MaterialPlugin::<TfragMaterial>::default(), pipeline_overlay::PipelineOverlayPlugin, FlyCamPlugin, game_camera::GameCameraPlugin { fog: level.fog }))
     .add_plugins(occlusion::OcclusionPlugin)
     .add_plugins(tfrag_lod::TfragLodPlugin)
     .add_plugins(moby_render::MobyRenderPlugin)
