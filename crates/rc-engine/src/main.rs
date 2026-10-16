@@ -125,6 +125,7 @@ struct ScreenshotRequest {
 }
 
 fn main() -> anyhow::Result<()> {
+    input_map::install_sdl_mappings();
     crash_log::install();
     // `--version-json` exits here; a missing or wrong data folder exits with a clear error (crate::disc_source).
     let root = disc_source::startup();

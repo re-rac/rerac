@@ -35,6 +35,14 @@ fn novalis_ports_are_the_class_number_registry() {
             assert_eq!(p.get(oc), Some(ClassUpdate::Unit(row)));
             continue;
         }
+        if oc == 530 {
+            // Ratchet's Veldin ship (not placed on Novalis): level01 0x2ecde0 is the same code as level00's, the unit
+            // port `units::veldin_ship` (U24), found by its code.
+            assert!(!placed.contains(&oc));
+            let row = rc_game::moby_update::classes::units::PORTS.iter().position(|u| u.unit == "U24 530").unwrap() as u16;
+            assert_eq!(p.get(oc), Some(ClassUpdate::Unit(row)));
+            continue;
+        }
         assert_eq!(p.get(oc), for_class(oc), "level 01 class {oc} (update {:#x})", e.update);
     }
 }

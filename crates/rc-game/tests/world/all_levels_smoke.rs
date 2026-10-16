@@ -140,6 +140,7 @@ pub fn run_level(level: u32, ticks: u32) -> Option<Outcome> {
     let mut classes = ClassTable::default();
     let mut spheres = HashMap::new();
     let mut joints = HashMap::new();
+    let mut gaits = HashMap::new();
     for (slot, e) in core.core.moby_classes.iter().enumerate() {
         let oc = e.o_class as i16;
         let parsed = core.block(&format!("moby_class/{:04}", e.o_class)).and_then(|b| rc_formats::moby::parse_moby_class(b).ok().map(|c| (b, c)));
@@ -150,6 +151,9 @@ pub fn run_level(level: u32, ticks: u32) -> Option<Outcome> {
             spheres.insert(oc, c.header.bsphere);
             if ports.get(oc).is_some_and(|u| u.needs_joint_lists()) {
                 joints.insert(oc, (0..16).map_while(|l| gadget::joint_list(blob, &c.header, l).ok().map(|(a, _)| a)).collect());
+                // The leg walker's gait records (the engine's `class_gaits`): without them every record's speed is 0
+                // and the walker's anim speed becomes +inf, which `MobyAnimAdvance` never steps past.
+                for (seq, rec) in rc_formats::moby_anim::gait_records(blob, &c) { gaits.insert((oc, seq), rec); }
             }
             classes.classes.insert(oc, (info, Some(anim)));
         } else {
@@ -182,6 +186,7 @@ pub fn run_level(level: u32, ticks: u32) -> Option<Outcome> {
     svc.set_moby_collision(coll_blobs);
     svc.set_volumes(rc_formats::volumes::parse_volumes(&gp).unwrap());
     svc.joint_lists = joints;
+    svc.gaits = gaits;
     svc.build_grid(&mut game.mobys);
     svc.creatures.class_spheres = spheres;
     let mut particles = Particles::new(None, Vec::new());
