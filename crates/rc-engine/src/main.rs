@@ -150,8 +150,8 @@ fn main() -> anyhow::Result<()> {
     app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {
-                // 4:3, as the TV showed the 512x416 GS draw buffer (crate::display; docs/plan/render_pipeline.md).
-                primary_window: Some(Window { title: "ReRAC".into(), resolution: (1024u32, 768u32).into(), ..default() }),
+                // The Port Options' resolution, aspect and fullscreen (crate::display; docs/plan/render_pipeline.md).
+                primary_window: Some(display::start_window("ReRAC")),
                 ..default()
             })
             .set(AssetPlugin { file_path: asset_dir(), ..default() })

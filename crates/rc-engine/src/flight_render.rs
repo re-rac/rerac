@@ -206,10 +206,10 @@ fn update_sky(
 fn sky_tan(f: Res<FlightRender>, display: Res<crate::display::DisplaySettings>, mut sky_cam: Query<&mut Projection, With<SkyCamera>>) {
     let Some(d) = f.draw.as_ref().filter(|_| f.active && !f.sky.is_empty()) else { return };
     // Compared in the game's terms (the projection's x tangent carries the Hor+ factor, crate::display).
-    let (min_x, _) = crate::display::view_tans(d.sky_tan, display.aspect);
+    let (min_x, _) = crate::display::view_tans(d.sky_tan, display.frame_aspect());
     for mut p in &mut sky_cam {
         let below = matches!(&*p, Projection::Custom(c) if c.get::<GameProjection>().is_some_and(|g| g.tan_x < min_x));
-        if below { crate::display::set_view_tans(&mut p, d.sky_tan, display.aspect); }
+        if below { crate::display::set_view_tans(&mut p, d.sky_tan, display.frame_aspect()); }
     }
 }
 

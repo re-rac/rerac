@@ -1,5 +1,6 @@
 //! **Port-only** (not in the game): the "Port Options" page, for settings the PS2 never had (the graphics options and
-//! their preset, anti-aliasing, switching the moby shadows off, the aspect, the render resolution and fullscreen).
+//! their preset, anti-aliasing, switching the moby shadows off, the gameplay and cutscene aspects, the render
+//! resolution and fullscreen).
 //! Spec: docs/plan/menus.md "Port-only settings"; the graphics rows: docs/plan/graphics_options.md (every row's first
 //! value is the game's own look).
 //!
@@ -17,6 +18,11 @@
 //! description at the same index ([`Label::table`]). [`PageMenu::install_port_page`] does all of it; without
 //! the call every record is exactly as read from the overlay.
 //!
+//! The main menu (the front end's Options 0x1b8d08) gets the same page as [`FRONT_PAGE`]: the entry is appended to
+//! both of the front end's Options lists (NTSC Language / Sound, PAL + Video; `saves::front_options_enter` installs
+//! them), and the page takes the frames of that Options' Sound sub-page 0x1b8e38 (the front-end sub-pages' title is
+//! W2, not W0). Both pages share the title and the list widgets, so the values and the cursor are one.
+//!
 //! Records live at addresses no EE pointer can hold (0x7f00_xxxx), and the text ids are negative (the disc's
 //! ids are 0..=21500), so nothing here can collide with or be mistaken for game data.
 //!
@@ -33,6 +39,8 @@ use rc_formats::font::Font;
 
 /// The page and its two own widgets (title label, settings list).
 pub const PAGE: u32 = 0x7f00_0000;
+/// The main menu's page (parent: the front end's Options).
+pub const FRONT_PAGE: u32 = 0x7f00_0010;
 pub const TITLE_W: u32 = 0x7f00_0100;
 pub const LIST_W: u32 = 0x7f00_0200;
 /// The list's callbacks (dispatched like the game's by address).
@@ -51,8 +59,27 @@ pub const QUIT_PAGE: u32 = 0x1b6060;
 /// backwards to it (another page's, e.g. Cheats', end on their own parent's layout under the Options page).
 pub const MODEL_FEW: u32 = 0x1b5788;
 pub const MODEL_MANY: u32 = 0x1b5ee0;
-/// The rows the Camera frame's list panel shows at once; the list scrolls ([`PortList::top`]).
+/// The front end's Options item whose page the main menu's page is modelled on: Sound (20258, page 0x1b8e38; its
+/// list panel is the front-end sub-pages' widest).
+pub const FRONT_MODEL_LABEL: i16 = 20258;
+/// The rows the list shows at once before its panel has a rect; the list scrolls ([`PortList::top`]).
 pub const VISIBLE: usize = 4;
+/// The list panel (slot 3 on both pages) stretched to these screen rows, from below the title (y 26..68) to above
+/// the hint list (318..388): the model pages' panels are 165..248 (Camera) and 118..267 (the front end's Sound).
+pub const LIST_SLOT: usize = 3;
+pub const LIST_ROWS: [i32; 2] = [82, 302];
+/// The least row spacing: the panel shows `h / ROW_STEP − 1` rows (the camera list's `h/(n+1)` spacing at ≥ this).
+pub const ROW_STEP: i32 = 20;
+
+/// The frame mobys' stretch for page `page` ([`super::frame::FrameMobys::stretch`]): the list panel on the port pages.
+pub fn panel_stretch(page: u32) -> [Option<[i32; 2]>; super::frame::SLOTS] {
+    let mut s = [None; super::frame::SLOTS];
+    if page == PAGE || page == FRONT_PAGE { s[LIST_SLOT] = Some(LIST_ROWS); }
+    s
+}
+
+/// The rows a list panel `h` pixels high shows.
+fn visible(h: i32) -> usize { if h <= 0 { VISIBLE } else { ((h / ROW_STEP - 1).max(1) as usize).min(ENTRIES.len()) } }
 
 /// The port's own strings (not in the game's text table). Ids are negative; [`MenuAssets::msg`] resolves them.
 pub mod text {
@@ -76,6 +103,7 @@ pub mod text {
     pub const ASPECT_4_3: i32 = -0x151;
     pub const ASPECT_16_9: i32 = -0x152;
     pub const ASPECT_16_10: i32 = -0x153;
+    pub const CUTSCENE_ASPECT: i32 = -0x154;
     pub const PRESET: i32 = -0x160;
     pub const ORIGINAL: i32 = -0x161;
     pub const ENHANCED: i32 = -0x162;
@@ -110,7 +138,8 @@ pub mod text {
             RES_1440 => b"1440p",
             RES_2160 => b"2160p",
             FULLSCREEN => b"Fullscreen",
-            ASPECT => b"Aspect ratio",
+            ASPECT => b"Gameplay aspect",
+            CUTSCENE_ASPECT => b"Cutscene aspect",
             ASPECT_4_3 => b"4:3",
             ASPECT_16_9 => b"16:9",
             ASPECT_16_10 => b"16:10",
@@ -147,8 +176,12 @@ pub enum Setting {
     Resolution,
     /// The window: value 0 windowed, 1 fullscreen.
     Fullscreen,
-    /// The frame's aspect: value 0 the TV's 4:3, 1 16:10, 2 16:9 (the 3D view widens; the 2D screen stays 4:3, centred).
+    /// The gameplay view's aspect: value 0 the TV's 4:3, 1 16:10, 2 16:9 (the 3D view widens; the 2D screen stays 4:3,
+    /// centred; the HUD's side slots move out to the view's edges).
     Aspect,
+    /// The cutscenes' aspect (the story scenes, the letterboxed cutaways, the ship's take-off / landing), the same
+    /// values. The frame takes the wider of the two; the narrower view is pillarboxed in it.
+    CutsceneAspect,
     /// How the game's 2D screen reaches the frame: value 0 Original (scaled smoothly, as on a TV), 1 Sharp pixels.
     Hud,
     /// How world textures pick their detail level: value 0 Original (the PS2's rule), 1 Smooth, 2 Sharp.
@@ -175,6 +208,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::Hud, label: text::HUD, values: &[text::ORIGINAL, text::SHARP_PIXELS] },
     Entry { setting: Setting::Shadows, label: text::SHADOWS, values: &[text::ON, text::OFF] },
     Entry { setting: Setting::Aspect, label: text::ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9] },
+    Entry { setting: Setting::CutsceneAspect, label: text::CUTSCENE_ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9] },
     Entry { setting: Setting::Resolution, label: text::RESOLUTION, values: &[text::RES_WINDOW, text::RES_416, text::RES_720, text::RES_1080, text::RES_1440, text::RES_2160] },
     Entry { setting: Setting::Fullscreen, label: text::FULLSCREEN, values: &[text::OFF, text::ON] },
 ];
@@ -213,9 +247,12 @@ fn list_mut(m: &mut PageMenu, w: u32) -> Option<&mut PortList> {
 pub fn row_of(s: Setting) -> Option<usize> { ENTRIES.iter().position(|e| e.setting == s) }
 
 impl PageMenu {
-    /// Adds the page, its widgets and the Options entry (module docs). `ov` is read for the description
-    /// label's id table. False (nothing changed) when the Options page, its list or a model page is missing.
-    pub fn install_port_page(&mut self, ov: &Overlay) -> bool {
+    /// Adds the pages, their widgets and the Options entries of the pause menu and of the main menu (module docs).
+    /// `ov` is read for the description label's id table. False when a page could not be added (the pause page:
+    /// nothing changed; the main menu's: the pause page stays).
+    pub fn install_port_page(&mut self, ov: &Overlay) -> bool { self.install_pause_port_page(ov) && self.install_front_port_page() }
+
+    fn install_pause_port_page(&mut self, ov: &Overlay) -> bool {
         if self.pages.contains_key(&PAGE) { return true; }
         let ad = self.addrs.clone();
         let model = if ENTRIES.len() <= 2 { ad.port_model_few } else { ad.port_model_many };
@@ -259,6 +296,24 @@ impl PageMenu {
         true
     }
 
+    /// The main menu's page: the front end's Sound sub-page with the shared title (W2) and list (W3), parent the front
+    /// end's Options; the entry last in both of its lists. Needs the pause page's widgets.
+    fn install_front_port_page(&mut self) -> bool {
+        if self.pages.contains_key(&FRONT_PAGE) { return true; }
+        if !self.widgets.contains_key(&TITLE_W) || !self.widgets.contains_key(&LIST_W) { return false; }
+        let Some(model) = self.saves.front_options[0].iter().find(|it| it.label == FRONT_MODEL_LABEL && it.action == 3).and_then(|it| self.pages.get(&it.arg)).cloned() else { return false };
+        if model.parent == 0 { return false; }
+        let mut widgets = model.widgets;
+        widgets[2] = TITLE_W;
+        widgets[3] = LIST_W;
+        let page = Page { addr: FRONT_PAGE, seqs: model.seqs, parent: model.parent, kind: KIND, focus: LIST_W, widgets, pending: 0 };
+        for list in &mut self.saves.front_options {
+            list.push(Item { label: text::ENTRY as i16, action: 3, arg: FRONT_PAGE, sublabel: 0, hl: 0 });
+        }
+        self.pages.insert(FRONT_PAGE, page);
+        true
+    }
+
     /// The value index of a port setting (None without the page).
     pub fn port_value(&self, s: Setting) -> Option<u8> { list(self)?.values.get(row_of(s)?).copied() }
 
@@ -284,12 +339,13 @@ impl PageMenu {
 pub fn update(m: &mut PageMenu, w: u32, inp: &MenuInput, out: &mut MenuOut) -> i32 {
     if !m.is_focus(w) { return 0; }
     if let Some(r) = keys(m, inp, 1) { return r; }
+    let shown = visible(m.widgets.get(&w).map_or(0, |wd| wd.rect[3])) as i32;
     let Some(p) = list_mut(m, w) else { return 0 };
     let start = p.cursor;
     if inp.pressed_u & button::UP != 0 && p.cursor != 0 { p.cursor -= 1; }
     if inp.pressed_u & button::DOWN != 0 && (p.cursor as usize + 1) < ENTRIES.len() { p.cursor += 1; }
     if p.cursor != start { out.sounds.push(MenuSound::Cursor); }
-    p.top = p.top.clamp(p.cursor - VISIBLE as i32 + 1, p.cursor).max(0);
+    p.top = p.top.clamp(p.cursor - shown + 1, p.cursor).max(0);
     let r = p.cursor as usize;
     if inp.pressed_u & button::CROSS != 0 {
         let choices = p.choices.get(r).copied().unwrap_or(u32::MAX);
@@ -306,8 +362,8 @@ pub fn draw(m: &mut PageMenu, w: u32, a: &MenuAssets, out: &mut Vec<MenuDraw>) -
     let Some(wd) = m.widgets.get(&w) else { return 1 };
     let [_, _, ww, wh] = wd.rect;
     let Data::Port(p) = &wd.data else { return 1 };
-    // The camera list's spacing for the rows shown (h/(n+1), n = VISIBLE).
-    let shown = ENTRIES.len().min(VISIBLE);
+    // The camera list's spacing for the rows shown (h/(n+1)).
+    let shown = visible(wh);
     let step = wh / (shown as i32 + 1);
     let mut y = step - 8;
     let top = (p.top.max(0) as usize).min(ENTRIES.len() - shown);

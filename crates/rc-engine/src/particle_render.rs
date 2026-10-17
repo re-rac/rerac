@@ -490,7 +490,7 @@ fn build_sprites(
     let (eye, [fwd, left, up]) = camera(t);
     let (tx, ty) = view_tans(proj);
     sim.view_tan = (tx, ty);
-    let size_px = size_to_pixels(tx / display.map_or(1.0, |d| crate::display::hor_scale(d.aspect)));
+    let size_px = size_to_pixels(tx / display.map_or(1.0, |d| crate::display::hor_scale(d.frame_aspect())));
     // 0x167240 for the next ticks' particle updates (type 11): the camera as last drawn.
     sim.sys.camera = eye.map(f32::to_bits);
     let eye = Vec3::from_array(eye);

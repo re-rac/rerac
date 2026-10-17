@@ -508,7 +508,7 @@ Help/tutorial boxes: hud_text.md §3.4 (`Help_Update` 0x225bd0). They run inside
 ## 9. Port-only settings ("Port Options")
 
 Not in the game. Settings the PS2 never had (anti-aliasing first) live on one extra page, **Port Options**, reached from
-pause → Options → "Port Options". It is built only from the game's own machinery, so it looks and behaves like the Options
+pause → Options → "Port Options" and from the main menu's Options → "Port Options". It is built only from the game's own machinery, so it looks and behaves like the Options
 sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_page`):
 
 * **Entry**: one item `{label "Port Options", action 3 → page}` inserted into the Options list 0x1b4f78 **right before Quit
@@ -520,20 +520,36 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   (0x1b2878) and hint list W4 (0x1b2920, "✕ Toggle / △ Exit") are those of Subtitles 0x1b5788 (≤ 2 rows; Camera 0x1b5ee0's
   for 3+). Only an Options sub-page's frames work: a page's frame animations start from its parent's layout and △ plays
   them backwards to it (with Cheats' frames, tried 2026-10-10, △ left the Options page in the Goodies layout). W0 is a
-  clone of the sub-page title label (flags 0xf: large, centred) with the port title; W3 is the port list, showing
-  `port::VISIBLE` (4) rows at a time and scrolling with the cursor. The port list is
+  clone of the sub-page title label (flags 0xf: large, centred) with the port title; W3 is the port list, in a panel
+  stretched (port-only) to rows 82..302 between the title and the hints on both pages (`port::panel_stretch`:
+  `frame::FrameMobys::stretch` moves the slot's top / bottom corners in world z, in proportion to its sequence's
+  progress, so the open / close animations reach it smoothly; the engine moves the corner joints of the drawn moby
+  by the same amount), showing `h / 20 − 1` rows (10) at a time and scrolling with the cursor. The port list is
   updated and drawn exactly like the camera list 0x294cc0 / 0x294e68 (rows `h/(n+1)`, first y `h/(n+1) − 8`, label regular at
   (12, y) 0x8020ffff selected / 0x80ffa888, value right-aligned at (w − 12, y) 0x80ffa888; Up/Down without wrap + sound 1; ✕
   cycles the value + sound 0; generic Start/Select/R3 close and △ → Options). Transitions (12 ticks, seqs forward / reversed),
   panels, fonts and colours are `PageMenu`'s.
+* **Main menu** (the front end's Options 0x1b8d08): the same rows on a second page record, `port::FRONT_PAGE` (kind 0x7f,
+  parent 0x1b8d08). The entry `{"Port Options", action 3 → FRONT_PAGE}` is appended to both of the front end's Options
+  lists (`saves::front_options`: NTSC Language / Sound, PAL Language / Video / Sound), which the list's enter 0x28dbb8
+  copies in; the page takes the frame seqs and hint list of that Options' Sound sub-page 0x1b8e38 (its list panel,
+  419 × 149 settled, is the widest front-end sub-page's; Language's is 151 wide), with the title at W2 and the list at W3
+  as the front-end sub-pages have them. Both pages share the title and list widgets, so the cursor and the values are
+  one. The engine syncs the rows around the front end's menu tick exactly as around the pause menu's
+  (`menu_render::PortSettings`).
 * **Strings**: the port's own text, negative ids (−0x100..) resolved by `MenuAssets::msg` before the level's table (the
   disc's ids are 0..21500); "off" is the game's 20315. Records use addresses 0x7f00_xxxx, which no EE pointer can hold.
 * **Rows** (`port::ENTRIES`, one entry per option): the graphics rows (Preset, Anti-aliasing: Original / off / 2x / 4x / 8x,
   Detail distance, Texture filtering, HUD; docs/plan/graphics_options.md) → `graphics::GraphicsSettings` (engine
   `menu_render.rs` syncs the rows with the resource around each menu tick; a change is saved; the anti-aliasing samples
-  reach the cameras through `render_settings::RenderSettings::msaa`). Shadows: on / off. Aspect ratio: 4:3 / 16:10 / 16:9, Resolution: Window / 416p / 720p /
+  reach the cameras through `render_settings::RenderSettings::msaa`). Shadows: on / off. Gameplay aspect and Cutscene aspect: 4:3 / 16:10 / 16:9 each, Resolution: Window / 416p / 720p /
   1080p / 1440p / 2160p and Fullscreen: off / on → `display::DisplaySettings` (the game frame every camera renders into, presented
-  on black at the window's size; keys `aspect` / `resolution` / `fullscreen` in the settings file). 16:10 / 16:9 are Hor+: the
+  on black at the window's size; keys `aspect` (gameplay) / `cutscene_aspect` / `resolution` / `fullscreen` in the settings
+  file; a file without `cutscene_aspect` gives the cutscenes the gameplay aspect). The frame takes the wider aspect; while
+  the view shown is narrower (a cutscene — a scene, the letterbox 0x15f404 set, mode 6's take-off / landing / fly-away —
+  or gameplay), black bars cover the margin it does not show (`display::pillar_bars`, drawn last in the HUD layer).
+  The movies (crate::movie_render, 4:3 on the disc) are stretched to the cutscene aspect's box (`display::CutsceneBoxed`).
+  The HUD's side slots follow the gameplay aspect. 16:10 / 16:9 are Hor+: the
   world projection's x tangent is the game's × 6/5 / × 4/3 and culling reads the live projection; the 512×416 screen maps to
   the frame's centred 4:3 box, the HUD layer is 51 / 85 game px wider on each side (its left/right-anchored slots move out,
   primitives spanning the screen stretch) and the menu pages stay clipped to the box (`Prim::boxed`). The world is not re-rendered under the menu (the snapshot is shown), so the new
@@ -548,7 +564,7 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   macOS (`$XDG_CONFIG_HOME`/`~/.config` elsewhere, `%APPDATA%` on Windows), read at start, rewritten on change (unknown
   keys / comments kept). `RC_MSAA` / `RC_GFX_*` override the file at start; `RC_SETTINGS_FILE=<path>` picks another file, `=0` disables
   it; frame-exact runs (`RC_SCREENSHOT_FRAME` / `RC_DETERMINISTIC=1`) ignore the default file.
-* `RC_SETTINGS_PAGE=0`: no entry, no page: every record is as read from the overlay (Options frames byte-identical to the
+* `RC_SETTINGS_PAGE=0`: no entries, no pages: every record is as read from the overlay (Options frames byte-identical to the
   game's layout). Without the variable, frames of every page but Options (8 rows instead of 7) are unchanged.
 
 ## 10. Help messages, pause pages, the in-game map: what is a system (2026-09-28)
