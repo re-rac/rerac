@@ -53,16 +53,17 @@
 //! 0, 4, 7, 9, 10, 12, 13, 14, 17): the idle / stop / walk entries ([`idle_entry`], [`stop_entry`],
 //! [`slippery_walk_entry`]), the ground physics' drag and crouch brake ([`ground_drag`], [`crouch_decel`]), the idle
 //! transitions ([`idle_slide`]), the idle fidgets and sequence ([`slippery`]), the combo on ice ([`slide_move`]),
-//! the walk transitions ([`walk_surface`], [`walk_tail`]), the capsule sizing ([`slippery_capsule`]) and the
-//! ground probe ([`probe_surface`]).
+//! the walk transitions ([`walk_surface`], [`walk_tail`]), the jump windup (jump.rs, on the latched 0x13f7f8: the
+//! takeoff runs [`slide_move`] so the slide's momentum carries into the jump), the capsule sizing
+//! ([`slippery_capsule`]) and the ground probe ([`probe_surface`]).
 //!
 //! **Not ported** (cosmetic, recorded as [`SurfaceEvent`]s for the engine where it can use them): the body leans
 //! of 0x2f / 0x31 (joint records 0x17a680 / 0x17ab00 and their spring settings, as the walk's; the sinking floor's
 //! bubbles `0x22b140(4, 2)` and sand puff `0x286cb0` are ported, through `super::fx`), level 15's lava splash 0x217450 on
 //! 0x7b, the Hologuise end 0x231450 before the surface states (mode 3 is not in the port). Landing on a slippery
 //! floor goes through the landing picker (jump.rs, P3 / P4): its leading L00 test (0x2293a8: slippery and
-//! |eff.xy| > 0.5·dt → 0x2f) is not in the port's picker; the idle / walk / stop entries it picks redirect to 0x2f
-//! as the game's do. The Thruster hover's slippery brake (L00 case 0x81) is P4's.
+//! |eff.xy| > 0.5·dt → 0x2f) is ported; the idle / walk / stop entries it picks redirect to 0x2f as the game's do.
+//! The Thruster hover's slippery brake (L00 case 0x81) is P4's.
 #![allow(clippy::neg_cmp_op_on_partial_ord)] // compare order kept from the original.
 
 use super::anim::AnimCtl;
@@ -941,6 +942,39 @@ mod tests {
         r.run(&coll, PadInput::neutral(), 400);
         assert_eq!(r.hero.state, 0);
         assert_eq!(r.hero.idle_seq(), 0x6e);
+    }
+
+    /// A jump off ice keeps the slide's momentum: the takeoff windup runs the slide move (the superset build L00
+    /// 0x217970, gated on 0x13f7f8 keep_speed) rather than rebuilding the velocity from the ground speed 0x13f4e4,
+    /// which the slide never updates. Level 0 is the slippery build; the level 1 reaction ignores surface 7, so a
+    /// jump there takes the plain branch and a jump here must not drop him to the stale ground speed.
+    #[test]
+    fn jump_off_ice_keeps_the_slide_momentum() {
+        let coll = ramp(|_| 20.0, |_| 0x27, 0, 24, 0, 16);
+        let mut r = runner([16.0, 32.0, 20.0], 0);
+        // Slide forward, building speed (the walk on ice becomes the slide 0x2f).
+        let fwd = PadInput::neutral().stick(0.0, -1.0);
+        r.run(&coll, fwd, 60);
+        assert_eq!(r.hero.state, 0x2f, "sliding on the ice");
+        let v0 = f(len2(r.hero.vel));
+        assert!(v0 > 0.03, "built up speed: {v0}");
+        // The slide never writes ground_speed, so it lags well behind the slide's velocity.
+        assert!(f(r.hero.speed) < 0.5 * v0, "ground_speed {} vs slide {v0}", f(r.hero.speed));
+
+        // Jump; the windup tick must keep the slide velocity, not reset it to ground_speed.
+        r.tick(&coll, fwd.press(button::CROSS));
+        assert_eq!(r.hero.group, 4, "the jump group");
+        assert_eq!(r.hero.jump.keep_speed, 1, "keep_speed latched from the slippery floor");
+        r.tick(&coll, fwd);
+        let v1 = f(len2(r.hero.vel));
+        assert!(v1 > 0.8 * v0, "the jump kept the slide speed: {v0} -> {v1}");
+
+        // The same ramp on level 1 (surface 7 ignored): no slide, so the jump is the plain one (keep_speed 0).
+        let mut r = runner([16.0, 32.0, 20.0], 1);
+        r.run(&coll, fwd, 60);
+        assert_eq!(r.hero.state, 2, "level 1 walks the ice");
+        r.tick(&coll, fwd.press(button::CROSS));
+        assert_eq!(r.hero.jump.keep_speed, 0, "not latched without the slippery floor");
     }
 
     /// The hero's sounds, recorded: `('v', index, flags)` plays (slot 5 when `free`, else none), `('r', slot, 0)`

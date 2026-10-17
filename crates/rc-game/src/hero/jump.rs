@@ -347,36 +347,51 @@ impl Hero {
         let from_start = matches!(self.state, 0xb | 0xc | 0x10 | 0x11 | 0x1c | 0x4c);
         let windup = self.jump.landed != 0 || (self.timer < self.jump.takeoff && !from_start);
         if windup {
-            self.turn_to(SCALE64 * Pf::b(0x3c75_c28f), SCALE64 * Pf::b(0x3e4c_cccd), DT * Pf::b(0x4170_2845));
-            let s = self.speed;
-            if self.jump.landed >= 2 { self.speed = s * Pf::b(0x3ecc_cccd); }
-            self.set_planar_vel(Pf::b(0x47c3_4f80));
-            self.speed = s;
-            if self.jump.landed != 1 { self.speed_step(self.jump.acc, self.jump.dec); }
-            if self.f658 != 0 { self.speed = Pf::ZERO; }
-            if self.jump.landed != 0 {
-                if env.pad.no_direction && self.f65a != 0 { self.speed = Pf::ZERO; }
-                self.momentum_decay(self.jump.dec);
-            }
-            self.drag(Pf::b(0x3f00_0000), DT + DT);
-            if self.state == state::RUN_JUMP && self.timer < self.jump.takeoff + ticks(4) {
-                // 0x248da0: push forward along the moby's yaw by 16·dt²·T.
-                let a = (DT2 * Pf::b(0x4180_0000)) * Pf::from_i32(self.timer);
-                self.vel[0] = self.vel[0] + fast_cos(self.moby_rot[2]) * a;
-                self.vel[1] = self.vel[1] + fast_sin(self.moby_rot[2]) * a;
-            }
-            if self.state == 10 && self.timer < ticks(34) {
-                // The Heli long jump's push: 53·dt²·T along the moby's yaw.
-                let a = (DT2 * Pf::f(53.0)) * Pf::from_i32(self.timer);
-                self.vel[0] = self.vel[0] + fast_cos(self.moby_rot[2]) * a;
-                self.vel[1] = self.vel[1] + fast_sin(self.moby_rot[2]) * a;
-            }
-            if self.timer < ticks(10) && Pf::b(0x3e4c_cccd) < self.stick_mag {
-                let mut a = self.pos;
-                a[2] = a[2] + Pf::b(0x3f00_0000);
-                let k = Pf::b(0x3f59_999a);
-                let b = [a[0] + fast_cos(self.rot[2]) * k, a[1] + fast_sin(self.rot[2]) * k, a[2], a[3]];
-                if env.line(a, b, 4).is_some() { self.jump.blocked = 1; }
+            // The superset build's branch (L00 0x217970; the slippery levels 0 / 4 / 7 / 9 / 10 / 12 / 13 / 14 / 17):
+            // a jump off a slippery floor latched 0x13f7f8 (keep_speed, from 0x140632 at the entry) and the windup
+            // keeps running the slide move 0x2167d0 as the air velocity update, so the slide's momentum carries into
+            // the jump. The level01 build (0x23b4e4, which has no slippery floor) has only the plain branch below.
+            if self.jump.keep_speed != 0 {
+                super::surface::slide_move(self, env);
+                if self.state == 10 && self.timer < ticks(10) && self.fwd_speed < DT * Pf::f(7.0) {
+                    // The Heli long jump's slow-start push (0x217970's PACK_JUMP case): 0.7·dt along the facing.
+                    let a = DT * Pf::f(0.7);
+                    self.vel[0] = self.vel[0] + fast_cos(self.rot[2]) * a;
+                    self.vel[1] = self.vel[1] + fast_sin(self.rot[2]) * a;
+                    self.eff_h = self.vel;
+                }
+            } else {
+                self.turn_to(SCALE64 * Pf::b(0x3c75_c28f), SCALE64 * Pf::b(0x3e4c_cccd), DT * Pf::b(0x4170_2845));
+                let s = self.speed;
+                if self.jump.landed >= 2 { self.speed = s * Pf::b(0x3ecc_cccd); }
+                self.set_planar_vel(Pf::b(0x47c3_4f80));
+                self.speed = s;
+                if self.jump.landed != 1 { self.speed_step(self.jump.acc, self.jump.dec); }
+                if self.f658 != 0 { self.speed = Pf::ZERO; }
+                if self.jump.landed != 0 {
+                    if env.pad.no_direction && self.f65a != 0 { self.speed = Pf::ZERO; }
+                    self.momentum_decay(self.jump.dec);
+                }
+                self.drag(Pf::b(0x3f00_0000), DT + DT);
+                if self.state == state::RUN_JUMP && self.timer < self.jump.takeoff + ticks(4) {
+                    // 0x248da0: push forward along the moby's yaw by 16·dt²·T.
+                    let a = (DT2 * Pf::b(0x4180_0000)) * Pf::from_i32(self.timer);
+                    self.vel[0] = self.vel[0] + fast_cos(self.moby_rot[2]) * a;
+                    self.vel[1] = self.vel[1] + fast_sin(self.moby_rot[2]) * a;
+                }
+                if self.state == 10 && self.timer < ticks(34) {
+                    // The Heli long jump's push: 53·dt²·T along the moby's yaw.
+                    let a = (DT2 * Pf::f(53.0)) * Pf::from_i32(self.timer);
+                    self.vel[0] = self.vel[0] + fast_cos(self.moby_rot[2]) * a;
+                    self.vel[1] = self.vel[1] + fast_sin(self.moby_rot[2]) * a;
+                }
+                if self.timer < ticks(10) && Pf::b(0x3e4c_cccd) < self.stick_mag {
+                    let mut a = self.pos;
+                    a[2] = a[2] + Pf::b(0x3f00_0000);
+                    let k = Pf::b(0x3f59_999a);
+                    let b = [a[0] + fast_cos(self.rot[2]) * k, a[1] + fast_sin(self.rot[2]) * k, a[2], a[3]];
+                    if env.line(a, b, 4).is_some() { self.jump.blocked = 1; }
+                }
             }
         } else {
             if matches!(self.state, 0x11 | 0x1c) {

@@ -415,7 +415,10 @@ seqs 7 → 0; the camera settles 4.64 u behind at pivot height with a clear pivo
   AirAccel: |vel.xy| decays by `0x13fc94` = 7·dt² per tick (0x235150; the decompiler drops it). Double jump: gravity is also
   applied during the 8 boost ticks. The ground states call 0x233850 and the edge brake before StickTarget; the edge brake is
   skipped with stick > 0.5 and zeroes vel, disp, eff, momentum and speed. 9 has frames 18/29/11 and no ×1.17 descent
-  gravity; 0xe's anim is 0x16 fr 3 blend 7 at speed 0.8; 9's is seq 8 or 9 by run phase (table 0x17c258).
+  gravity; 0xe's anim is 0x16 fr 3 blend 7 at speed 0.8; 9's is seq 8 or 9 by run phase (table 0x17c258). On a
+  slippery floor (the superset build, L00 0x217970) the jump windup branches on 0x13f7f8 (keep_speed, from 0x140632 at
+  the entry): it runs the slide move 0x2167d0 instead of SetPlanarVel (and copies the velocity into 0x13f480), so the
+  slide's momentum carries into the jump.
 - §5: 0x23c458 is a wrapper around the move 0x233de0 (+ periodic probes). The clamp is `r_current − 0.02` on the **3-D**
   velocity and rewrites vel — so the effective terminal fall speed is **0.43 u/tick (25.8 u/s)**; the fall state's −50·dt
   cap never binds. The capsule resolve is not bit-neutral (`pos = pushed − off`). The probe starts 2.9·r up in the fall

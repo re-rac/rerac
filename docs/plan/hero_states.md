@@ -227,11 +227,11 @@ in `tick.rs` (`Game::tick_with_sound`) and the hero test constructors. `MobyScen
 ### P1 — platform carry, surfaces, slopes and sliding
 **Done (2026-09-26).** `platform.rs` (the whole of 0x249618, general: any moby with a platform block, snapshot
 `platform::Carriers` in `Env::world`), `surface.rs` (the superset reaction switched per level by `LEVEL_RULES`,
-the states 0x2f / 0x31 / 0x68 / 0x69 / 0x7b, the seams in the ground / walk / idle / melee / probe / capsule code),
+the states 0x2f / 0x31 / 0x68 / 0x69 / 0x7b, the seams in the ground / walk / idle / melee / jump / probe / capsule code),
 tests `platform::tests`, `surface::tests`, `tests/hero/hero_platform_novalis.rs` (the lift carries Ratchet down, the
 steep bank at its foot, determinism), `tests/hero/hero_surfaces.rs` (surface ids per level vs rules, Aridia quicksand,
-ice on levels 12 / 14, Novalis' flow chutes). Open: ~~the flow class 679~~ (done, "Hero follow-ups" below), the
-landing picker's leading slippery test (jump.rs), the Thruster hover's slippery brake (packs.rs), the sinking
+ice on levels 12 / 14, Novalis' flow chutes). Open: ~~the flow class 679~~ (done, "Hero follow-ups" below), ~~the
+landing picker's leading slippery test (jump.rs)~~ (ported: `hero/jump.rs::landing_picker`), the Thruster hover's slippery brake (packs.rs), the sinking
 ~~floor's sand particles (`0x22b140(4, 2)`, the 6-draw `0x286cb0` spawn: still not ported, so the `rand` stream
 diverges from the PS2 while sinking)~~ (done: `hero/fx.rs` PartType47Spawn, surface.rs), ~~the surface sounds~~ (done below).
 
