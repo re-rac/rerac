@@ -203,6 +203,16 @@ fn card_gate(m: &mut PageMenu) -> bool {
     m.saves.card.idle() && m.saves.card.card.ty == TYPE_PS2
 }
 
+/// Writes the slot a confirm page asks about into its slot list's cursor (0x1b6bc0 is the SAVE_CONFIRM page's
+/// slot widget 0x1b6b80 + 0x40; the new-game / challenge confirm pages share their parent's slot widget, whose
+/// cursor already is the slot). The slot list draw highlights that cursor ([`slots_draw`]).
+fn set_confirm_slot(m: &mut PageMenu, page: u32, slot: i32) {
+    let ws = m.pages.get(&page).map_or([0; 14], |p| p.widgets);
+    for w in ws {
+        if w != 0 && m.widgets.get(&w).is_some_and(|wd| wd.draw == func::SLOTS_DRAW) { set_raw(m, w, 4, slot); }
+    }
+}
+
 /// The cursor keys (0x15ee34 shared): Up above 0, Down below 4.
 fn cursor_keys(m: &mut PageMenu, w: u32, keys: u32) -> i32 {
     let last = m.saves.last_slot;
@@ -252,6 +262,7 @@ pub fn save_update(m: &mut PageMenu, w: u32, inp: &MenuInput, gs: &mut GameState
             m.saves.confirm_kind = 0;
             m.target = m.addrs_saves(page::SAVE_CONFIRM);
             m.saves.confirm_slot = raw(m, w, 4);
+            set_confirm_slot(m, m.target, m.saves.confirm_slot);
         }
     }
     if raw(m, w, 4) != before { out.sounds.push(MenuSound::Cursor); }

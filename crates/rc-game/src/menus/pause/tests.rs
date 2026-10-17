@@ -387,6 +387,35 @@ fn overlay_page_tree() {
     assert_eq!((m.level_names[1], m.planet_points[0], m.name_dy), ((20154, 20173), [80, 95, 20, -20], 17));
 }
 
+/// The overwrite confirmation highlights the slot being overwritten, not the top row: the SAVE_CONFIRM page
+/// has its own slot list (0x1b6b80), so opening it writes the slot into that widget's cursor (0x1b6bc0).
+#[test]
+fn save_confirm_highlights_the_overwritten_slot() {
+    let p = rc_formats::test_data::root().join("levels/01/overlay.bin");
+    let Ok(bytes) = std::fs::read(&p) else { eprintln!("skipped: no {}", p.display()); return };
+    let mut m = PageMenu::load(&Overlay::parse(&bytes).unwrap()).unwrap();
+    let mut g = gs();
+    // A ready PS2 card whose bottom slot (3) holds a save.
+    m.saves.card = crate::memcard::MemCard::new(crate::memcard::CardFs::new(None), "/BASCUS-97199RATCHET".into(), None);
+    m.saves.card.card.ty = crate::memcard::TYPE_PS2;
+    m.saves.card.status = 1;
+    m.saves.card.card.previews[3].level = 1;
+    let save = m.addrs_saves(saves::page::SAVE);
+    let confirm = m.addrs_saves(saves::page::SAVE_CONFIRM);
+    let slot_w = m.pages[&save].widgets[1];
+    m.current = save;
+    m.pages.get_mut(&save).unwrap().focus = slot_w;
+    m.saves.last_slot = 3;
+    let cross = MenuInput { pressed: button::CROSS, pressed_u: button::CROSS, raw_pressed: button::CROSS, connected: true, ..Default::default() };
+    saves::save_update(&mut m, slot_w, &cross, &mut g, &mut MenuOut::default());
+    assert_eq!((m.target, m.saves.confirm_slot), (confirm, 3));
+    // The confirm page's slot widget is its own (not the save page's) and now carries the slot, so the draw
+    // frames row 3 rather than row 0.
+    let cw = m.pages[&confirm].widgets[1];
+    assert_ne!(cw, slot_w);
+    assert_eq!(m.widgets[&cw].raw[4], 3);
+}
+
 #[test]
 fn port_page_from_the_disc() {
     use super::port::{self, Setting};
