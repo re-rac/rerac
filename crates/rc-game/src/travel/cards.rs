@@ -9,7 +9,7 @@
 //! | 0x2a6180 | `space_plates[lang]` read (`0x138f08 + lang·8`) and decompressed; uploads: the band's palette and 64×64 image (entry 0), card a's palette and 512×64 image, card b's | [`Plates::parse`] (the pictures; the engine uploads them) |
 //! | 0x2a64e0 | `load`: `read_file_entry_with_retry(level)`, 0x15ee48 = 0, 0x15ee4a = 0 | the engine (the background load) |
 //! | | per frame i < ticks (while the memory card is idle): alpha = `i < 0x20 ? 4·i : 0x80`, `(ticks − i)·8` in the last 16 frames; the band u = (i % 600)/600; a = b: the band and card a at y = cy − 0x20; else card a at cy − 0x2e and, from frame 0x41, card b at cy with alpha `(i − 0x40)·4` until 0x60 | [`CardPlayer::frame`] |
-//! | | the band (`fun_002316e8(0, 4.0, u, u + 0.4, 0, y, 0x200, 0x40, alpha << 24 \| 0x808080)`): s 0..4, t u..u + 0.4 of the band texture (the RGBAQ the card quad `DrawTexturedQuad(0, y, 0x200, 0x40, 0, 0, 0x200, 0x40)` inherits [L]) | [`CardLine`] |
+//! | | the band (`fun_002316e8(0, 4.0, u, u + 0.4, 0, y, 0x200, 0x40, alpha << 24 \| 0x808080)`): s 0..4, t u..u + 0.4 of the band texture; the card quad `DrawTexturedQuad(0, y, 0x200, 0x40, 0, 0, 0x200, 0x40)` over it is a black stencil with the letters cut out, drawn opaque (with the band's alpha its black would let the band through the whole strip while fading) | [`CardLine`] |
 //! | | `load`: when the loader is not done, the card lasts ≥ i + 0x14; once it is, no more polling | [`CardPlayer::frame`] |
 //! | | after the loop `FadeToBlack(2)` | [`CardPlayer::frame`] (`CardFrame::black`) |
 //!

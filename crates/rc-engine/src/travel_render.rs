@@ -867,9 +867,11 @@ fn hud_layer(
                 if let Some(s) = img.resolve(&rc_game::menus::ImageSrc::Pixels { key: 0x7a00_0000 | key, tex: Arc::new(band) }, &mut assets) {
                     h.prims.push(crate::hud_images::prim(s, 0, line.y, 0x200, 0x40, 0, 0, 0x200, 0x40, rgba));
                 }
+                // The card is a black stencil with the letters cut out (the band shows through them): it stays opaque
+                // while the band fades, else the band shows through the whole strip at partial alpha.
                 if let Some(tex) = pl.cards.get(line.card) {
                     if let Some(s) = img.resolve(&rc_game::menus::ImageSrc::Pixels { key: 0x7b00_0000 | line.card as u64, tex: Arc::new(tex.clone()) }, &mut assets) {
-                        h.prims.push(crate::hud_images::prim(s, 0, line.y, 0x200, 0x40, 0, 0, 0x200, 0x40, rgba));
+                        h.prims.push(crate::hud_images::prim(s, 0, line.y, 0x200, 0x40, 0, 0, 0x200, 0x40, 0x8080_8080));
                     }
                 }
             }
