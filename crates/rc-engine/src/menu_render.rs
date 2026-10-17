@@ -11,7 +11,8 @@
 //!   (`SceneController`), its draws (`PageMenuDraw`). The close's post-action: resume; the ship travel (logged:
 //!   the travel lane's); a movie / scene / the slideshow after the 16-frame fade over the menu image
 //!   ([`post_fade_step`], crate::media_render), the return page reopening the menu before the tick
-//!   ([`return_page_reopen`]).
+//!   ([`return_page_reopen`]: the reopening frame still renders as the gameplay frame it was entered on, so the
+//!   snapshot is of the world).
 //! * mode 7: the credits slideshow (crate::media_render::Slides). A class's `EnterMenuMode` / `EnterSlideshowMode` /
 //!   `PlayMovieB` are taken after its tick (crate::media_render::take_class_requests).
 //! * [`MenuMode::loop_frame`] counts main-loop frames: the scripted pad (`RC_PLAY_SCRIPT`) is indexed by it,
@@ -157,6 +158,10 @@ struct MenuRt {
     last_counter: Option<u64>,
     /// The menu was entered this frame: the snapshot is taken of this frame's render.
     snapshot_request: bool,
+    /// The return page reopened the menu before this frame's tick ([`return_page_reopen`]): the frame still renders
+    /// as the gameplay frame the menu was entered on (the snapshot is taken of it) and runs no menu update, as when
+    /// Start opens the menu (the mode switch takes effect next frame, module docs).
+    reopened: bool,
     /// The snapshot texture holds the entering frame (with the menu's black 0x30 applied to its bytes).
     snapshot_ready: bool,
     /// The snapshot texture (written on the GPU, module docs).
@@ -401,6 +406,7 @@ fn setup(
         script,
         last_counter: None,
         snapshot_request: false,
+        reopened: false,
         snapshot_ready: false,
         snapshot: snapshot.clone(),
         resnap: 0,
@@ -605,7 +611,12 @@ fn menu_frame(
     mm.state.begin_frame();
     let frame = mm.loop_frame;
     let vsync = frame as u32;
-    rt.render_mode = mode;
+    // The return page reopened the menu before this frame's tick ([`return_page_reopen`]): as on the PS2, where the
+    // mode switch takes effect next frame, this frame still renders the gameplay frame the menu was entered on (the
+    // frame-buffer snapshot is taken of it, world + HUD) and runs no menu update; the menu's first tick (which
+    // reopens the page) is the next frame, exactly as when Start opens the menu.
+    let reopened = std::mem::take(&mut rt.reopened);
+    rt.render_mode = if reopened { Mode::Gameplay } else { mode };
     rt.draws.clear();
     let trace = rt.trace;
     match mode {
@@ -707,7 +718,7 @@ fn menu_frame(
                 }
             }
         }
-        Mode::Menu => {
+        Mode::Menu if !reopened => {
             let input = match &rt.script {
                 Some(s) => s.at(frame),
                 None if *source == crate::game_camera::CameraSource::Play => pad.0,
@@ -973,7 +984,8 @@ fn open_menu(rt: &mut MenuRt, mm: &mut MenuMode, play: &mut Play, gs: &rc_game::
 
 /// `InLevelFrameUpdate` 0x2aba68's first test: a return page (0x1ba260, set by a movie / scene / slideshow post-action)
 /// in mode 0 → `EnterMenuMode(0)` before the tick (no tick that frame); the first tick reopens that page and restores the
-/// replay mode 0x15eed8 from 0x1ba2a0.
+/// replay mode 0x15eed8 from 0x1ba2a0. The frame itself still renders as the gameplay frame (the mode switch takes
+/// effect next frame), so the snapshot is of the world and not of the menu's own panels ([`MenuRt::reopened`]).
 #[allow(clippy::too_many_arguments)]
 fn return_page_reopen(
     rt: Option<ResMut<MenuRt>>,
@@ -990,6 +1002,9 @@ fn return_page_reopen(
     if play.svc.cinematic.requests.iter().any(|r| matches!(r, rc_game::cinematic::EngineRequest::StartScene { .. })) { return; }
     mm.replay = rt.replay_saved;
     let frame = mm.loop_frame;
+    // The frame still renders as the gameplay frame the menu is entered on (`menu_frame`), so the snapshot is of the
+    // world and not of the menu's own panels.
+    rt.reopened = true;
     open_menu(&mut rt, &mut mm, &mut play, &gs.0, audio.as_deref_mut(), 0, frame);
 }
 

@@ -474,7 +474,9 @@ Help/tutorial boxes: hud_text.md §3.4 (`Help_Update` 0x225bd0). They run inside
   0x2b4c88), taken at the end of that frame's render graph from the main target's output attachment (the capture image, a screenshot's texture,
   or a window frame rendered offscreen on that frame and copied back), with the black 0x30 applied on the way by the GS formula on display bytes
   (`menu_snapshot.wgsl`, exact through a UNORM view); no CPU read-back, so it is on screen from the first menu frame on and frame-exact runs are
-  run-to-run identical (frames 62/65/73/90 of `RC_PLAY_SCRIPT="60:press Start"`, 3 runs each). Shown by a UI node under the 2D pass; menu draws go through `hud_render::Hud2dHook` (HUD off / frozen in mode 3).
+  run-to-run identical (frames 62/65/73/90 of `RC_PLAY_SCRIPT="60:press Start"`, 3 runs each). The return page reopening the menu is the same entering
+  frame: the frame it reopens on still renders as the gameplay frame (the menu's first tick is the next frame), so the snapshot is of the world and not
+  of the menu's own panels. Shown by a UI node under the 2D pass; menu draws go through `hud_render::Hud2dHook` (HUD off / frozen in mode 3).
 * **Frame mobys** (`rc-game/src/menus/pause/frame.rs`): spawn / `start` (transition) / `update` (advance, `MenuMobyUpdate`,
   corners via `rc_formats::moby_anim::{joint_translations, bone_points}`) / `free`, and `MenuProjection` (the camera constants
   derived with the PS2 float ops from the view-context defaults, NTSC) → `PageMenu::draw` writes pvar / widget rects and the navy
