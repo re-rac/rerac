@@ -24,7 +24,7 @@
 //! per-item animations and drones (G-UI-002).
 //!
 //! **Port-only:** [`port`] adds a "Port Options" page (not in the game) built from the same machinery, reached
-//! from an extra entry of the Options list ([`PageMenu::install_port_page`]; the engine skips it with
+//! from an extra entry of the Options list and of the main menu's Options list ([`PageMenu::install_port_page`]; the engine skips it with
 //! `RC_SETTINGS_PAGE=0`, leaving every record as on the disc).
 
 pub mod frame;

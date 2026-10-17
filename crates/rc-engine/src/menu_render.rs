@@ -65,16 +65,16 @@
 //! the level's fog (`fog_state` pushes it into every `MobyMaterial`), not the menu's view-context fog
 //! (0..524288, F 255..0): at the frames' depth (≈ 5 units) the two differ by at most one step of F.
 //!
-//! **Port Options** (port-only, `rc_game::menus::pause::port`): an extra "Port Options" entry in the Options
-//! list opens a page built from the game's machinery; its graphics rows are synced with crate::graphics's
-//! `GraphicsSettings` around every menu tick (the shadows row likewise with `shadow_render::ShadowSettings`, the display
+//! **Port Options** (port-only, `rc_game::menus::pause::port`): an extra "Port Options" entry in the pause menu's and
+//! the main menu's Options lists opens a page built from the game's machinery; its graphics rows are synced with
+//! crate::graphics's `GraphicsSettings` around every menu tick of both ([`PortSettings`]; the shadows row likewise with `shadow_render::ShadowSettings`, the display
 //! rows with `display::DisplaySettings`): the resource's value is shown, a ✕ writes it back and saves it to the port
 //! settings file. The anti-aliasing row offers only the sample counts the GPU supports ([`SupportedMsaa`]; ✕ skips the
 //! rest, e.g. 8x on Apple M-series).
 //!
 //! Environment: `RC_MENU_TRACE=1` prints menu events (open, transitions, sounds, equip requests, close); `RC_MAP_TRACE=1`
 //! prints where the level's map state is ([`map_trace`]: in the level, in the menu, or lost) whenever that changes;
-//! `RC_SETTINGS_PAGE=0` leaves the Options page as on the disc (no Port Options entry).
+//! `RC_SETTINGS_PAGE=0` leaves the Options pages as on the disc (no Port Options entries).
 
 use crate::gameplay::{Persistent, Play, Session};
 use crate::hud_render::{Hud2d, Hud2dHook, HudBuild, Prim, Tex, H, W};
@@ -548,6 +548,53 @@ fn read_graphics_rows(menu: &PageMenu, g: &mut crate::graphics::GraphicsSettings
     }
 }
 
+/// The settings the Port Options rows show, around a menu tick (the pause menu's page and the main menu's).
+struct PortSettings<'a, 'w> {
+    shadows: Option<&'a mut ResMut<'w, crate::shadow_render::ShadowSettings>>,
+    display: &'a mut ResMut<'w, crate::display::DisplaySettings>,
+    gfx: &'a mut ResMut<'w, crate::graphics::GraphicsSettings>,
+    supported: SupportedMsaa,
+}
+
+impl PortSettings<'_, '_> {
+    /// Before the tick: the rows from the settings. Returns the graphics settings for [`PortSettings::rows_out`].
+    fn rows_in(&self, menu: &mut PageMenu) -> crate::graphics::GraphicsSettings {
+        if let Some(s) = self.shadows.as_deref() { menu.set_port_value(Setting::Shadows, !s.enabled as u8); }
+        menu.set_port_value(Setting::Resolution, self.display.resolution.index());
+        menu.set_port_value(Setting::Aspect, self.display.aspect.index());
+        menu.set_port_value(Setting::Fullscreen, self.display.fullscreen as u8);
+        let before = **self.gfx;
+        sync_graphics_rows(menu, &before, &self.supported);
+        before
+    }
+
+    /// After the tick: a changed row into its setting, which is saved.
+    fn rows_out(&mut self, menu: &PageMenu, gfx_before: &crate::graphics::GraphicsSettings, frame: u64) {
+        if let (Some(v), Some(s)) = (menu.port_value(Setting::Shadows), self.shadows.as_mut()) {
+            if s.enabled != (v == 0) {
+                s.enabled = v == 0;
+                println!("menus: frame {frame}: Port Options: shadows {}", if s.enabled { "on" } else { "off" });
+                s.save();
+            }
+        }
+        read_graphics_rows(menu, self.gfx, gfx_before, frame);
+        // The display (crate::display): the game frame's resolution and the window mode.
+        let want = (
+            menu.port_value(Setting::Aspect).map(crate::display::Aspect::from_index),
+            menu.port_value(Setting::Resolution).map(crate::display::Resolution::from_index),
+            menu.port_value(Setting::Fullscreen).map(|v| v == 1),
+        );
+        if let (Some(aspect), Some(res), Some(full)) = want {
+            let d = &mut *self.display;
+            if d.aspect != aspect || d.resolution != res || d.fullscreen != full {
+                (d.aspect, d.resolution, d.fullscreen) = (aspect, res, full);
+                println!("menus: frame {frame}: Port Options: aspect {aspect:?}, resolution {res:?}, fullscreen {full}");
+                d.save();
+            }
+        }
+    }
+}
+
 /// The anti-aliasing row's selectable values (bit k = `AntiAliasing::ALL[k]`) on this device: Original and Off, and the
 /// multisampling counts it supports.
 fn aa_choices(s: &SupportedMsaa) -> u32 {
@@ -593,7 +640,8 @@ fn menu_frame(
     if fer.fe.is_some() {
         let busy = movies.as_deref().is_some_and(|m| m.busy());
         let fer = &mut *fer;
-        front_end_frame(rt, &mut mm, &mut play, gs, fer, &pad, &source, busy, audio.as_deref_mut());
+        let mut port = PortSettings { shadows: shadows.as_mut(), display: &mut display, gfx: &mut gfx, supported: supported.as_deref().cloned().unwrap_or_default() };
+        front_end_frame(rt, &mut mm, &mut play, gs, fer, &pad, &source, busy, audio.as_deref_mut(), &mut port);
         mm.state.end_frame();
         mm.loop_frame += 1;
         return;
@@ -723,39 +771,15 @@ fn menu_frame(
                 // The close's post-action 3 / 4 / 5 / 6 / 7: `FadeToBlack(ticks(16))` over the menu image, then the action.
                 post_fade_step(rt, &mut mm, &mut play, gs, sess.hp, audio.as_deref_mut(), frame, true);
             } else if let Some(menu) = rt.menu.as_mut() {
-                if let Some(s) = shadows.as_deref() { menu.set_port_value(Setting::Shadows, !s.enabled as u8); }
-                menu.set_port_value(Setting::Resolution, display.resolution.index());
-                menu.set_port_value(Setting::Aspect, display.aspect.index());
-                menu.set_port_value(Setting::Fullscreen, display.fullscreen as u8);
-                let gfx_before = *gfx;
-                sync_graphics_rows(menu, &gfx_before, &supported.as_deref().cloned().unwrap_or_default());
+                let mut port = PortSettings { shadows: shadows.as_mut(), display: &mut display, gfx: &mut gfx, supported: supported.as_deref().cloned().unwrap_or_default() };
+                let gfx_before = port.rows_in(menu);
                 // The card and the save inputs moved into the menu for its tick (crate::saves).
                 saves_in(menu, &play);
                 // 0x15172a as the widgets read it (the Helpdesk girl).
                 menu.media.voice_state = play.svc.help.voice.state;
                 let out = menu.tick(&inp, gs, &env);
                 if out.elapsed_hold { play.svc.elapsed_hold = true; }
-                if let (Some(v), Some(s)) = (menu.port_value(Setting::Shadows), shadows.as_mut()) {
-                    if s.enabled != (v == 0) {
-                        s.enabled = v == 0;
-                        println!("menus: frame {frame}: Port Options: shadows {}", if s.enabled { "on" } else { "off" });
-                        s.save();
-                    }
-                }
-                read_graphics_rows(menu, &mut gfx, &gfx_before, frame);
-                // The display (crate::display): the game frame's resolution and the window mode.
-                let want = (
-                    menu.port_value(Setting::Aspect).map(crate::display::Aspect::from_index),
-                    menu.port_value(Setting::Resolution).map(crate::display::Resolution::from_index),
-                    menu.port_value(Setting::Fullscreen).map(|v| v == 1),
-                );
-                if let (Some(aspect), Some(res), Some(full)) = want {
-                    if display.aspect != aspect || display.resolution != res || display.fullscreen != full {
-                        (display.aspect, display.resolution, display.fullscreen) = (aspect, res, full);
-                        println!("menus: frame {frame}: Port Options: aspect {aspect:?}, resolution {res:?}, fullscreen {full}");
-                        display.save();
-                    }
-                }
+                port.rows_out(menu, &gfx_before, frame);
                 if trace && !out.sounds.is_empty() { println!("menus: frame {frame}: sounds {:?}", out.sounds); }
                 // The class-0x472 sounds (`PlayClassSound(n, 0x11, frame moby)`), the close's audio, then the frame's sound_update.
                 if let Some(a) = audio.as_deref_mut() {
@@ -1316,6 +1340,7 @@ fn front_end_frame(
     source: &crate::game_camera::CameraSource,
     movie_busy: bool,
     mut audio: Option<&mut crate::audio_out::AudioOut>,
+    port: &mut PortSettings,
 ) {
     let frame = mm.loop_frame;
     let vsync = frame as u32;
@@ -1380,10 +1405,12 @@ fn front_end_frame(
     match fe.mode {
         3 => {
             if let Some(menu) = rt.menu.as_mut() {
+                let gfx_before = port.rows_in(menu);
                 saves_in(menu, play);
                 menu.saves.card.front_end = true;
                 let o = menu.tick(&inp, gs, &env);
                 if o.elapsed_hold { play.svc.elapsed_hold = true; }
+                port.rows_out(menu, &gfx_before, frame);
                 if let Some(a) = audio.as_deref_mut() {
                     play_menu_sounds(play, a, &o.sounds);
                     menu_sound_frame(play, a);

@@ -508,7 +508,7 @@ Help/tutorial boxes: hud_text.md §3.4 (`Help_Update` 0x225bd0). They run inside
 ## 9. Port-only settings ("Port Options")
 
 Not in the game. Settings the PS2 never had (anti-aliasing first) live on one extra page, **Port Options**, reached from
-pause → Options → "Port Options". It is built only from the game's own machinery, so it looks and behaves like the Options
+pause → Options → "Port Options" and from the main menu's Options → "Port Options". It is built only from the game's own machinery, so it looks and behaves like the Options
 sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_page`):
 
 * **Entry**: one item `{label "Port Options", action 3 → page}` inserted into the Options list 0x1b4f78 **right before Quit
@@ -526,6 +526,14 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   (12, y) 0x8020ffff selected / 0x80ffa888, value right-aligned at (w − 12, y) 0x80ffa888; Up/Down without wrap + sound 1; ✕
   cycles the value + sound 0; generic Start/Select/R3 close and △ → Options). Transitions (12 ticks, seqs forward / reversed),
   panels, fonts and colours are `PageMenu`'s.
+* **Main menu** (the front end's Options 0x1b8d08): the same rows on a second page record, `port::FRONT_PAGE` (kind 0x7f,
+  parent 0x1b8d08). The entry `{"Port Options", action 3 → FRONT_PAGE}` is appended to both of the front end's Options
+  lists (`saves::front_options`: NTSC Language / Sound, PAL Language / Video / Sound), which the list's enter 0x28dbb8
+  copies in; the page takes the frame seqs and hint list of that Options' Sound sub-page 0x1b8e38 (its list panel,
+  419 × 149 settled, is the widest front-end sub-page's; Language's is 151 wide), with the title at W2 and the list at W3
+  as the front-end sub-pages have them. Both pages share the title and list widgets, so the cursor and the values are
+  one. The engine syncs the rows around the front end's menu tick exactly as around the pause menu's
+  (`menu_render::PortSettings`).
 * **Strings**: the port's own text, negative ids (−0x100..) resolved by `MenuAssets::msg` before the level's table (the
   disc's ids are 0..21500); "off" is the game's 20315. Records use addresses 0x7f00_xxxx, which no EE pointer can hold.
 * **Rows** (`port::ENTRIES`, one entry per option): the graphics rows (Preset, Anti-aliasing: Original / off / 2x / 4x / 8x,
@@ -548,7 +556,7 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   macOS (`$XDG_CONFIG_HOME`/`~/.config` elsewhere, `%APPDATA%` on Windows), read at start, rewritten on change (unknown
   keys / comments kept). `RC_MSAA` / `RC_GFX_*` override the file at start; `RC_SETTINGS_FILE=<path>` picks another file, `=0` disables
   it; frame-exact runs (`RC_SCREENSHOT_FRAME` / `RC_DETERMINISTIC=1`) ignore the default file.
-* `RC_SETTINGS_PAGE=0`: no entry, no page: every record is as read from the overlay (Options frames byte-identical to the
+* `RC_SETTINGS_PAGE=0`: no entries, no pages: every record is as read from the overlay (Options frames byte-identical to the
   game's layout). Without the variable, frames of every page but Options (8 rows instead of 7) are unchanged.
 
 ## 10. Help messages, pause pages, the in-game map: what is a system (2026-09-28)
