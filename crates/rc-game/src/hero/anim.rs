@@ -18,12 +18,21 @@
 //! snaps to 1 and |t| < 0.01 to 0; each key step sets `0x13fde8 |= 1`, a wrap `|= 2` (bits cleared at the
 //! start of every advance), and the new rate `0x13fde4` is the new key A frame's own rate word.
 //!
+//! Its tail also refreshes the **sequence loop sound** (+0x7c / +0x7d), exactly as `MobyAnimAdvance`'s tail does:
+//! a playing slot whose voice is gone is cleared, one that plays another class sound is released, and a wanted
+//! loop sound (+0x7c ≠ 0xff, from the `SetAnim` sequence header) with no slot plays `PlayClassSound(+0x7c, 4,
+//! moby)`. There is no phase gate (unlike the moby advance's every-4th-tick refresh). This is the helicopter hum
+//! Clank's glide carries (class 0x57 sequence 0xe, loop sound 0x10), played while he holds ✕ in the air.
+//!
 //! The hero owns `0x13fde0` (playback speed, [`crate::hero::Hero::anim_speed`]) and passes it to
 //! [`AnimCtl::advance`] once per tick (step 1 of the hero update); the rate `0x13fde4`, the curve state
 //! `0x13fdf0/f4` and the flags `0x13fde8` live in the binding.
 #![allow(clippy::neg_cmp_op_on_partial_ord, clippy::assign_op_pattern)] // FPU compare semantics and op order are spelled out on purpose.
 
 use crate::ps2v::Pf;
+
+/// `+0x7c` / `+0x7d`: no loop sound, no slot.
+const NO_LOOP: u8 = 0xff;
 
 /// The animation fields of Ratchet's moby that the hero code reads.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -65,6 +74,11 @@ pub trait AnimCtl {
     /// Ratchet's advance 0x247d48 for one tick at playback speed `speed` (`0x13fde0`). The generic
     /// `MobyAnimAdvance` is not run on Ratchet (mode 2).
     fn advance(&mut self, speed: Pf);
+    /// The advance's loop-sound tail (`0x247d48`'s +0x7c / +0x7d refresh, see the module doc): the wanted loop
+    /// sound `+0x7c` (set by [`AnimCtl::set_anim`]) played through `sounds` with flags 4 while no slot holds it.
+    /// Called right after [`AnimCtl::advance`] and its trigger; the caller passes the hero moby `0x1413d0` (the
+    /// sound's owner and class). Default: nothing.
+    fn refresh_loop_sound(&mut self, _moby: &crate::moby_runtime::Moby, _rng: &mut crate::rng::Rng, _sounds: &mut dyn super::HeroSounds) {}
     /// The moby's current animation fields.
     fn view(&self) -> AnimView;
     /// Frame count of sequence `seq` of Ratchet's class (0 when absent).
@@ -362,12 +376,19 @@ pub struct RatchetAnim {
     /// The glove-holding layers' retarget classes 1 / 2 ([`HoldClass`]), set by the loader; None: those layers are
     /// not evaluated.
     pub hold: [Option<std::sync::Arc<HoldClass>>; 2],
+    /// `+0x7c`: the loop sound the current sequence wants (0xff none), from its header ([`AnimCtl::set_anim`]).
+    pub loop_sound: u8,
+    /// `+0x7d`: the sound slot playing [`RatchetAnim::loop_sound`] (0xff none).
+    pub loop_slot: u8,
+    /// The class sound [`RatchetAnim::loop_slot`] was started with (the game reads it from the voice entry): the
+    /// slot is released when the wanted loop sound changed under it.
+    pub loop_index: u8,
 }
 
 impl RatchetAnim {
     /// Spawned on sequence 0 frame 0 (what `InitMobyInstance` leaves).
     pub fn new(class: &MobyAnimClass) -> RatchetAnim {
-        RatchetAnim { state: AnimState::spawn(class), snapshot: None, rate: Pf::ONE, flags: 0, curve: -1, curve_pos: 0, frame: Pf::ZERO, frame_step: Pf::ZERO, loop_range: None, mirror: false, loop_end: 0, exit: false, jump: false, layer_joints: Default::default(), hold: Default::default() }
+        RatchetAnim { state: AnimState::spawn(class), snapshot: None, rate: Pf::ONE, flags: 0, curve: -1, curve_pos: 0, frame: Pf::ZERO, frame_step: Pf::ZERO, loop_range: None, mirror: false, loop_end: 0, exit: false, jump: false, layer_joints: Default::default(), hold: Default::default(), loop_sound: NO_LOOP, loop_slot: NO_LOOP, loop_index: NO_LOOP }
     }
 
     /// Bind to Ratchet's class for one tick of hero code.
@@ -493,6 +514,7 @@ impl<'a> HeroAnimCtl<'a> {
 impl AnimCtl for HeroAnimCtl<'_> {
     fn set_anim(&mut self, blend: Pf, seq: u8, frame: i32) { self.with(|a| a.set_anim(blend, seq, frame)) }
     fn advance(&mut self, speed: Pf) { self.with(|a| a.advance(speed)) }
+    fn refresh_loop_sound(&mut self, moby: &crate::moby_runtime::Moby, rng: &mut crate::rng::Rng, sounds: &mut dyn super::HeroSounds) { self.with(|a| a.refresh_loop_sound(moby, rng, sounds)) }
     fn view(&self) -> AnimView { self.r().view() }
     fn frame_count(&self, seq: u8) -> u8 { self.r().frame_count(seq) }
     fn set_loop(&mut self, start: i32, end: i32) { self.with(|a| a.set_loop(start, end)) }
@@ -558,7 +580,11 @@ impl AnimCtl for RatchetAnimCtl<'_> {
         }
         a.state.frame_b = frame as u8;
         a.state.seq_b = seq;
-        if let Some(q) = self.class.sequence(seq) { a.state.trigger_count = q.header.trigger_count; }
+        // `update_moby_animation_state` on the target: +0x7e the trigger count, +0x7c the loop sound (0xff none).
+        match self.class.sequence(seq) {
+            Some(q) => { a.state.trigger_count = q.header.trigger_count; a.loop_sound = q.header.loop_sound; }
+            None => a.loop_sound = NO_LOOP,
+        }
         if Pf::ZERO < blend {
             a.rate = Pf::ONE / blend;
             a.state.t = 0.0;
@@ -572,6 +598,24 @@ impl AnimCtl for RatchetAnimCtl<'_> {
         // 0x247d00: the loop range and a pending exit (0x13fe00 = −1, 0x13fe08 = 0).
         a.loop_range = None;
         a.exit = false;
+    }
+
+    fn refresh_loop_sound(&mut self, moby: &crate::moby_runtime::Moby, rng: &mut crate::rng::Rng, sounds: &mut dyn super::HeroSounds) {
+        let a = &mut *self.a;
+        if a.loop_slot != NO_LOOP {
+            if !sounds.alive(a.loop_slot as i32) {
+                // The voice was freed or another moby took the slot (the game's owner test).
+                a.loop_slot = NO_LOOP;
+            } else if a.loop_index != a.loop_sound {
+                // The slot plays another class sound of this moby (the sequence changed its loop).
+                sounds.release(moby, a.loop_slot as i32);
+                a.loop_slot = NO_LOOP;
+            }
+        } else if a.loop_sound != NO_LOOP {
+            // PlayClassSound((char)+0x7c, 4, moby); a refused play (a negative index) leaves 0xff, retried next tick.
+            let k = sounds.voice(moby, a.loop_sound as i8 as i32, 4, rng);
+            if k < 0 { a.loop_slot = NO_LOOP; } else { a.loop_slot = k as u8; a.loop_index = a.loop_sound; }
+        }
     }
 
     fn advance(&mut self, speed: Pf) {
@@ -745,5 +789,50 @@ mod tests {
         assert!((v.t - 0.5).abs() < 1e-6, "t = speed · rate: {}", v.t);
         ctl.advance(Pf::ONE);
         assert_eq!(ctl.view().frame_a, 27);
+    }
+
+    /// The advance's loop-sound tail: sequence 1's header wants class sound 0x10, so the first refresh plays it
+    /// (flags 4), the next leaves it alone, and a `SetAnim` to a sequence without a loop sound releases it.
+    #[test]
+    fn the_loop_sound_plays_and_releases_with_the_sequence() {
+        use crate::moby_runtime::Moby;
+
+        struct Snd { log: Vec<(i32, u32)>, released: Vec<i32>, alive: bool, slot: i32 }
+        impl super::super::HeroSounds for Snd {
+            fn anim_advanced(&mut self, _: &Moby, _: &AnimView, _: &AnimView, _: &mut crate::rng::Rng) {}
+            fn voice(&mut self, _: &Moby, index: i32, flags: u32, _: &mut crate::rng::Rng) -> i32 { self.log.push((index, flags)); self.slot }
+            fn alive(&mut self, slot: i32) -> bool { self.alive && slot == self.slot }
+            fn release(&mut self, _: &Moby, slot: i32) { self.released.push(slot); }
+        }
+
+        let mut c = class();
+        let mut s1 = c.sequences[0].clone().unwrap();
+        s1.header.loop_sound = 0x10;
+        c.sequences.push(Some(s1));
+
+        let moby = Moby::zeroed();
+        let mut rng = crate::rng::Rng::new();
+        let mut snd = Snd { log: vec![], released: vec![], alive: true, slot: 3 };
+        let mut a = RatchetAnim::new(&c);
+
+        a.ctl(&c).set_anim(Pf::ONE, 1, 0);
+        a.ctl(&c).refresh_loop_sound(&moby, &mut rng, &mut snd);
+        a.ctl(&c).refresh_loop_sound(&moby, &mut rng, &mut snd);
+        assert_eq!(snd.log, vec![(0x10, 4)], "played once with flags 4");
+        assert_eq!((a.loop_sound, a.loop_slot, a.loop_index), (0x10, 3, 0x10));
+
+        // Sequence 0 wants none: the slot is released once and forgotten.
+        a.ctl(&c).set_anim(Pf::ONE, 0, 0);
+        a.ctl(&c).refresh_loop_sound(&moby, &mut rng, &mut snd);
+        a.ctl(&c).refresh_loop_sound(&moby, &mut rng, &mut snd);
+        assert_eq!(snd.released, vec![3], "released once");
+        assert_eq!((a.loop_sound, a.loop_slot), (NO_LOOP, NO_LOOP));
+
+        // A voice that is gone (freed or another owner) is forgotten without a release.
+        a.ctl(&c).set_anim(Pf::ONE, 1, 0);
+        a.ctl(&c).refresh_loop_sound(&moby, &mut rng, &mut snd);
+        snd.alive = false;
+        a.ctl(&c).refresh_loop_sound(&moby, &mut rng, &mut snd);
+        assert_eq!((a.loop_slot, snd.released.len()), (NO_LOOP, 1));
     }
 }

@@ -516,6 +516,10 @@ shared engine code that had not been ported. Addresses level01 (boot equivalents
   carried troopers, `World::anim_blend`, `create_moby` and the load all go through it. `SoundSink::slot_owner` gives the
   refresh the slot's owner (+0x18, zeroed on free: callbacks 0x2a1bc8 / 0x2a1c10 disassembled) and class-sound index.
 * The hand item's advance (`hero::items::advance_item`): its triggers queue with the item's sounds.
+* The hero's own advance (`RatchetAnimAdvance` 0x247d48, `hero::anim`): its loop-sound tail (+0x7c set by `SetAnim`
+  from the target sequence header, +0x7d refreshed after the trigger with no phase gate) is `AnimCtl::refresh_loop_sound`.
+  The only sequence in the game with one is Clank's glide (class 0x57 sequence 0xe, class sound 0x10): his helicopter
+  hum while he holds ✕ in the air.
 * Footsteps (path 6), the wrench hit selection (path 5), sound instance classes 1 and 2 (path 8).
 
 **Conformance** (`crates/rc-game/tests/ui/sound_conformance.rs`, all 19 levels): every trigger and loop sound of every

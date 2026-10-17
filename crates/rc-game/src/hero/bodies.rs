@@ -482,10 +482,11 @@ pub fn apply_cmds(h: &mut Hero, table: &mut crate::moby_runtime::MobyTable, ratc
 
 /// `HeroUpdateAlt` up to the write-back, on the body moby `moby` (see the module doc's table, rows +0..+12).
 pub(super) fn body_update(h: &mut Hero, moby: &mut Moby, env: &Env, anim: &mut dyn AnimCtl, rng: &mut Rng, sounds: &mut dyn HeroSounds, counter: i32) {
-    // RatchetAnimAdvance on the body moby (its class's sound triggers).
+    // RatchetAnimAdvance on the body moby (its class's sound triggers and loop sound).
     let before = anim.view();
     anim.advance(h.anim_speed);
     sounds.anim_advanced(moby, &before, &anim.view(), rng);
+    anim.refresh_loop_sound(moby, rng, sounds);
     h.input_physics_move(env, anim, rng);
     // `HeroTickStateTimer`'s end of the disguise's timer in body 3: leave the body (super::hologuise).
     if h.gadgets.disguise.due.is_some() {

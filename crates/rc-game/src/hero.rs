@@ -843,6 +843,8 @@ pub fn hero_update_with_sounds(
     let before = anim.view();
     anim.advance(hero.anim_speed);
     sounds.anim_advanced(moby, &before, &anim.view(), rng);
+    // The advance's loop-sound tail (0x247d48): Clank's glide hum (hero::anim module doc).
+    anim.refresh_loop_sound(moby, rng, sounds);
     hero.back_follow_speed(anim.view().seq_b, rng);
     hero.input_physics_move(env, anim, rng);
     // The disguise's timer ran out in the move (`HeroTickStateTimer`): the disguise moby asked for (super::hologuise).
