@@ -351,7 +351,10 @@ Goodies is in the root page (and wired below Weapons / above Options) once the g
 (page: 29 replays, actions 7 / 8), In-Level Movies (this level's scenes, action 6), Sketchbook (≥ 15 skill points; 30
 pictures, ✕ / ○ page), Epilogue (all 30 skill points; 12 pictures per language, → / ✕ next, ← / ○ previous), Making Of
 (all 10 gold weapons: `PlayMovieC(3)`), Commercials (all 10 gold weapons; page of three `PlayMovieC(0..2)`). A locked
-entry is action 2 ("????", the denied sound) and its description says what unlocks it (0x4fd9, 0x4fda, 0x4fdb).
+entry is action 2 ("????", the denied sound) and its description says what unlocks it (0x4fd9, 0x4fda, 0x4fdb). The
+description table is the level's own (0x1b6df8 on level 01, `pause::media::label::GOODIES_TEXTS`), so the rewrite has
+to find it through `menus::Overlay::at` (a `DATA_LABELS` entry); reading the level-01 address
+directly left items 5..8 on the disc's `0xffffffff` placeholders ("Paradox!") on every other level.
 
 ### Cheats (`rc_game::cheats`)
 

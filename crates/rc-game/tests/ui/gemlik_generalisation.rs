@@ -7,7 +7,9 @@
 //!   asserted in `level_ports.rs::every_level_runs_the_ports_its_class_table_names`.
 
 use rc_formats::level_overlay::LevelOverlay;
-use rc_game::menus::pause::{frame, PageMenu};
+use rc_formats::save_game::{ChunkTables, SaveGameLump};
+use rc_game::game_state::GameState;
+use rc_game::menus::pause::{frame, media, Data, PageMenu};
 use rc_game::menus::quick_select::{QsConsts, QsTables};
 use rc_game::menus::Overlay;
 use rc_game::moby_update::classes::LevelPorts;
@@ -55,6 +57,45 @@ fn every_level_loads_the_pause_menu() {
         let mut m2 = m.clone();
         assert!(m2.install_port_page(&ov), "level {level:02}: Port Options page");
         assert!(QsTables::load(&ov).is_some() && QsConsts::load(&ov).is_some(), "level {level:02}: quick select");
+    }
+}
+
+/// The Goodies descriptions `0x29aa60` rewrites (items 5..8): the level's own description table 0x1b6df8 must be
+/// the one the page's label reads, so the unlock texts replace the disc's `0xffffffff` placeholders on every level
+/// (the label's id is a level-local address, so it has to be mapped like the other `DATA_LABELS`).
+#[test]
+fn every_level_resolves_the_goodies_descriptions() {
+    let Some(n) = menus(1) else { eprintln!("skipped: no extracted/"); return };
+    let root = rc_formats::test_data::root();
+    let (elf, save) = (std::fs::read(root.join("boot/SCUS_971.99")).unwrap(), std::fs::read(root.join("global/save_game.bin")).unwrap());
+    let template = SaveGameLump::parse(&save).unwrap().template;
+    let mut gs = GameState::new_game(ChunkTables::from_boot_elf(&elf).unwrap(), &template).unwrap();
+    // 16 skill points: Sketchbook unlocked (0x4fd3), the rest locked (0x4fda / 0x4fdb).
+    gs.global.skill_points[..16].fill(1);
+    // The Goodies page's description label: stride 4, its id table a list of message ids.
+    let description_label = |ov: &Overlay, m: &PageMenu| -> u32 {
+        let gp = ov.at(media::label::GOODIES_PAGE);
+        m.pages[&gp]
+            .widgets
+            .iter()
+            .filter_map(|w| m.widgets.get(w))
+            .find_map(|w| match &w.data {
+                Data::Label(l) if l.stride == 4 && ov.u32(l.id).is_some_and(|v| (0x4f00..0x5100).contains(&v)) => Some(l.id),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no Goodies description label"))
+    };
+    let n1 = PageMenu::load(&n).unwrap();
+    let l1 = description_label(&n, &n1);
+    assert_eq!((l1, n1.media.goodies_texts), (0x1b6df8, 0x1b6df8), "level 01 is the reference layout");
+    for level in 0..19 {
+        let ov = menus(level).unwrap();
+        let mut m = PageMenu::load(&ov).unwrap();
+        let label = description_label(&ov, &m);
+        assert_eq!(m.media.goodies_texts, label, "level {level:02}: the description table the label reads");
+        media::goodies_unlocks(&mut m, &gs);
+        let t = m.label_tables.get(&label).unwrap_or_else(|| panic!("level {level:02}: no patched description table"));
+        assert_eq!(&t[5..9], &[0x4fd3, 0x4fda, 0x4fdb, 0x4fdb], "level {level:02}");
     }
 }
 

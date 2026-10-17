@@ -101,9 +101,10 @@ pub const DATA_LABELS: &[u32] = &[
     pause::map_page::MARKER_LISTS, pause::map_page::MARKER_SIZES, pause::map_page::PRICES,
     // The front end's Options lists and the challenge mode's kept items (`pause::saves::data`).
     pause::saves::data::FRONT_OPTIONS_NTSC, pause::saves::data::FRONT_OPTIONS_PAL, pause::saves::data::CHALLENGE_ITEMS,
-    // The confirm page's gold-bolt totals and the kind-0x23 scroller's message lists.
+    // The confirm page's gold-bolt totals, the kind-0x23 scroller's message lists and the Goodies descriptions.
     pause::map_page::GOLD_TOTALS, pause::media::label::SCROLL_LISTS[0], pause::media::label::SCROLL_LISTS[1],
     pause::media::label::SCROLL_LISTS[2], pause::media::label::SCROLL_LISTS[3], pause::media::label::SCROLL_LISTS[4],
+    pause::media::label::GOODIES_TEXTS,
 ];
 
 /// The pad fields the menus read (the `PAD` record at 0x13c940 after this frame's `UpdatePad`).
