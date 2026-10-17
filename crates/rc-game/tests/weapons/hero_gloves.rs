@@ -537,7 +537,8 @@ fn novalis_mine_seeks_a_critter() {
     assert!(target.is_some(), "sought a target");
     assert!(rows[g..].iter().any(|r| r.watched[0].0 == 99), "the critter killed");
     // Side effects: the throw voice; no new mine for 9 ticks after the throw (the 10-tick delay counts in that tick); the seek's class sound 0 and loop 1
-    // (flags 4); the explosion's sound 2, 15 type-16 puffs on the ground, the light and the camera shake.
+    // (flags 4); the explosion's sound 2, `trunc(dcam · 15)` type-16 puffs on the ground (the count scales with the xy
+    // camera distance: ~146 here), the light and the camera shake.
     assert!(rows[t].heard.contains(&(0, 0x1a)), "the throw voice");
     let next = rows[t..].iter().position(|r| r.held.is_some()).expect("no new mine") ;
     assert_eq!(next, 9, "the next mine 9 ticks after the throw (10, less the throw tick's count)");
@@ -546,7 +547,7 @@ fn novalis_mine_seeks_a_critter() {
     assert!(rows[g].sounds.contains(&(74, 2, 0)), "the explosion's sound 2");
     let puffs = rows[g].parts[1] - rows[g - 1].parts[1];
     let beam = rows[g].parts[3] - rows[g - 1].parts[3];
-    assert!(puffs == 15 || beam > 0, "ground puffs {puffs} or the air's beam explosion");
+    assert!(puffs == 146 || beam > 0, "ground puffs {puffs} or the air's beam explosion");
     assert!(rows[g].lights > rows[g - 1].lights && rows[g].shake > 0, "the light and the shake");
     assert_eq!(rows, run(&lv, &s, &input, 400), "deterministic");
 }

@@ -92,6 +92,10 @@ pub struct Glove {
     pub fire_timer: i32,
     /// +0x40: the hand point in the glove.
     pub hand: [f32; 3],
+    /// The glove's joint list 0 world matrix (`MobyAttachToJoint(glove, 0)`): rows 0..2 the rotation, row 3 the
+    /// joint point. Written by `gloves::update` step 2; the held mine's frame is this turned by π about x
+    /// (`0x2bfe40`'s held branch).
+    pub hand_mtx: [[f32; 4]; 4],
     /// The Mine Glove's +0x54: no new mine until it runs out (10 ticks after a throw).
     pub respawn: i32,
 }

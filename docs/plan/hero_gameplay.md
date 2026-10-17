@@ -993,8 +993,9 @@ landed it watches the target list: any target within 1.5 sets it off; the neares
 radius/8` (×3 while the Taunter lures it) and 2 in height is **sought** — it hops at 4 u/s after it, its 0.35 sphere
 setting it off on contact, for at most 600 ticks. Ratchet standing on it pushes it away (`walker::move_ground`, the
 shared `0x26d270`). A hit (mask 0x830000) or more than 8 mines (the oldest) set it off. **The explosion**: an area hit
-of radius 2, damage 3 (`creature::attack::area_hit`, the shared `0x26f8f8`), `SpawnBeamExplosion` in the air or 15
-type-16 puffs on the ground, class sound 2, the shake, the Bomb Glove's explosion light (0x20a890 = 0x20a930). **In
+of radius 2, damage 3 (`creature::attack::area_hit`, the shared `0x26f8f8`), `SpawnBeamExplosion` in the air or
+`trunc(d · 15)` type-16 puffs on the ground (`d` the xy camera distance), class sound 2, the shake, the Bomb Glove's
+explosion light (0x20a890 = 0x20a930). **In
 water** it uses the bomb's water code (`classes::bomb_water`, written for both: the entry splash, the sinking bubbles,
 now also `bubbles` and `scorch` with the mine's counts). A bug fixed on the way: the water entry makes **16** drops,
 not 15 (the loop counts 0xf down to −1, like the other loops' 0x95 → 150, 99 → 100); the bomb's ledger test updated.
@@ -1082,7 +1083,7 @@ Ratchet's hit ignored — the port tests the world alone [L], as the Bomb Glove 
 | 0x1413f5 / 0x1413ff | hidden in first person or with the hand hidden (held) | P |
 | hand not 0xbe or 0x1413f4 ≠ 0, held → `DeleteMoby` | | P |
 | owner alive, class 0xbe, +0x36 == 0, vel ≠ 0 → `0x2bfa78(…, 1)` | the preview | P `mine::preview` (the reticle every held tick: test) |
-| held: Euler(π, 0, 0) × `MobyAttachToJoint(glove, 0)` → rows; +0x94 = 0; mode \| 0x100 | the held mine's frame | P except the rows (the glove is not a table moby) **G-WPN-002** |
+| held: Euler(π, 0, 0) × `MobyAttachToJoint(glove, 0)` → rows; +0x94 = 0; mode \| 0x100 | the held mine's frame | P (the glove's joint-0 matrix kept by `gloves::update` step 2 as `Glove::hand_mtx`, then turned by π) |
 | out: pos += vel; gravity 9.8·dt² (in water ÷10) | | P |
 | in water: `randi(ticks(6) − 1)` → `SetWaterLevel`, `PartType34Spawn(randf(0.05, 0.1)·210000, level, pos, vel/4)` | sinking bubbles | P `bomb_water::sink_bubble` |
 | the path's template (damage 3, 0x830000, type 2 / 1, the class) | hits on its path (creatures, crates) | P; test `novalis_mine_breaks_a_crate` (the crate broken, its bolts) |
@@ -1108,7 +1109,7 @@ Ratchet's hit ignored — the port tests the world alone [L], as the Bomb Glove 
 | the bob: ×(1 − 0.012) to 0.05, the fade over 6 ticks, phase +2π·dt, +0.4 | | P |
 | +0xbc == 0 → `FUN_0026eec8(0.25)` | the blob shadow | **G-REN-025** |
 | explode: `coll_sphere_mobys(2)` + `FUN_0026f8f8(3, 0.25, 1.5, …, 0x810000, 4, 1)` | the area hit (creatures, crates, …) | P `attack::area_hit`; tests (the critter killed) |
-| `FUN_0026e690`; 2 up → `SpawnBeamExplosion(0, 0, 2, 1, 4, 1, 7, mine, 0, 0, 3, 3, 5, 2, 0, 1, −1, gold)`; else 15 × `PartType16Spawn` (4 kinds, colours through `FUN_00270fa8`) | | P `fx::beam_explosion` / `mine::smoke`; test (15 puffs or the beam) |
+| `FUN_0026e690`; 2 up → `SpawnBeamExplosion(0, 0, 2, 1, 4, 1, 7, mine, 0, 0, 3, 3, 5, 2, 0, 1, −1, gold)`; else `trunc(d · 15)` × `PartType16Spawn` (4 kinds, colours through `FUN_00270fa8`; `d` the xy camera distance) | | P `fx::beam_explosion` / `mine::smoke`; test (the puffs or the beam) |
 | in water: 150 × `PartType34Spawn`, 150 × `PartType64Spawn`, 20 × `PartType15Spawn` from `GroundHeight(pos + 3.5)` | | P `bomb_water::{bubbles, scorch}`; test `mine::tests::explodes_in_water` (a mine entering water goes off the next tick: its path starts at its shown position, 0.4 up, and meets the surface again — the game's code, reproduced) |
 | `PlayClassSound(2 (3 gold))`, the shake (0x167260 / 0x167268), `FUN_002f3570(0x20a890 (0x20a8e0 gold))`, list out, `DeleteMoby` | | P (the light = `LIGHT_BOMB`, identical data); test (sound 2, light, shake) |
 | `0x2bfa78` / `0x2bf420` | the preview (gravity 9.8, 120 ticks, faces only) and the reticle | P `mine::preview` |
@@ -1166,7 +1167,7 @@ Reproduced (`mine::tests::explodes_in_water`).
 
 **Native, not emulated**: standard `f32`; the rand draws are the game's, at its points. **Inferred [L]** (module docs):
 the gloves' pvars start clear with the hand moby's creation; the hit templates' unwritten bytes; the held mine's
-orientation (the glove's joint-0 frame) is not written; the decoy / mine lists 0x1b0cb0 / 0x1b0c30 are the table's
+orientation (the glove's joint-0 frame turned by π) is written (`Glove::hand_mtx`); the decoy / mine lists 0x1b0cb0 / 0x1b0c30 are the table's
 objects; objects on moving platforms do not ride them (0x13f64c never set); the gold gloves are not mirrored.
 
 **Tests** (`crates/rc-game/tests/weapons/hero_gloves.rs`, headless on the arrival state with `GiveItem(id, equip)`, every run
@@ -1175,7 +1176,7 @@ shake and the bolts): Novalis — the decoy thrown from the throw state (voice 0
 held → flying → standing, a critter 577 comes to it and bites it 4 → 3 → 2 → 1 → 0 (a class sound 0 and the red flash
 a bite) → burst (sound 2, a light, the shake) while Ratchet is untouched, then goes for him; the mine thrown (voice,
 one ammo, the reticle every held tick, the next mine 9 ticks later), out → landed → armed / seeking (sounds 0 and the
-loop 1), the critter blown up (sound 2, the 15 puffs or the air's beam explosion, a light, the shake); a mine thrown
+loop 1), the critter blown up (sound 2, the ground's type-16 puffs or the air's beam explosion, a light, the shake); a mine thrown
 at crate 376 goes off on its way, breaks it and its bolts fly (crates are not sought); the Taunter (swapped in) lures a
 landed mine (+0x78); the Drone Device launches six drones at once for one ammo (12 trail records), one takes the
 critter coming for Ratchet (its assignment sound), strikes it (sound 1, light, shake) and goes, five orbit on.

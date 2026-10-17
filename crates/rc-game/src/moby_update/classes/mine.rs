@@ -30,8 +30,9 @@
 //!   explosion `0x273f50`).
 //! * **The explosion** (+0xbc): dry — an area hit of radius 2 (damage 3, push 0.25 / 1.5, flags 0x810000, type 4 / 1;
 //!   `creature::attack::area_hit`), then in the air (2 above the ground) `SpawnBeamExplosion` (flashes 2 / 1 beyond 4,
-//!   light 7, 3 streaks, 3 spark pairs, 5 puffs, sound 2, debris 1), on the ground 15 type-16 smoke / fire / spark
-//!   puffs of four kinds; in water — 150 bubbles (`bomb_water::bubbles`) and the scorch from the surface
+//!   light 7, 3 streaks, 3 spark pairs, 5 puffs, sound 2, debris 1), on the ground `trunc(d · 15)` type-16 smoke /
+//!   fire / spark puffs of four kinds (`d` the xy camera distance, so a distant explosion makes a bigger cloud);
+//!   in water — 150 bubbles (`bomb_water::bubbles`) and the scorch from the surface
 //!   (`bomb_water::scorch`, [`bomb_water::MINE_SCORCH`]); class sound 2, the camera shake (0.4 − 0.0175·d within 20),
 //!   the Bomb Glove's explosion light (template 0x20a890 = 0x20a930, [`fx::LIGHT_BOMB`]); deleted.
 //!
@@ -45,8 +46,9 @@
 //! Native `f32`; the rand draws are the game's. **Inferred [L]**: the path's start and the landed velocity use the
 //! position at the start of the update (the decompiler lost the quadword copy; the disassembly's `lq`/`sq` pair); the
 //! hit template's direction is the unit xy velocity with z 1 and its type bytes 2 / 1 (the seek template's type bytes,
-//! which the game leaves as the stack held them, are 0); the held mine's orientation (the glove's joint-0 frame turned
-//! by π about x) is not written (the glove is not a table moby); the release's wall test starts at Ratchet (at the
+//! which the game leaves as the stack held them, are 0); the held mine's frame is `Euler(π, 0, 0) ×
+//! MobyAttachToJoint(glove, 0)`, the glove's joint-0 matrix kept by `gloves::update` step 2 (the glove is not a table
+//! moby); the release's wall test starts at Ratchet (at the
 //! launch height; the disassembly's `lq`); the mines' list 0x1b0c30 is the table's mines; a mine on a moving platform
 //! does not ride it (0x13f64c: never set in the port); the blob shadow `0x26eec8(0.25)` is `crate::shadows::blob`; the gold
 //! mine (0x13e531, item 17: the seek range ×2, the blast and its puffs ×1.5, their colours shifted, class sound 3, the
@@ -228,10 +230,16 @@ pub fn update(w: &mut World, id: MobyId) {
     }
     if glove && c::pi16(w, id, pv::NEW_HELD) == 0 && 0.0 < c::len3(c::pv4(w, id, pv::VEL)) { preview(w, id); }
     if st == 0 {
-        // Held: the glove places it; no collision.
+        // Held: the glove places it; no collision. The frame (`0x2bfe40`'s held branch): `Euler(π, 0, 0) ×
+        // MobyAttachToJoint(glove, 0)` — the glove's joint-0 matrix (`gloves::update` step 2) turned by π about
+        // x (rows 1 / 2 negated) — kept (mode 0x100) for the renderer.
+        let f = w.hero.weapons.glove.hand_mtx;
         let m = w.mm(id);
         m.has_collision = false;
         m.mode |= 0x100;
+        m.rows[0] = f[0];
+        m.rows[1] = f[1].map(|x| -x);
+        m.rows[2] = f[2].map(|x| -x);
         return;
     }
     w.mm(id).mode &= !0x100;
@@ -601,7 +609,7 @@ fn explode(w: &mut World, id: MobyId, _drift: V, _normal: V) {
             let b = fx::Beam { damage_r: 0.0, damage: 0.0, flash: 2.0, flash2: 1.0, flash_dist: 4.0, scale: 1.0, light: 7.0, streaks: 3, sparks: 3, puffs: 5, debris: 1, sound: 2, shake: false };
             fx::beam_explosion(w, &b, Some(id), pos);
         } else {
-            smoke(w, pos, g);
+            smoke(w, pos, g, dcam);
         }
     } else {
         let surf = w.ground_height(Pf::f(0.5), pvq([pos[0], pos[1], pos[2] + 3.5, pos[3]]), 0).to_f32();
@@ -617,16 +625,18 @@ fn explode(w: &mut World, id: MobyId, _drift: V, _normal: V) {
     w.delete_moby(id);
 }
 
-/// The ground explosion's 15 type-16 puffs (`0x2bfe40` at 0x2c1aa8): per puff `randi(4)` picks the kind (0 smoke,
-/// 1 fire, 2 flash, 3 embers), a velocity `(randf(±0.5·dt), randf(±0.5·dt), randf(4·dt, [14, 22, 12, 0][kind]·dt))`, a
+/// The ground explosion's `trunc(d · 15)` type-16 puffs (`0x2bfe40` at 0x2c1ac8): per puff `randi(4)` picks the
+/// kind (0 smoke, 1 fire, 2 flash, 3 embers), a velocity `(randf(±0.5·dt), randf(±0.5·dt), randf(4·dt, [14, 22, 12, 0][kind]·dt))`, a
 /// spot `randf(0, 0.25)` (0.5 for fire) out at a random angle and sunk by its cosine of 45°, the rise less 8·dt per
 /// unit out, then the kind's colours, size and life. The gold mine (`gold` ≠ 0): velocities, spot and sizes ×1.5
 /// (0x13e531·0.5 + 1) and every colour through `0x270fa8(c, gold)` ([`fx::colour_shift`]).
-fn smoke(w: &mut World, pos: V, gold: u8) {
+fn smoke(w: &mut World, pos: V, gold: u8, dist: f32) {
     let gk = gold as f32 * 0.5 + 1.0;
     let sh = |c: u32| fx::colour_shift(c, gold);
     use crate::particles::{tween_color, type16};
-    let n = 15;
+    // `truncate_float_to_s32(dist * 15.0f)`: the count scales with the (xy) camera distance, so a distant
+    // explosion makes a bigger cloud (the port had a flat 15).
+    let n = crate::ps2v::ftoi0((dist * 15.0).to_bits());
     for _ in 0..n {
         let kind = w.rng.randi(4);
         let tops = [DT * 14.0, DT * 22.0, DT * 12.0, 0.0];
@@ -763,5 +773,30 @@ mod tests {
             }
         }
         panic!("never exploded");
+    }
+
+    /// The held mine's frame (`0x2bfe40`'s held branch): `Euler(π, 0, 0) × MobyAttachToJoint(glove, 0)` — the
+    /// glove's joint-0 matrix (`gloves::update` step 2 writes it to `hero.weapons.glove.hand_mtx`) turned by π
+    /// about x (rows 1 / 2 negated), kept (mode 0x100) so the renderer uses it. Before the fix the rows stayed
+    /// zero (a fresh moby) and the mine was drawn collapsed to a point (invisible in the hand).
+    #[test]
+    fn the_held_mine_is_framed_by_the_glove() {
+        use crate::moby_runtime::mode;
+        let mut b = Bench::new(pool(8.0, 12.0), &[CLASS], [40.0, 40.0, 20.0]);
+        // A Mine Glove in the hand (class 0xbe) so the mine's update keeps it.
+        let anim = rc_formats::moby_anim::AnimState { seq_a: 1, frame_a: 0, seq_b: 1, frame_b: 0, t: 0.0, speed: 1.0, rate: 1.0, flags: 0, trigger_count: 0, skip_advance: false };
+        b.hero.items.slot.item = Some(crate::hero::items::HandItem { o_class: GLOVE_CLASS, mstate: 0, anim, snapshot: None, scale: 1.0, position: [0.0; 3], rows: [[0; 4]; 3], hit_timer: 0, flight: Default::default() });
+        // The joint-0 frame `gloves::update` would write (a swap of x and y, say).
+        let f = [[0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+        b.hero.weapons.glove.hand_mtx = f;
+        let m = b.create(CLASS);
+        let mut rng = crate::rng::Rng::new();
+        init_held(&mut b.table.mobys[m], &mut rng, [20.0, 20.0, 13.0], 0);
+        b.tick(None);
+        let mo = &b.table.mobys[m];
+        assert!(mo.state == 0 && mo.mode & mode::KEEP_ROWS != 0, "held, rows kept: state {} mode {:#x}", mo.state, mo.mode);
+        assert_eq!(mo.rows[0], f[0], "row 0");
+        assert_eq!(mo.rows[1], [-1.0, 0.0, 0.0, 0.0], "row 1 (negated)");
+        assert_eq!(mo.rows[2], [0.0, 0.0, -1.0, 0.0], "row 2 (negated)");
     }
 }
