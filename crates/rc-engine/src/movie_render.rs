@@ -24,8 +24,8 @@
 //!   runs, so their PNGs and WAVs do not depend on the device).
 //! * **Picture.** The movie is 512×416, the size of the GS draw buffer, and `setImageTag` 0x31b0b8 uploads it at
 //!   (0, 0) of the display buffer: it fills exactly the picture the game's frames fill. The port shows it as a UI
-//!   image over the main camera's letterboxed 512:416 viewport (the same place as the game frame and the HUD,
-//!   `game_camera::letterbox`), nearest-sampled, above the HUD; the black fade is a UI quad whose alpha makes the
+//!   image over the main camera, nearest-sampled, above the HUD, stretched to the cutscene aspect's box of the frame
+//!   (crate::display::CutsceneBoxed: the 4:3 box, or the whole wide frame); the black fade is a UI quad whose alpha makes the
 //!   linear-light blend give `C·(1 − coverage)` in display bytes, like the GS's black quad.
 //!
 //! * **Other callers** (docs/plan/progression.md `## media`): [`request`] with [`MovieRequest::movie_b`] (`PlayMovieB`:
@@ -221,8 +221,8 @@ fn setup(mut commands: Commands, mut state: ResMut<MovieState>, mut images: ResM
     img.sampler = ImageSampler::nearest();
     state.image = images.add(img);
     let full = || Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() };
-    // On the frame's 4:3 box (crate::display); the root is black around it.
-    let picture = commands.spawn((full(), ImageNode::new(state.image.clone()), Visibility::Hidden, crate::display::UiBoxed, Name::new("movie picture"))).id();
+    // Filling the cutscene aspect's box (crate::display), not kept at the picture's 512:416; the root is black around it.
+    let picture = commands.spawn((full(), ImageNode::new(state.image.clone()).with_mode(bevy::ui::widget::NodeImageMode::Stretch), Visibility::Hidden, crate::display::CutsceneBoxed, Name::new("movie picture"))).id();
     let fade = commands.spawn((full(), BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.0)), Name::new("movie fade"))).id();
     // Above the HUD composite (same global z, higher local z).
     let root = commands.spawn((full(), BackgroundColor(Color::BLACK), GlobalZIndex(i32::MAX), ZIndex(1), Visibility::Hidden, MovieUi, Name::new("movie"), crate::level_switch::KeepAcrossLevels)).add_children(&[picture, fade]).id();

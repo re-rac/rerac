@@ -36,7 +36,7 @@ pub fn apply(
     display: Res<crate::display::DisplaySettings>,
     mut cams: Query<(&mut Transform, &mut Projection), With<FlyCam>>,
 ) {
-    let aspect = display.aspect;
+    let aspect = display.frame_aspect();
     let (Some(view), Some(source)) = (view, source) else { return };
     if *source != CameraSource::Play { return; }
     let t = view_transform(&view.view);

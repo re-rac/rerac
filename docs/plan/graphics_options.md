@@ -21,7 +21,7 @@ stored; it is read back from the options. Options never change game state: the g
 | Texture filtering | Original / Smooth / Sharp | the GS mip rule: one level from depth, `round(log2(z/32)+K)`; Smooth = the same level unrounded, two levels blended; Sharp = the GPU's footprint level + anisotropic | done (tfrag, tie, shrub, shrub billboard: `sample_world`; the mode rides in the shared fog buffer's third vec4 `tex_mode`; samplers linear between levels + anisotropy 16, an integer level reads one level: Original verified byte-identical to the earlier build on a Novalis walk) |
 | HUD | Original / Sharp pixels / High resolution | the 512×416 screen through the display copy B (half a pixel across, like the world) and scaled up with bilinear filtering, as the TV and an emulator's display showed it; Sharp pixels = nearest (the port's earlier look); High resolution = drawn at the frame's resolution | Original / Sharp pixels done |
 | Shadows | on / off | on | exists |
-| Aspect ratio, Resolution, Fullscreen | | | exist (not part of the preset: they depend on the screen) |
+| Gameplay aspect, Cutscene aspect, Resolution, Fullscreen, FPS limit | | | exist (not part of the preset: they depend on the screen) |
 
 Enhanced: Anti-aliasing 4x (the best of 4x / 2x the GPU offers), Detail Far, Textures Smooth, HUD High resolution
 (Original until High resolution exists).

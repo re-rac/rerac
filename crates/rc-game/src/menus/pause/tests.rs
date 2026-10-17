@@ -388,6 +388,56 @@ fn overlay_page_tree() {
 }
 
 #[test]
+fn port_page_in_the_main_menu_from_the_disc() {
+    use super::port::{self, Setting};
+    const FRONT_OPTIONS: u32 = 0x1b8d08;
+    const FRONT_OPTIONS_W: u32 = 0x1b8cb8;
+    const FRONT_SOUND: u32 = 0x1b8e38;
+    const FRONT_LIST: u32 = 0x1b8de8;
+    let p = rc_formats::test_data::root().join("levels/01/overlay.bin");
+    let Ok(bytes) = std::fs::read(&p) else { eprintln!("skipped: no {}", p.display()); return };
+    let ov = Overlay::parse(&bytes).unwrap();
+    let mut m = PageMenu::load(&ov).unwrap();
+    assert!(m.install_port_page(&ov));
+    assert!(m.install_port_page(&ov), "idempotent");
+    // The entry is last in both of the front end's Options lists (NTSC Language / Sound, PAL + Video).
+    let ids = |l: &[Item]| l.iter().map(|i| (i.label, i.action, i.arg)).collect::<Vec<_>>();
+    let entry = (port::text::ENTRY as i16, 3, port::FRONT_PAGE);
+    assert_eq!(ids(&m.saves.front_options[0]), vec![(20267, 3, 0x1b8ec0), (20258, 3, FRONT_SOUND), entry]);
+    assert_eq!(ids(&m.saves.front_options[1]).last(), Some(&entry));
+    assert_eq!(m.saves.front_options[1].len(), 4);
+    // The page: the front end's Sound frames and hints, the shared title (W2) and list (W3), parent its Options.
+    let (pg, sound) = (&m.pages[&port::FRONT_PAGE], m.pages[&FRONT_SOUND].clone());
+    assert_eq!((pg.seqs, pg.parent, pg.focus, pg.kind), (sound.seqs, FRONT_OPTIONS, port::LIST_W, port::KIND));
+    assert_eq!((pg.widgets[2], pg.widgets[3], pg.widgets[4]), (port::TITLE_W, port::LIST_W, sound.widgets[4]));
+
+    // Main menu → Options → Down twice → ✕ → the page; ✕ cycles the shared list; △ back to Options.
+    let mut g = gs();
+    let env = MenuEnv::default();
+    open(&mut m, &mut g, 0x2d);
+    assert_eq!(m.current, page::KIND2D);
+    m.pages.get_mut(&page::KIND2D).unwrap().focus = FRONT_OPTIONS_W;
+    m.tick(&press(button::CROSS), &mut g, &env);
+    for _ in 0..13 { m.tick(&NONE, &mut g, &env); }
+    assert_eq!(m.current, FRONT_OPTIONS);
+    assert_eq!(list_of(&m, FRONT_LIST).items.last().map(|i| i.arg), Some(port::FRONT_PAGE));
+    m.tick(&press(button::DOWN), &mut g, &env);
+    m.tick(&press(button::DOWN), &mut g, &env);
+    assert_eq!(list_of(&m, FRONT_LIST).cursor, 2);
+    m.tick(&press(button::CROSS), &mut g, &env);
+    let o = m.tick(&NONE, &mut g, &env);
+    assert_eq!(o.sounds, vec![MenuSound::PageChange]);
+    assert!(m.mobys.iter().all(|&(_, back)| !back) && m.mobys[2].0 == sound.seqs[2]);
+    for _ in 0..12 { m.tick(&NONE, &mut g, &env); }
+    assert_eq!((m.current, m.kind), (port::FRONT_PAGE, port::KIND));
+    m.set_port_value(Setting::Preset, 0);
+    let o = m.tick(&press(button::CROSS), &mut g, &env);
+    assert_eq!((o.sounds, m.port_value(Setting::Preset)), (vec![MenuSound::Confirm], Some(1)));
+    m.tick(&press(button::TRIANGLE), &mut g, &env);
+    assert_eq!(m.target, FRONT_OPTIONS);
+}
+
+#[test]
 fn port_page_from_the_disc() {
     use super::port::{self, Setting};
     let p = rc_formats::test_data::root().join("levels/01/overlay.bin");

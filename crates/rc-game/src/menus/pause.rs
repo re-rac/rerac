@@ -24,7 +24,7 @@
 //! per-item animations and drones (G-UI-002).
 //!
 //! **Port-only:** [`port`] adds a "Port Options" page (not in the game) built from the same machinery, reached
-//! from an extra entry of the Options list ([`PageMenu::install_port_page`]; the engine skips it with
+//! from an extra entry of the Options list and of the main menu's Options list ([`PageMenu::install_port_page`]; the engine skips it with
 //! `RC_SETTINGS_PAGE=0`, leaving every record as on the disc).
 
 pub mod frame;
@@ -701,7 +701,11 @@ impl PageMenu {
         if let Some(p) = self.page(self.current) {
             let seqs = p.seqs;
             for (m, s) in self.mobys.iter_mut().zip(seqs) { *m = (s, false); }
-            if let Some(f) = self.frames.as_mut() { f.spawn(&seqs); }
+            let stretch = port::panel_stretch(self.current);
+            if let Some(f) = self.frames.as_mut() {
+                f.spawn(&seqs);
+                f.stretch = stretch;
+            }
         }
     }
 
@@ -771,6 +775,9 @@ impl PageMenu {
                 };
                 if let Some(f) = self.frames.as_mut() { f.start(i, self.mobys[i].0, back); }
             }
+            // Port-only: the seqs played are the port page's (into it, or back out of it): its stretched list panel.
+            let stretch = port::panel_stretch(if back { self.current } else { self.target });
+            if let Some(f) = self.frames.as_mut() { f.stretch = stretch; }
             out.transition = Some((self.current, self.target));
             self.kind = 1;
             self.trans = 0xc;

@@ -257,6 +257,7 @@ impl Plugin for SceneRenderPlugin {
             .add_systems(FixedUpdate, (scene_frame.before(GameTick).in_set(SceneFrameSet), actor_mobys.after(GameTick)))
             .add_systems(RunFixedMainLoop, apply_camera.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop).after(crate::play_camera::apply))
             .add_systems(Update, subtitle_layer.before(crate::hud_render::HudBuild))
+            .add_systems(Update, cutscene_view.before(crate::hud_render::HudBuild))
             .add_systems(PostUpdate, (upload, fade_pass))
             .add_systems(PostUpdate, force_hidden.after(moby_render::update_moby_occlusion).before(VisibilitySystems::VisibilityPropagate));
         match mode {
@@ -921,7 +922,7 @@ fn apply_camera(active: Res<ActiveScene>, source: Option<Res<CameraSource>>, dis
     for (mut tf, mut proj) in &mut cams {
         if *tf != t { *tf = t; }
         // The scene's tangent (Hor+ in 16:9, crate::display).
-        crate::display::set_view_tans(&mut proj, c.tan_half_fov, display.aspect);
+        crate::display::set_view_tans(&mut proj, c.tan_half_fov, display.frame_aspect());
     }
 }
 
@@ -1063,6 +1064,17 @@ fn subtitle_layer(mut rt: ResMut<SceneRuntime>, active: Res<ActiveScene>, hold: 
     let (Some(glyphs), Some(line)) = (rt.glyphs.as_ref(), active.last.as_ref().and_then(|t| t.subtitle.as_ref())) else { return };
     if !active.running { return; }
     layer.prims = subtitle_prims(glyphs, &line.text);
+}
+
+/// Port-only: whether this frame shows a cutscene (crate::display's cutscene aspect): a scene running, the letterbox
+/// 0x15f404 set (the classes' cutaways, the flybys), or mode 6's take-off / landing / fly-away. A `FadeToBlack` hold
+/// keeps the last frame's.
+fn cutscene_view(active: Res<ActiveScene>, hold: Res<FadeHold>, play: Option<Res<Play>>, travel: Option<Res<crate::travel_render::Travel>>, mut view: ResMut<crate::display::CutsceneView>) {
+    use rc_game::travel::space::{Phase, SUB_FLYAWAY, SUB_LANDING, SUB_TAKEOFF};
+    if hold.frames > 0 { return; }
+    let ship = travel.is_some_and(|t| t.mode.phase != Phase::Idle && matches!(t.mode.sub, SUB_TAKEOFF | SUB_LANDING | SUB_FLYAWAY));
+    let want = active.running || ship || play.is_some_and(|p| p.svc.creatures.cutscene);
+    if view.0 != want { view.0 = want; }
 }
 
 /// One primitive of the Trespasser minigame as a HUD primitive (pixels and texels rounded; the FX texture).

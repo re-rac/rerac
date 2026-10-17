@@ -64,6 +64,9 @@ pub struct FrameMoby {
     pub rect: [i32; 4],
     /// pvar +0x48 / +0x4c: the panel's noise burst (`fun_00223e28`, crate::menus::screen_static).
     pub noise: crate::menus::screen_static::PanelStatic,
+    /// Port-only: the world z each corner was moved by ([`FrameMobys::stretch`]); the engine moves the corner joints
+    /// of the drawn moby by the same amount.
+    pub lift: [f32; 4],
 }
 
 /// The menu camera state `MobyScreenRect` projects with: `fun_00218d10` (position (256, 256, 64), rows
@@ -160,11 +163,21 @@ pub struct FrameMobys {
     pub rows: [V4; 3],
     pub proj: MenuProjection,
     pub slots: Option<[FrameMoby; SLOTS]>,
+    /// Port-only: per slot, the screen rows `[top, bottom]` its panel is stretched to (the Port Options list), reached
+    /// as the slot's sequence reaches its last frame; None = the game's panel.
+    pub stretch: [Option<[i32; 2]>; SLOTS],
 }
 
 impl FrameMobys {
     pub fn new(class: FrameClass, pal: bool) -> Self {
-        FrameMobys { class, rows: moby_light::rotation_rows([0.0; 3]), proj: MenuProjection::new(pal), slots: None }
+        FrameMobys { class, rows: moby_light::rotation_rows([0.0; 3]), proj: MenuProjection::new(pal), slots: None, stretch: [None; SLOTS] }
+    }
+
+    /// How far slot state `s` is through its sequence (0 on frame 0, 1 on the last frame; 1 for a one-frame sequence).
+    fn progress(&self, s: &AnimState) -> f32 {
+        let Some(last) = self.last_frame(s.seq_a as i32).filter(|&l| l > 0) else { return 1.0 };
+        let pos = s.frame_a as f32 + s.t * (s.frame_b as f32 - s.frame_a as f32);
+        (pos / last as f32).clamp(0.0, 1.0)
     }
 
     /// Frame count − 1 of sequence `seq` (`*(class + 0x48 + 4·seq)` +0x10, minus 1), None when missing.
@@ -182,7 +195,7 @@ impl FrameMobys {
     /// The spawn of `FUN_0028c128` for the page's seqs: every moby on its sequence's last frame.
     pub fn spawn(&mut self, seqs: &[i32; SLOTS]) {
         let state = AnimState::spawn(&self.class.anim);
-        self.slots = Some([FrameMoby { state, corners: [[0; 4]; 4], rect: [0; 4], noise: Default::default() }; SLOTS]);
+        self.slots = Some([FrameMoby { state, corners: [[0; 4]; 4], rect: [0; 4], noise: Default::default(), lift: [0.0; 4] }; SLOTS]);
         for (i, &s) in seqs.iter().enumerate() {
             let last = self.last_frame(s).unwrap_or(0);
             self.cut(i, s, last);
@@ -199,18 +212,41 @@ impl FrameMobys {
 
     /// One `MobyUpdateLoop` for the frame mobys: advance, `MenuMobyUpdate`, corners.
     pub fn update(&mut self) {
-        let FrameMobys { class, rows, slots, .. } = self;
-        let Some(slots) = slots.as_mut() else { return };
-        let chains: [&[u8]; 4] = std::array::from_fn(|k| class.chains[k].as_slice());
-        for m in slots.iter_mut() {
-            if !m.state.skip_advance { moby_anim::advance(&mut m.state, &class.anim); }
+        let Some(mut slots) = self.slots.take() else { return };
+        let chains: [&[u8]; 4] = std::array::from_fn(|k| self.class.chains[k].as_slice());
+        for (i, m) in slots.iter_mut().enumerate() {
+            if !m.state.skip_advance { moby_anim::advance(&mut m.state, &self.class.anim); }
             if m.state.flags & 2 != 0 {
                 m.state.t = if m.state.speed > 0.0 { 0.0 } else { 1.0 };
                 m.state.speed = 0.0;
             }
-            let p = moby_anim::joint_translations(&class.anim, &m.state, None, &chains);
-            let w = moby_anim::bone_points(&p, rows, CAMERA_POS, class.scale);
+            let p = moby_anim::joint_translations(&self.class.anim, &m.state, None, &chains);
+            let w = moby_anim::bone_points(&p, &self.rows, CAMERA_POS, self.class.scale);
             m.corners = std::array::from_fn(|k| w[k]);
+            m.lift = [0.0; 4];
+            if let Some(target) = self.stretch[i] { self.stretch_corners(m, target); }
+        }
+        self.slots = Some(slots);
+    }
+
+    /// Port-only: moves slot `m`'s top corners up and its bottom corners down (world z, the screen's vertical) so its
+    /// rect spans the rows `[top, bottom]` on the sequence's last frame, in proportion to [`Self::progress`] before.
+    fn stretch_corners(&self, m: &mut FrameMoby, [top, bottom]: [i32; 2]) {
+        let prog = self.progress(&m.state);
+        if prog <= 0.0 { return; }
+        let z = |c: V4| f32::from_bits(c[2]);
+        let [_, y, _, h] = self.proj.screen_rect(m.corners[0], m.corners[3]);
+        // Screen rows per world unit of z at the corners' depth (all four share it).
+        let mut probe = m.corners[0];
+        probe[2] = (z(probe) - 10.0).to_bits();
+        let k = self.proj.screen_rect(m.corners[0], probe)[3] as f32 / 10.0;
+        if k <= 0.0 { return; }
+        let up = (y + 1 - top) as f32 * prog / k;
+        let down = (bottom - (y + 1 + h)) as f32 * prog / k;
+        let mid = (z(m.corners[0]) + z(m.corners[3])) * 0.5;
+        for (c, l) in m.corners.iter_mut().zip(&mut m.lift) {
+            *l = if z(*c) > mid { up } else { -down };
+            c[2] = (z(*c) + *l).to_bits();
         }
     }
 
@@ -269,6 +305,37 @@ mod tests {
             rc_formats::gadget::joint_list(&blob, &class.header, id).unwrap().0
         });
         Some((FrameClass { anim, chains, scale: class.header.scale }, ov))
+    }
+
+    /// Port-only: the Port Options pages' frames (Camera's, the front end's Sound) with the list panel stretched to
+    /// `port::LIST_ROWS` once settled, growing with the open animation; the other panels as the game places them.
+    #[test]
+    fn port_list_panel_stretches_from_the_disc() {
+        use super::super::port;
+        let Some((class, ov)) = disc_class() else { return };
+        let m = crate::menus::pause::PageMenu::load(&ov).unwrap();
+        for (model, page) in [(port::MODEL_MANY, port::PAGE), (0x1b8e38, port::FRONT_PAGE)] {
+            let seqs = m.pages[&model].seqs;
+            let run = |stretch: bool| {
+                let mut f = FrameMobys::new(class.clone(), false);
+                f.spawn(&seqs);
+                if stretch { f.stretch = port::panel_stretch(page); }
+                for (i, &s) in seqs.iter().enumerate() { f.start(i, s, false); }
+                let mut heights = Vec::new();
+                for _ in 0..60 {
+                    f.update();
+                    heights.push(f.place(port::LIST_SLOT).unwrap()[3]);
+                }
+                ((0..SLOTS).map(|i| f.place(i).unwrap()).collect::<Vec<_>>(), heights)
+            };
+            let ((game, game_heights), (ported, heights)) = (run(false), run(true));
+            let [_, y, _, h] = ported[port::LIST_SLOT];
+            assert!((y - port::LIST_ROWS[0]).abs() <= 1 && (y + h - port::LIST_ROWS[1]).abs() <= 1, "{model:#x}: {:?}", ported[port::LIST_SLOT]);
+            assert_eq!(ported[port::LIST_SLOT][0], game[port::LIST_SLOT][0]);
+            assert_eq!(ported[port::LIST_SLOT][2], game[port::LIST_SLOT][2]);
+            for i in (0..SLOTS).filter(|&i| i != port::LIST_SLOT) { assert_eq!(ported[i], game[i], "{model:#x} slot {i}"); }
+            // From the parent page's panel (the game's own animation), never shorter than the game's on the way.
+            assert!(heights.iter().zip(&game_heights).all(|(a, b)| a >= b), "{model:#x}: {heights:?} vs {game_heights:?}");        }
     }
 
     /// Class 1138 on Novalis: the root page's settled panels (skipped without `extracted/`).
