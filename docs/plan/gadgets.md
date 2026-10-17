@@ -179,8 +179,10 @@ by the player; the Hologuise's hand swap 0x1f is the hand slot's).
   grids / label / model (its other widgets remain stubs).
 * Engine: `gameplay.rs` syncs the feet / head slots with `equipped[1..3]` / `temp_feet` / `temp_head` like the back;
   `moby_attach.rs` draws the boots and head items (`Slot::Feet` / `Slot::Head`, shown only while the slot holds their
-  class — the same "absent stays hidden" rule as the hand and back); `menu_render.rs` gives the page the item
-  definitions and applies the close's requests to the session; `menu_models.rs` fills the two 3D widgets (which mobys,
+  class — the same "absent stays hidden" rule as the hand and back); it also draws the **always-on extras** (items 33
+  Map-o-Matic, 34 Bolt Grabber, 35 Persuader: `Slot::Extra`, created while their owned flag is set, at Ratchet's
+  attach lists 29 / 30 — §1); `menu_render.rs` gives the page the item definitions and applies the close's requests to
+  the session; `menu_models.rs` fills the two 3D widgets (which mobys,
   their poses, records and palettes) and draws each on a `crate::screen_canvas` canvas composed **over** the HUD
   (`Canvases::create_over_hud`; view = the panel's rectangle, the game projection's tangents given exactly with
   `Canvases::show_exact`, the view axis on the panel's centre, the navy clear; `hud_render::HudCompositeNode` made
@@ -209,8 +211,8 @@ line only because the idle block prints two more joint records (4 / 5, the feet;
 (`MobyFrame`) evaluated by the existing evaluator; the 3D widgets are ordinary Bevy cameras and images, no GS
 render-target emulation.
 
-**Inferred / not ported**: the 3D Ratchet's per-item streamed animations (he idles on sequence 0) [L]; the Persuader /
-Map-o-matic / Bolt Grabber / drone mobys on him and their callbacks; where exactly the widget's render target puts the
+**Inferred / not ported**: the 3D Ratchet's per-item streamed animations (he idles on sequence 0) [L]; the drone mobys
+on him and their callbacks; where exactly the widget's render target puts the
 camera axis (assumed: the panel's centre, matching the reference screenshot) [L]; the Drone Device's ✕ path; the
 foot IK of `0x22c5c0` (only its feet scale); 0x14161b (0); `FUN_00248ad8`'s gravity-mode test and the ground magnet
 branch still read the owned byte [L]; the hint list's ✕ Equip / △ Exit are the disc's list, drawn as any list.

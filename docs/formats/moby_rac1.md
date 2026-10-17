@@ -64,7 +64,7 @@ So the RAC1 ("phat"/old) layout is detected by *game*, and in R&C2 by a sniff of
 | 5, 6, 7 | 433, 1289, 1290 | head | list 4 → joint 7 | 0x298730 [0x224d28] |
 | 28, 29 | 173, 195 (one moby per foot) | feet | lists 2 / 3 → joints 99 / 93 | 0x298820 [0x224e18] |
 
-Class 601 is taken to be Clank on Ratchet's back because it is item 1 of the back slot (Clank transforms into items 2–4), has 33 joints, 18 sequences and Ratchet's scale 0.1458. Flag-driven extras spawned by `LoadHandGadget`: 407 (flag 0x13d4e3, list 30 → joint 5), 614 (0x13d4e1) and 618 (0x13d4e2) (list 29 → joint 3), up to 8 × 479 (count 0x141347, `fun_00225180`); their meaning is **unknown**.
+Class 601 is taken to be Clank on Ratchet's back because it is item 1 of the back slot (Clank transforms into items 2–4), has 33 joints, 18 sequences and Ratchet's scale 0.1458. Flag-driven extras spawned by `LoadHandGadget`: 407 (flag 0x13d4e3, list 30 → joint 5) is the **Persuader** (item 35), 614 (0x13d4e1) the **Map-o-Matic** (33) and 618 (0x13d4e2) the **Bolt Grabber** (34) (list 29 → joint 3; `HeroItemsCreate` 0x22f3c0 creates each while owned, at those lists); up to 8 × 479 (count 0x141347, `fun_00225180`) are the Drone Device's drones.
 
 **Attach rule** (`fun_0020cca8`, L01 0x264508 [0x20cca8], called every frame from the item's update function with Ratchet's moby and the list index):
 1. `fun_00210850` [0x210850] marks the joints of the list's **first** byte list (a root-to-joint chain) and evaluates only them with `fun_002109b8` [0x2109b8]; the result is the pose matrix `P_j` of the chain's last joint `j` (docs/plan/moby_animation.md; the partial evaluator never loads the class skeleton `+0x14`, so it is `P_j`, not `P_j·S_j` — inferred from the disassembly).

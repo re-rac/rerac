@@ -48,6 +48,13 @@
 //! while he blinks, `Hero::clank_modifiers`) poses him, and his pulsing glow word (`Back::clank_color`, red on
 //! Ratchet's hit flash) colours his glow packets.
 //!
+//! **The always-on extras** (items 33 Map-o-Matic, 34 Bolt Grabber and 35 Persuader, classes 0x266 / 0x26a /
+//! 0x197): `HeroItemsCreate` 0x22f3c0 creates each whenever its owned flag (0x13d4e1 / 0x13d4e2 / 0x13d4e3) is
+//! set, never equipped, and `HeroItemsAttach` 0x22fec0 places them like a non-glove hand item (its own
+//! `MobyAnimAdvance`, rows = the attach matrix, columns normalised) at Ratchet's lists 29 (Map-o-Matic, Bolt
+//! Grabber; def attach word 7) and 30 (Persuader; attach word 8). The port keeps them here as ordinary items of
+//! their own, their animation state advanced per tick while owned ([`Slot::Extra`]).
+//!
 //! **Clank's antenna glow** (class 1204, `HeroItemsAttach` 0x22fec0: [`place_antenna`]) on Clank's joint list 6, its
 //! +0x90 pulsing (ticks(120)). The red dot over it (the hero's draw callback `0x229440`) and the other hero glow sprites
 //! are `rc_game::hero::glow`'s, drawn by crate::fx_draw at the points [`MobyAttach::glow_point`] gives.
@@ -93,6 +100,9 @@ pub enum Slot {
     Hook,
     /// Clank's antenna glow moby (class 1204, `HeroItemsAttach` 0x22fec0): on Clank's joint list 6.
     Antenna,
+    /// The always-on extras (items 33 Map-o-Matic / 34 Bolt Grabber / 35 Persuader, [`EXTRAS`]): created by
+    /// `HeroItemsCreate` while owned, attached at Ratchet's lists 29 / 30.
+    Extra,
 }
 
 /// What an item hangs from: the host's gameplay instance, the hero slot, the host joint list (index into
@@ -109,6 +119,8 @@ struct Item {
     name: &'static str,
     /// The item moby's class (hand items are matched to the game's hand slot by it).
     o_class: i16,
+    /// The inventory item id (the `0x13d4c0` owned table index) of an always-on extra ([`Slot::Extra`]), else 0.
+    extra_item: i32,
     /// Shown (a hand item is shown only while the game holds it).
     visible: bool,
     shown: Option<bool>,
@@ -351,6 +363,12 @@ fn build(
             specs.push((name, c, ac, host(slot, list)));
         }
     }
+    // The always-on extras (items 33 / 34 / 35, [`EXTRAS`]): level classes on every level, created by
+    // `HeroItemsCreate` while owned and placed at their attach list with the columns normalised.
+    for &(_, o, list, name) in &EXTRAS {
+        let Ok((c, ac)) = level_class(o) else { continue };
+        specs.push((name, c, ac, host(Slot::Extra, list)));
+    }
     // Every other gadget class of the level can be the hand item when the game ticks (the Pyrocitor, …): drawn where
     // the game's item update places it (the attach list below only matters without the game tick, where they hide).
     for g in &gadgets {
@@ -377,12 +395,14 @@ fn build(
         let mut state = AnimState::spawn(&ac);
         let mut snapshot = None;
         if attach.slot == Slot::Hand { moby_anim::set_sequence(&mut state, &ac, 1, 0, 1, &mut snapshot); }
+        let extra_item = if attach.slot == Slot::Extra { EXTRAS.iter().find(|e| e.1 == class.o_class).map_or(0, |e| e.0) } else { 0 };
         // Without the game tick only the wrench, the Heli-Pack and Clank show (the old viewer behaviour).
-        let visible = !matches!(name, "bomb glove" | "Thruster-Pack" | "Hydro-Pack" | "Swingshot" | "Swingshot hook" | "hand item" | "left boot" | "right boot" | "head item" | "Clank antenna");
+        let visible = extra_item == 0
+            && !matches!(name, "bomb glove" | "Thruster-Pack" | "Hydro-Pack" | "Swingshot" | "Swingshot hook" | "hand item" | "left boot" | "right boot" | "head item" | "Clank antenna");
         // The antenna's +0x2c: the class scale × 1.3 (0x22fec0).
         let scale = class.class.header.scale * if attach.slot == Slot::Antenna { 1.3 } else { 1.0 };
         items.push(Item {
-            name, o_class: class.o_class as i16, visible, shown: None, attach, anim: ac, state, snapshot, scale,
+            name, o_class: class.o_class as i16, extra_item, visible, shown: None, attach, anim: ac, state, snapshot, scale,
             base: palette_len, slots, rows: [[0; 4]; 3], position: [0.0; 3], entities: Vec::new(), mods: Vec::new(), glow: None, glow_written: None, gold: false, gold_written: None, lists,
         });
         palette_len += slots;
@@ -463,6 +483,15 @@ const BACK_PACK_O_CLASS: i32 = 607;
 /// The worn items' classes (item definition `+0x10`, level01): `(item, o_class, slot)`. The feet slot's second
 /// moby is `+0x14`, the same class.
 const WORN_CLASSES: &[(i32, i32, Slot)] = &[(5, 433, Slot::Head), (6, 1289, Slot::Head), (7, 1290, Slot::Head), (28, 173, Slot::Feet), (29, 195, Slot::Feet)];
+/// The always-on extras `(inventory item, o_class, attach word, name)`: the Map-o-Matic (item 33, class 0x266) and
+/// the Bolt Grabber (34, 0x26a) on attach word 7 (list 29), the Persuader (35, 0x197) on 8 (list 30).
+/// `HeroItemsCreate` 0x22f3c0 creates each while its owned flag (0x13d4e1 / 0x13d4e2 / 0x13d4e3) is set; their
+/// definitions' `+0x08` slot type is 4 / 4 / 5.
+const EXTRAS: [(i32, i32, usize, &str); 3] = [
+    (rc_game::inventory::item::MAP_O_MATIC, 0x266, 7, "Map-o-Matic"),
+    (rc_game::inventory::item::BOLT_GRABBER, 0x26a, 7, "Bolt Grabber"),
+    (rc_game::inventory::item::PERSUADER, 0x197, 8, "Persuader"),
+];
 /// The Sonic Summoner's class (0x1b1): its own joint table with 6 identity joints (`HeroItemsAttach` 0x22fec0).
 const SONIC_SUMMONER_O_CLASS: i16 = 0x1b1;
 const CLANK_O_CLASS: i32 = 601;
@@ -553,6 +582,15 @@ fn update(attach: Option<ResMut<MobyAttach>>, anim: Option<Res<MobyAnim>>, level
     let mods = play.as_ref().map(|p| p.game.mobys.mobys[p.game.hero_moby].joint_mods.clone()).unwrap_or_default();
     place(&mut a, class, &anim.instances[k].state, anim.snapshots[k].as_ref(), back.is_none(), hand.is_none(), &mods);
     place_antenna(&mut a, play.as_ref().map(|p| p.game.hero.idle.counter));
+    // The always-on extras (items 33 / 34 / 35, `HeroItemsCreate` / `HeroItemsAttach`): each shows while its owned
+    // flag (0x13d4e1 / 0x13d4e2 / 0x13d4e3) is set and Ratchet is drawn, its own sequence advanced every tick
+    // (`HeroItemsAttach`'s `MobyAnimAdvance`; [`place`] put it at its attach list).
+    let owned = play.as_ref().map(|p| p.game.hero.owned);
+    for item in a.items.iter_mut().filter(|i| i.attach.slot == Slot::Extra) {
+        let on = extra_owned(item.extra_item, owned.as_ref());
+        item.visible = on && !fp;
+        if on { moby_anim::advance(&mut item.state, &item.anim); }
+    }
     // The worn items (item slots 1 and 2, rc_game::hero::worn): the class of the slot's item shows while the slot
     // has its moby (states 2 and 3), hidden with Ratchet's items (first person; Clank hidden does not hide them).
     // Ready (2): the keyframe of Ratchet's joints (`HeroItemPoseFromRatchet`); the head item's put-away (3): its own
@@ -637,6 +675,12 @@ fn update(attach: Option<ResMut<MobyAttach>>, anim: Option<Res<MobyAnim>>, level
 /// (`rc_game::hero::Hero::hand_hidden`).
 pub(crate) fn hand_shows(o_class: i16, held: Option<&rc_game::hero::items::HandItem>, fp: bool, wrench: bool, hand_off: bool) -> bool {
     held.is_some_and(|m| m.o_class == o_class && (!fp || (wrench && m.mstate != 0)) && !hand_off)
+}
+
+/// Whether the always-on extra of inventory item `extra_item` (33 / 34 / 35; 0 for a non-extra) exists: its owned
+/// flag `0x13d4c0 + item` is set (`HeroItemsCreate` 0x22f3c0 creates it the first tick it is).
+pub(crate) fn extra_owned(extra_item: i32, owned: Option<&rc_game::hero::Owned>) -> bool {
+    extra_item > 0 && owned.is_some_and(|o| o.has(extra_item as usize))
 }
 
 /// Palettes and records of the items after a tick, and the entities' transforms (blended-pass sorting).
@@ -865,5 +909,29 @@ mod tests {
             let want: std::collections::HashSet<Entity> = classes.iter().zip(&ents).filter(|(c, _)| Some(**c) == step).flat_map(|(_, e)| e.iter().copied()).collect();
             assert_eq!(shown, want, "held {step:?}");
         }
+    }
+
+    /// The extras' attach words (7 / 8) index [`HERO_LISTS`] to Ratchet's lists 29 / 30, the ones the item
+    /// definitions name (docs/formats/moby_rac1.md §0.4), and their item ids / classes are the inventory's.
+    #[test]
+    fn extras_attach_at_ratchet_lists_29_and_30() {
+        use rc_game::inventory::item;
+        let want = [(item::MAP_O_MATIC, 0x266, 29), (item::BOLT_GRABBER, 0x26a, 29), (item::PERSUADER, 0x197, 30)];
+        for ((id, o, list, _), (wid, wo, wl)) in EXTRAS.iter().zip(want) {
+            assert_eq!((*id, *o, HERO_LISTS[*list]), (wid, wo, wl));
+        }
+    }
+
+    /// An extra exists (is advanced and shown) only while its owned flag is set; a non-extra (item 0) never.
+    #[test]
+    fn extras_show_only_while_owned() {
+        use rc_game::hero::Owned;
+        use rc_game::inventory::item;
+        let mut o = Owned::default();
+        assert!(!extra_owned(item::PERSUADER, Some(&o)) && !extra_owned(item::PERSUADER, None));
+        o.set(item::PERSUADER as usize, true);
+        assert!(extra_owned(item::PERSUADER, Some(&o)));
+        assert!(!extra_owned(item::MAP_O_MATIC, Some(&o)));
+        assert!(!extra_owned(0, Some(&o)), "a non-extra has no owned flag");
     }
 }
