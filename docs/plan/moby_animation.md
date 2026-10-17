@@ -219,7 +219,10 @@ palette reading `joint_mods` (it evaluated without them). Retired: `rc-engine` `
 * `attach` / `detach` / `sync` / `set_axis` (`FUN_00221e38` into the record) / `look` (`FUN_002777d8`): the record's
   bytes at the game's pvar offsets, the node mirrored into the target's `Moby::joint_mods` under its key
   (`Moby::joint_mod_keys`). The loader fills `Services::joint_targets` beside `Services::joint_lists` for the classes
-  `LevelPorts::needs_joint_lists` names (the vendor's hologram through `ClassUpdate::reads_joints_of`).
+  `LevelPorts::needs_joint_lists` names (the vendor's hologram through `ClassUpdate::reads_joints_of`) and for the
+  scene actor classes `rc_game::scene_actors::ACTOR_CLASSES` (2026-10-17: Ratchet 0, Clank 10 / 0x1a3 / 0x555, read by
+  `FUN_0024a1d0`'s head manipulator on list 0x18, `FUN_00228bc0`'s antenna sprite on list 1 / 6 and the helmet's list
+  4; without them the manipulator no-op'd, the sprite sat at the actor's origin and the helmet was never placed).
 * The static-moby palette (`rc-engine` `moby_anim::MobyAnim::mods`, driven from the table) and `World::joint_point`
   (`MobyAnimEvalChain` applies +0x64) read the list; the dynamic-moby palette already did.
 * Consumers: the vendor 11 → its hologram 1143 (lists 0 / 1, z spin; `rc-engine` `vendor_render` draws the beam only,

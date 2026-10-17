@@ -1152,8 +1152,15 @@ impl ShipMode {
                 None => w.classes.anim(class as i16)?.clone(),
             };
             let mut anim = base;
-            let slot = anim.sequences.len() as u8;
-            anim.sequences.push(seq.cloned());
+            // `FUN_00259288`: the streamed sequence takes the class's own slot, its sequence count (the class's
+            // sequences are 0..count−1; the class header's +0x0c, `ClassInfo::b0c`) — the drawing schemes do the
+            // same (`travel_render::spawn_gfx`, `scene_render::spawn_actors`). Appending it instead
+            // (`anim.sequences.len()`) overflows the u8 slot for Ratchet, whose class carries the 256-entry
+            // `ratchet_seq` table (slot = sequence id): 256 → 0, so the actor was posed from `ratchet_seq/000`
+            // (10 frames) and a joint read past frame 9 failed — the helmet (`ShipMode::helmet`) sat at his feet.
+            let slot = w.classes.info(class as i16).map_or(anim.sequences.len() as u8, |i| i.b0c);
+            if anim.sequences.len() <= slot as usize { anim.sequences.resize(slot as usize + 1, None); }
+            if let Some(q) = anim.sequences.get_mut(slot as usize) { *q = seq.cloned(); }
             self.actor_anim[k] = Some((self.chunk, Arc::new(anim), slot, None));
         }
         self.actor_anim[k].as_ref().map(|(_, a, s, _)| (a.clone(), *s))
@@ -1476,5 +1483,36 @@ fn walk_back(w: &mut World) {
         let f = w.hero_fields_mut();
         f.call(HeroCall::WalkTo { point: p, yaw, release: 1 });
         f.pose = Some(crate::moby_update::services::HeroPose { pos: p, yaw, target_yaw: yaw });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::moby_runtime::{ClassInfo, Moby, MobyTable};
+    use crate::moby_update::{ClassTable, Services};
+    use rc_formats::moby_anim::{MobyAnimClass, MobySequence, MobySequenceHeader, IDENTITY};
+
+    /// `FUN_00259288`: the streamed sequence goes in the class's own slot — its sequence count — not appended.
+    /// Ratchet's class carries the 256-entry `ratchet_seq` table (slot = sequence id), so appending made the slot
+    /// `256 as u8` = 0: the actor was posed from `ratchet_seq/000` (10 frames) and a joint read past frame 9 failed,
+    /// which put the helmet at his feet. Class 10's table is already `sequence_count` long (unchanged).
+    #[test]
+    fn the_streamed_slot_is_the_classs_sequence_count() {
+        let streamed = MobySequence { header: MobySequenceHeader { frame_count: 7, loop_sound: 0xff, ..Default::default() }, frames: vec![], triggers: vec![] };
+        let class_with = |seqs: usize| MobyAnimClass { joint_count: 1, skeleton: vec![IDENTITY], rest: vec![[0.0; 3]], parent_word: vec![0], sequences: vec![None; seqs] };
+        for (oc, count, seqs, want) in [(0i16, 134u8, 256usize, 134u8), (10, 3, 3, 3)] {
+            let mut t = MobyTable::new(vec![Moby { o_class: 0, state: 1, ..Moby::default() }, Moby { o_class: oc, state: 1, ..Moby::default() }], 4);
+            let hero = crate::hero::Hero::new();
+            let mut rng = crate::rng::Rng::new();
+            let mut classes = ClassTable::default();
+            classes.classes.insert(oc, (ClassInfo { b0c: count, ..Default::default() }, Some(class_with(seqs))));
+            let mut svc = Services::new();
+            let w = World::new(&mut t, &hero, &mut rng, &classes, &mut svc, 0);
+            let mut mode = ShipMode::default();
+            let (anim, slot) = mode.actor_anim_for(&w, 0, oc as i32, Some(&streamed)).expect("an anim");
+            assert_eq!(slot, want, "class {oc}");
+            assert_eq!(anim.sequences[slot as usize].as_ref().map(|s| s.header.frame_count), Some(7), "class {oc}: the streamed sequence is in the slot");
+        }
     }
 }

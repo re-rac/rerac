@@ -916,12 +916,21 @@ fn class_table(lv: &crate::level_load::LoadedLevel, ext: &dyn Fn(i16) -> Option<
     t
 }
 
+/// Whether the loader fills `o`'s joint lists into `Services::joint_lists`: a port whose update reads joint points
+/// (`rc_game::moby_update::classes::needs_joint_lists`), or a scene actor class `rc_game::scene_actors` reads
+/// ([`rc_game::scene_actors::ACTOR_CLASSES`]: Clank's antenna sprite at joint list 1 / 6, which the scene / space
+/// modes 2 / 6 draw, and Ratchet's head manipulator and helmet — the class's own lists, so without them the sprite
+/// sat at the actor's origin and the head scale / helmet were missing).
+fn wants_joint_lists(o: i16) -> bool {
+    rc_game::scene_actors::ACTOR_CLASSES.contains(&(o as i32)) || level_ports().needs_joint_lists(o)
+}
+
 /// The joint lists of the classes whose update reads joint points (`rc_game::moby_update::classes::needs_joint_lists`,
 /// `Services::joint_lists`), from their blobs in the level core (as `menu_render::load_frame_class`).
 /// With them, per class, each list's manipulator target joint (`Services::joint_targets`, `rc_game::moby_update::manip`).
 type JointLists = (HashMap<i16, Vec<Vec<u8>>>, HashMap<i16, Vec<u8>>);
 fn class_joint_lists(lv: &crate::level_load::LoadedLevel) -> anyhow::Result<JointLists> {
-    let both = class_joint_data_where(lv, |o| level_ports().needs_joint_lists(o))?;
+    let both = class_joint_data_where(lv, wants_joint_lists)?;
     let targets = both.iter().map(|(o, l)| (*o, l.iter().map(|(_, s)| rc_formats::moby_anim::list_target(s).unwrap_or(0xff)).collect())).collect();
     Ok((both.into_iter().map(|(o, l)| (o, l.into_iter().map(|(a, _)| a).collect())).collect(), targets))
 }
@@ -2767,4 +2776,24 @@ fn write_visible(play: Option<ResMut<Play>>, occl: Option<Res<MobyOcclusion>>, a
         if let Some(m) = t.mobys.get_mut(first + slot) { m.visible = v; }
     }
     if let Some((id, ii)) = p.ship { t.mobys[id].visible = drawn(ii); }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The loader fills the scene actor classes' joint data (`rc_game::scene_actors`): Clank's antenna sprite reads
+    /// joint list 1 / 6, Ratchet's head manipulator and helmet joint list 0x18 / 4. Level 01 carries Ratchet (0) and
+    /// Clank (10); skips without the extracted data.
+    #[test]
+    fn the_scene_actors_joint_data_is_loaded() {
+        for o in rc_game::scene_actors::ACTOR_CLASSES { assert!(wants_joint_lists(o as i16), "class {o}"); }
+        let root = crate::level_load::extracted_root();
+        let Ok(lv) = crate::level_load::load_level(&root, 1) else { eprintln!("skipped: no extracted level 01"); return };
+        let (lists, targets) = class_joint_lists(&lv).unwrap();
+        let has = |o: i16, l: usize| lists.get(&o).is_some_and(|ls| ls.get(l).is_some_and(|c| !c.is_empty()));
+        assert!(has(0, 0x18) && has(0, 4), "Ratchet's joint lists 0x18 (head) and 4 (helmet)");
+        assert!(has(10, 1), "Clank's joint list 1 (antenna)");
+        assert!(targets.get(&0).is_some_and(|t| t.get(0x18).is_some_and(|&j| j != 0xff)), "Ratchet's head target joint");
+    }
 }

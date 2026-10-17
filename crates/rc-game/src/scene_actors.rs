@@ -16,6 +16,13 @@ use crate::moby_runtime::MobyId;
 use crate::moby_update::classes::draw_callbacks::Callback;
 use crate::moby_update::services::World;
 
+/// The scene actor classes this module reads joint data of: Ratchet (0: [`ratchet`]'s head manipulator on his joint
+/// list 0x18) and the Clank actors (10, 0x1a3, 0x555: [`clank`]'s antenna sprite on joint list 1, 0x1a3's 6). None
+/// is in the loader's `Services::joint_lists` set (`needs_joint_lists`), so the loader fills them
+/// (`rc-engine` `gameplay::wants_joint_lists`) — without them the antenna sprite sat at the actor's origin and
+/// Ratchet's head scale and his helmet were never placed.
+pub const ACTOR_CLASSES: [i32; 4] = [0, 10, 0x1a3, 0x555];
+
 /// The key of the Ratchet actor's head manipulator (record 0x17c7c0) in its joint-modifier list.
 pub const HEAD_KEY: u32 = 0xffff_ffe0;
 /// The keys of the Clank actors' noggin manipulators (records 0x17c800 / 0x17c840 / 0x17c880).
@@ -158,6 +165,56 @@ mod tests {
             assert_eq!(g[0].at, At::Point([0.0, 0.0, 10.0 - 0.007]));
             assert_eq!((g[0].size, g[0].rgba), (f32::from_bits(0x3d40_8312), 0x2000_00c0));
             assert!(w.svc.draw_callbacks.list1.contains(&(Callback::HeroGlow, 0)));
+        });
+    }
+
+    /// A world whose class `o_class` has a two-joint skeleton (joint 1 one unit above the root, rest 1024 = 1.0 at
+    /// scale 1) and joint list 1 = the chain 0 → 1, in `Services::joint_lists` and the class table — what the loader
+    /// fills for the Clank actors (`rc-engine` `gameplay::wants_joint_lists`).
+    fn with_joint_list(o_class: i16, f: impl FnOnce(&mut World, MobyId)) {
+        use crate::moby_runtime::ClassInfo;
+        use rc_formats::moby_anim::{MobyAnimClass, MobyFrame, MobyFrameHeader, MobySequence, MobySequenceHeader, IDENTITY};
+        let q = [0u8, 0, 0, 0, 0, 0, 0xff, 0x7f];
+        let frame = MobyFrame {
+            header: MobyFrameHeader { rate: 0.0, time: 0, qwc: 1, quat_bytes: 16, scale_count: 0, trans_offset: 16, trans_count: 0 },
+            quats: vec![[0, 0, 0, 0x7fff]; 2],
+            scales: vec![],
+            trans: vec![],
+            payload: [q, q].concat(),
+        };
+        let seq = MobySequence { header: MobySequenceHeader { frame_count: 1, loop_sound: 0xff, ..Default::default() }, frames: vec![frame], triggers: vec![] };
+        let class = MobyAnimClass {
+            joint_count: 2,
+            skeleton: vec![IDENTITY, IDENTITY],
+            rest: vec![[0.0; 3], [0.0, 0.0, 1024.0]],
+            parent_word: vec![0, 0x7000_0000],
+            sequences: vec![Some(seq)],
+        };
+        let rows = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+        let mut t = MobyTable::new(vec![Moby::default(), Moby { o_class, state: 1, position: [0.0, 0.0, 10.0, 1.0], scale: 1.0, rows, ..Moby::default() }], 4);
+        let hero = crate::hero::Hero::new();
+        let mut rng = crate::rng::Rng::new();
+        let mut classes = crate::moby_update::ClassTable::default();
+        classes.classes.insert(o_class, (ClassInfo::default(), Some(class)));
+        let mut svc = crate::moby_update::Services::new();
+        svc.joint_lists.insert(o_class, vec![vec![], vec![0, 1]]);
+        let mut w = World::new(&mut t, &hero, &mut rng, &classes, &mut svc, 0);
+        w.hero_moby = Some(0);
+        f(&mut w, 1);
+    }
+
+    /// With the class's joint lists loaded (`Services::joint_lists`), `FUN_00228bc0`'s antenna sprite sits at joint
+    /// list 1's point (`FUN_002645a8`), above the actor — not at his origin (the bug when the loader left the Clank
+    /// actors' classes out).
+    #[test]
+    fn the_clank_actors_antenna_sprite_sits_on_his_joint_list_1() {
+        with_joint_list(10, |w, id| {
+            clank(w, id, None);
+            let g = &w.svc.actor_records.glow;
+            assert_eq!(g.len(), 1);
+            let At::Point(p) = g[0].at else { panic!("not a point") };
+            assert_ne!(p, [0.0, 0.0, 10.0 - 0.007], "not the actor's origin");
+            assert!(p[0].abs() < 1e-4 && p[1].abs() < 1e-4 && p[2] > 10.0, "on the joint above the actor: {p:?}");
         });
     }
 }
