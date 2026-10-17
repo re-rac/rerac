@@ -40,7 +40,8 @@ the title music) — G-SAV-012; the runtime language switch's text reload — G-
 
 ### The memory card
 
-The card is a folder (`<config base>/rerac/memcard/BASCUS-97199RATCHET/`, `RC_SAVE_DIR` overrides) holding the files the
+The card is a folder (`<config base>/rerac/memcard/BASCUS-97199RATCHET/`; `RC_SAVE_DIR`, the settings key `memcard_dir` or a
+`memcard/` folder beside the executable override it, docs/workflows/dev-switches.md) holding the files the
 game writes: `icon.sys`, `static.ico`, `save0..4.bin`, `BASCUS-97199RATCHET` (a 0x3c04-byte reservation, zero-filled
 here). `memcard_Update` runs one libmc step per frame on it (the native calls complete at once). The **card monitor**
 (status 0x15eeb0, flags 0x15eeb4) drives what the menus may do: status 1 (checked, auto-save on) and 16 (data found)

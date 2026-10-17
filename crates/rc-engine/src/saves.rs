@@ -2,7 +2,8 @@
 //! `rc_game::memcard`, `rc_game::menus::freeze`, `rc_game::menus::pause::saves` and `rc_game::frontend`).
 //!
 //! * **The card** ([`with_card`]): one `MemCard` for the process (a static, as the game's 0x13d290 block), on the native
-//!   card folder `rc_game::memcard::save_root`: `RC_SAVE_DIR=<path>` (`0` or empty: no card), else
+//!   card folder `rc_game::memcard::save_root`: `RC_SAVE_DIR=<path>` (`0` or empty: no card), else the
+//!   `memcard_dir` key of the port settings file, else a `memcard/` folder beside the executable if it exists, else
 //!   `<config base>/rerac/memcard/` (macOS `~/Library/Application Support/rerac/memcard`, beside the port settings);
 //!   deterministic runs have no card unless `RC_SAVE_DIR` is set. The directory name comes from the disc's SYSTEM.CNF
 //!   (`/BASCUS-97199RATCHET`), the icon files and the blank save from the `save_game` lump.
@@ -116,6 +117,22 @@ fn config_base() -> Option<std::path::PathBuf> {
     }
 }
 
+/// The card folder set outside the environment, with where it came from: the `memcard_dir` key of the port settings
+/// file (a relative path is taken from the settings file's folder), else a `memcard/` folder beside the executable
+/// when it exists (a build copied to another machine with its saves). Deterministic runs use neither.
+fn configured_root() -> Option<(std::path::PathBuf, &'static str)> {
+    use std::path::PathBuf;
+    if crate::determinism::deterministic() { return None; }
+    if let Some(v) = crate::render_settings::load_key("memcard_dir").filter(|v| !v.is_empty()) {
+        let p = PathBuf::from(v);
+        let dir = crate::render_settings::settings_path().and_then(|s| s.parent().map(PathBuf::from));
+        return Some((if p.is_relative() { dir.map_or(p.clone(), |d| d.join(&p)) } else { p }, "memcard_dir in the settings file"));
+    }
+    let exe = std::env::current_exe().and_then(std::fs::canonicalize).ok()?;
+    let beside = exe.parent()?.join("memcard");
+    beside.is_dir().then_some((beside, "the memcard folder beside the executable"))
+}
+
 /// `memcard_Init` + `memcard_GetName` (`InitOnce`): the card on the save root, its directory from SYSTEM.CNF, the lump.
 pub fn setup_card() {
     if CARD.lock().unwrap_or_else(|e| e.into_inner()).is_some() { return; }
@@ -125,9 +142,15 @@ pub fn setup_card() {
         .and_then(|b| rc_formats::save_game::card_dir_name(&b).ok())
         .unwrap_or_else(|| "/BASCUS-97199RATCHET".into());
     let lump = crate::disc_source::read(&root, "global/save_game.bin").ok().and_then(|b| SaveGameLump::parse(&b).ok());
-    let save_root = rc_game::memcard::save_root(config_base().as_deref());
+    let configured = configured_root();
+    let source = match (&configured, std::env::var_os("RC_SAVE_DIR")) {
+        (_, Some(_)) => "RC_SAVE_DIR",
+        (Some((_, s)), None) => s,
+        (None, None) => "default",
+    };
+    let save_root = rc_game::memcard::save_root(configured.map(|c| c.0), config_base().as_deref());
     match &save_root {
-        Some(p) => println!("saves: memory card folder {} (directory {dir})", p.display()),
+        Some(p) => println!("saves: memory card folder {} ({source}; directory {dir})", p.display()),
         None => println!("saves: no memory card (RC_SAVE_DIR=0 or a deterministic run)"),
     }
     let mut card = MemCard::new(CardFs::new(save_root), dir, lump);
