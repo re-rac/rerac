@@ -531,11 +531,13 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
 * **Rows** (`port::ENTRIES`, one entry per option): the graphics rows (Preset, Anti-aliasing: Original / off / 2x / 4x / 8x,
   Detail distance, Texture filtering, HUD; docs/plan/graphics_options.md) → `graphics::GraphicsSettings` (engine
   `menu_render.rs` syncs the rows with the resource around each menu tick; a change is saved; the anti-aliasing samples
-  reach the cameras through `render_settings::RenderSettings::msaa`). Shadows: on / off. Aspect ratio: 4:3 / 16:10 / 16:9, Resolution: Window / 416p / 720p /
+  reach the cameras through `render_settings::RenderSettings::msaa`). Shadows: on / off. Aspect ratio: 4:3 / 16:10 / 16:9 / Fill, Resolution: Window / 416p / 720p /
   1080p / 1440p / 2160p and Fullscreen: off / on → `display::DisplaySettings` (the game frame every camera renders into, presented
-  on black at the window's size; keys `aspect` / `resolution` / `fullscreen` in the settings file). 16:10 / 16:9 are Hor+: the
-  world projection's x tangent is the game's × 6/5 / × 4/3 and culling reads the live projection; the 512×416 screen maps to
-  the frame's centred 4:3 box, the HUD layer is 51 / 85 game px wider on each side (its left/right-anchored slots move out,
+  on black at the window's size; keys `aspect` / `resolution` / `fullscreen` in the settings file). Fill is the window's own
+  shape, so an ultrawide monitor (3440×1440, 43:18 — not the 21:9 its label suggests) fills with no black pillars, but never
+  narrower than 4:3: a window narrower than the TV's is letterboxed (top / bottom bars), so the UI is never squashed. 16:10 / 16:9 / Fill are Hor+: the
+  world projection's x tangent is the game's × 6/5 / × 4/3 / the frame's ratio ÷ 4:3 and culling reads the live projection; the 512×416 screen maps to
+  the frame's centred 4:3 box, the HUD layer is 51 / 85 game px wider on each side at 16:10 / 16:9 (the frame's own margin at Fill; its left/right-anchored slots move out,
   primitives spanning the screen stretch) and the menu pages stay clipped to the box (`Prim::boxed`). The world is not re-rendered under the menu (the snapshot is shown), so the new
   setting is visible from the first gameplay frame after the close.
 * **Device support**: the row offers only the sample counts the GPU can use for every multisampled world attachment

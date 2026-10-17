@@ -807,13 +807,14 @@ fn tick_and_build(
     mut feed: ResMut<HudFeed>,
     (mut play, mut audio): (Option<ResMut<crate::gameplay::Play>>, Option<ResMut<crate::audio_out::AudioOut>>),
     dyn_images: Option<Res<crate::hud_images::HudImages>>,
-    (display, mut images): (Option<Res<crate::display::DisplaySettings>>, ResMut<Assets<Image>>),
+    frame: Res<crate::display::GameFrame>,
+    mut images: ResMut<Assets<Image>>,
     (mut composites, mut static_composites, mut targets): (ResMut<Assets<HudComposite>>, ResMut<Assets<HudStaticComposite>>, Query<&mut RenderTarget>),
 ) {
     let Some(mut rt) = rt else { return };
     let rt = &mut *rt;
     // The side margin of the frame's aspect (crate::display): the layer's targets and the HUD's left / right slots.
-    let extra = display.map_or(0, |d| crate::display::side_extra(d.aspect));
+    let extra = crate::display::side_extra(frame.ratio());
     if extra != rt.extra {
         rt.extra = extra;
         rt.state.side_extra = extra;

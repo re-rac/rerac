@@ -33,17 +33,17 @@ pub fn view_transform(v: &CameraView) -> Transform {
 pub fn apply(
     view: Option<Res<PlayView>>,
     source: Option<Res<CameraSource>>,
-    display: Res<crate::display::DisplaySettings>,
+    frame: Res<crate::display::GameFrame>,
     mut cams: Query<(&mut Transform, &mut Projection), With<FlyCam>>,
 ) {
-    let aspect = display.aspect;
+    let ratio = frame.ratio();
     let (Some(view), Some(source)) = (view, source) else { return };
     if *source != CameraSource::Play { return; }
     let t = view_transform(&view.view);
     for (mut tf, mut proj) in &mut cams {
         if *tf != t { *tf = t; }
         // The FOV hook: the game's tangent (Hor+ in 16:9, crate::display); only touched when it changes.
-        crate::display::set_view_tans(&mut proj, view.tan_half_fov, aspect);
+        crate::display::set_view_tans(&mut proj, view.tan_half_fov, ratio);
         crate::game_camera::set_view_far(&mut proj, view.far);
     }
 }

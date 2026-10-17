@@ -549,7 +549,8 @@ pub struct HudState {
     vendor_handle: Option<u32>,
     /// The Morph-o-Ray's request as last seen (up, target).
     morph_last: (bool, i32),
-    /// Port-only: the game pixels the frame extends past the 512-wide screen on each side (16:9; 0 at 4:3, the TV's).
+    /// Port-only: the game pixels the frame extends past the 512-wide screen on each side (0 at 4:3, the TV's; 51 at
+    /// 16:10, 85 at 16:9, the frame's own margin at Fill).
     /// The slots anchored left or right ([`ANCHOR_BITS`] 4 / 8) move out by it, to the frame's edges ([`Self::anchor`]).
     pub side_extra: i32,
 }
