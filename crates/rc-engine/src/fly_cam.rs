@@ -38,22 +38,23 @@ controls: hold right mouse (or press Tab to toggle) to look | WASD move | Space/
           Shift fast | mouse wheel changes speed | Esc releases the cursor | P prints the game camera (RC_CAM + VU matrix)";
 
 /// Right mouse held or Tab toggles a locked, hidden cursor; Esc releases it. With gameplay on
-/// (`CameraSource` present, crate::gameplay) Tab switches cameras instead and only the right button grabs.
+/// (`CameraSource` present, crate::gameplay) Tab switches cameras instead and only the right button grabs. The cursor
+/// is also hidden whenever the window has focus, and shows again when it loses it.
 fn grab_cursor(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     source: Option<Res<CameraSource>>,
-    mut cursor: Single<&mut CursorOptions, With<PrimaryWindow>>,
+    window: Single<(&Window, &mut CursorOptions), With<PrimaryWindow>>,
     mut toggled: Local<bool>,
 ) {
+    let (window, mut cursor) = window.into_inner();
     if keys.just_pressed(KeyCode::Tab) && source.is_none() { *toggled = !*toggled; }
     if keys.just_pressed(KeyCode::Escape) { *toggled = false; }
     let grab = *toggled || mouse.pressed(MouseButton::Right);
     let mode = if grab { CursorGrabMode::Locked } else { CursorGrabMode::None };
-    if cursor.grab_mode != mode {
-        cursor.grab_mode = mode;
-        cursor.visible = !grab;
-    }
+    if cursor.grab_mode != mode { cursor.grab_mode = mode; }
+    let visible = !grab && !window.focused;
+    if cursor.visible != visible { cursor.visible = visible; }
 }
 
 fn fly_cam(
