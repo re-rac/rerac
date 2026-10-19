@@ -63,12 +63,21 @@ impl Plugin for FramePacePlugin {
 }
 
 /// This frame's ticks (module docs).
+/// Holds the game (crate::pipeline_overlay's "Preparing shaders" screen): while set, frames run no tick (the game, its
+/// sound frames and the movies stand still) and the time held is not caught up afterwards.
+pub static HOLD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn steps(mut pace: ResMut<Pace>, mut strategy: ResMut<TimeUpdateStrategy>) {
     let now = Instant::now();
     let Some(last) = pace.last.replace(now) else {
         *strategy = TimeUpdateStrategy::FixedTimesteps(1);
         return;
     };
+    if HOLD.load(std::sync::atomic::Ordering::Relaxed) {
+        pace.acc = 0.0;
+        *strategy = TimeUpdateStrategy::FixedTimesteps(0);
+        return;
+    }
     pace.acc += (now - last).as_secs_f64() / TICK;
     let n = if pace.limit {
         let mut n = pace.acc.round().max(0.0);
