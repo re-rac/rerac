@@ -37,6 +37,19 @@ pub const STICK_SCALE: f32 = 1.33;
 /// Mouse pixels per frame for a full right-stick deflection.
 const MOUSE_FULL: f32 = 12.0;
 
+/// SDL mappings for pads missing from gilrs' bundled SDL_GameControllerDB. Without one, gilrs maps evdev codes by
+/// name, and `xpad` reports the Xbox X button as `BTN_X` (= `BTN_NORTH`): X and Y swap.
+const EXTRA_SDL_MAPPINGS: &str = "\
+03000000c82d00000f20000000020000,8BitDo Ultimate 3-mode Controller for Xbox,a:b0,b:b1,back:b6,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b8,leftshoulder:b4,leftstick:b9,lefttrigger:a2,leftx:a0,lefty:a1,misc1:b11,rightshoulder:b5,rightstick:b10,righttrigger:a5,rightx:a3,righty:a4,start:b7,x:b2,y:b3,platform:Linux,";
+
+/// Hands [`EXTRA_SDL_MAPPINGS`] to gilrs through `SDL_GAMECONTROLLERCONFIG` (Bevy builds gilrs itself, with no
+/// mapping hook), before any mappings already there (the user's or Steam's): gilrs keeps the last line per UUID, so
+/// theirs win. Call before any thread starts.
+pub fn install_sdl_mappings() {
+    let existing = std::env::var("SDL_GAMECONTROLLERCONFIG").unwrap_or_default();
+    std::env::set_var("SDL_GAMECONTROLLERCONFIG", format!("{EXTRA_SDL_MAPPINGS}\n{existing}"));
+}
+
 /// This frame's pad read (sampled in `PreUpdate`, used by every tick of the frame).
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub struct PadFrame(pub PadInput);
@@ -44,8 +57,15 @@ pub struct PadFrame(pub PadInput);
 /// A Bevy stick value in [−1, 1] (y up) → the raw libpad2 byte (y down).
 fn raw_axis(v: f32) -> u8 { (127.5 + 127.5 * v.clamp(-1.0, 1.0)).round().clamp(0.0, 255.0) as u8 }
 
-/// Keyboard + mouse + the first gamepad → one pad read.
-pub fn sample(keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, motion: &AccumulatedMouseMotion, gamepad: Option<&Gamepad>) -> PadInput {
+/// Keyboard + mouse + every gamepad → one pad read. Gamepads are merged (buttons ORed, a deflected stick wins)
+/// rather than taking the first: on Linux, gilrs also lists non-pads with axes (e.g. a wireless keyboard
+/// receiver), which can come first and would leave the real pad unread.
+pub fn sample<'a>(
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    motion: &AccumulatedMouseMotion,
+    gamepads: impl IntoIterator<Item = &'a Gamepad>,
+) -> PadInput {
     let mut p = PadInput::neutral();
     let mut buttons = 0u32;
 
@@ -88,7 +108,7 @@ pub fn sample(keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, mot
     }
     if mouse.pressed(MouseButton::Middle) { buttons |= button::R3; }
 
-    if let Some(g) = gamepad {
+    for g in gamepads {
         let (l, r) = (g.left_stick(), g.right_stick());
         if l != Vec2::ZERO {
             p.lx = raw_axis(l.x * STICK_SCALE);
@@ -130,7 +150,7 @@ pub fn sample_system(
     gamepads: Query<&Gamepad>,
     mut frame: ResMut<PadFrame>,
 ) {
-    frame.0 = sample(&keys, &mouse, &motion, gamepads.iter().next());
+    frame.0 = sample(&keys, &mouse, &motion, &gamepads);
 }
 
 /// `RC_PLAY_SCRIPT`: pad input per gameplay tick, `item,item,...` with `item = range:action`.
@@ -253,14 +273,14 @@ mod tests {
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::KeyW);
         keys.press(KeyCode::Space);
-        let p = sample(&keys, &ButtonInput::default(), &AccumulatedMouseMotion::default(), None);
+        let p = sample(&keys, &ButtonInput::default(), &AccumulatedMouseMotion::default(), []);
         let mut pad = PadState::default();
         pad.update(Some(&p.bytes()), false);
         assert_eq!((pad.lx.to_f32(), pad.ly.to_f32()), (0.0, -1.0));
         assert!(pad.pressed & button::CROSS != 0);
         // Shift: half stick.
         keys.press(KeyCode::ShiftLeft);
-        let p = sample(&keys, &ButtonInput::default(), &AccumulatedMouseMotion::default(), None);
+        let p = sample(&keys, &ButtonInput::default(), &AccumulatedMouseMotion::default(), []);
         pad.update(Some(&p.bytes()), false);
         assert!((pad.ly.to_f32() + 0.5).abs() < 0.01);
     }
