@@ -422,6 +422,24 @@ fn novalis_morphs_a_critter() {
     assert_eq!(rows, run(&lv, &s, &input, 420), "deterministic");
 }
 
+/// Moving does not stop the Morph-o-Ray. The game's gate is the movement group 0x1413dc, not the state 0x1413d4
+/// (decompiled 0x2bc7e8 / level01 0x2d2450: `(u32)control_mode < 2 || control_mode == 4 || == 5 || == 0xc`): walking
+/// or running (state 2, group 1) and the jumps (group 4) fire like standing still. The port used to test the state, so
+/// only states 0 / 1 (idle / look stance) passed: the weapon had to be fired from a standstill.
+#[test]
+fn fires_while_walking() {
+    let Some(lv) = load() else { eprintln!("skipped: no extracted/"); return };
+    let b = instance_of(&lv, 592);
+    let at = facing(&lv, b, 12.0, std::f32::consts::PI);
+    let s = Setup { item: 21, at, watch: &[b], sound_ticks: 0, record: None, then: None };
+    let input = |t: u32| if t >= 40 { PadInput::neutral().press(button::CIRCLE).stick(0.0, -1.0) } else { PadInput::neutral() };
+    let rows = run(&lv, &s, &input, 120);
+    dump(&rows);
+    let walking: Vec<_> = rows.iter().filter(|r| r.state == 2).collect();
+    assert!(!walking.is_empty(), "never walked: {:?}", rows.iter().map(|r| r.state).collect::<Vec<_>>());
+    assert!(walking.iter().all(|r| r.firing && r.beam), "fired every tick of the walk");
+}
+
 fn seen_states(rows: &[Row], ch: usize) -> Vec<u8> {
     let mut v = Vec::new();
     for r in rows { if let Some(c) = r.chickens.iter().find(|c| c.0 == ch) { if v.last() != Some(&c.1) { v.push(c.1); } } }

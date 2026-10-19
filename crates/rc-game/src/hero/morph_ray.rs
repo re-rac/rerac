@@ -5,11 +5,12 @@
 //! the chicken are the moby side: `crate::moby_update::classes::chicken` (docs/plan/hero_gameplay.md §12).
 //!
 //! **No ammo, no weapon-check case, holding class 1** (def +0x18 = 1: the hand-item arm's holding layer). ○ held while
-//! Ratchet stands, walks or runs (hero states 0, 1, 4, 5, 0xc), the item's draw sequence past key time 6, not being put
-//! away: **firing**. The arm comes up (`0x22ee08` when 0x1413f8 is clear); from the look stance 1 Ratchet goes into the
-//! first-person stance (`SetState(0x1e, 1)`). The aim is the camera's forward in first person, the item's −row 1 with
-//! the weapon raised at a wall (0x141618 = 1, `super::idle`), else Ratchet's facing: `(yaw, pitch)` =
-//! `(FastArcTan(x, y), FastArcTan(|xy|, z))` at +0x48 / +0x4c. The muzzle is the item's joint list 0 (+0x00).
+//! Ratchet is in movement group 0x1413dc < 2 / 4 / 5 / 0xc (idle, walk or run, the jumps, the packs, crouch), the item's
+//! draw sequence past key time 6, not being put away: **firing**. The arm comes up (`0x22ee08` when 0x1413f8 is clear);
+//! from the look stance 1 Ratchet goes into the first-person stance (`SetState(0x1e, 1)`). The aim is the camera's
+//! forward in first person, the item's −row 1 with the weapon raised at a wall (0x141618 = 1, `super::idle`), else
+//! Ratchet's facing: `(yaw, pitch)` = `(FastArcTan(x, y), FastArcTan(|xy|, z))` at +0x48 / +0x4c. The muzzle is the
+//! item's joint list 0 (+0x00).
 //!
 //! **The search** ([`search`], `0x2d2018`) over the target list: nothing when the line from Ratchet (at the muzzle's
 //! height) to the muzzle is blocked; creatures (class type 5) with a target record, not deleted, not classes 0x58e /
@@ -511,8 +512,8 @@ fn item_row1(hero: &Hero) -> [f32; 3] {
     hero.items.slot.item.as_ref().map(|it| [f32::from_bits(it.rows[1][0]), f32::from_bits(it.rows[1][1]), f32::from_bits(it.rows[1][2])]).unwrap_or([0.0, 1.0, 0.0])
 }
 
-/// The firing states (0x1413dc: < 2, 4, 5, 0xc).
-fn can_fire(state: i32) -> bool { state < 2 || state == 0xc || state == 4 || state == 5 }
+/// The firing movement groups (0x1413dc: < 2, 4, 5, 0xc): idle, walk / run, crouch, the jumps and the packs.
+fn can_fire(group: i32) -> bool { matches!(group, 0 | 1 | 4 | 5 | 0xc) }
 
 /// `0x2d2450`, the Morph-o-Ray's update (from the slot loop with the slot ready).
 #[allow(clippy::too_many_lines)]
@@ -533,7 +534,7 @@ pub fn update(hero: &mut Hero, table: &mut MobyTable, _anim: &dyn super::anim::A
     let ready = hero.items.slot.item.as_ref().is_some_and(|it| it.anim.seq_b != 0 || 6.0 <= crate::moby_update::creature::ground::key_time_of(&class.anim, &it.anim));
     guns_dec16(&mut hero.weapons.reactive.morph.t1c);
     let mask = hero.items.slot.fire_mask;
-    let firing = can_fire(hero.state) && env.pad.held & mask != 0 && !away && ready;
+    let firing = can_fire(hero.group) && env.pad.held & mask != 0 && !away && ready;
     hero.weapons.reactive.morph.firing = firing;
     let hero_pos = to_f32x3(hero.pos);
     if firing {
@@ -771,6 +772,13 @@ pub fn item_gone(hero: &mut Hero, hits: &mut dyn HitSink) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fires_in_the_games_movement_groups() {
+        // 0x1413dc, unsigned: < 2 (idle, walk / run), 4 (the jumps), 5 (the packs), 0xc (crouch).
+        for g in [0, 1, 4, 5, 0xc] { assert!(can_fire(g), "group {g:#x} fires"); }
+        for g in [-1, 2, 3, 6, 7, 8, 9, 0xb, 0xd, 0xf, 0x14] { assert!(!can_fire(g), "group {g:#x} does not"); }
+    }
 
     #[test]
     fn beam_lays_straight_then_bends_to_the_aim() {

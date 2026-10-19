@@ -893,7 +893,8 @@ Not ported: the item def +0x20 = 0x20 write of the request path (unknown reader)
 and the pulse loop; an R5900-aware disassembly of lq / sq / por, scratch `morph/mdis2.py`).
 
 **What the game does** (module docs of `hero/morph_ray.rs` and `moby_update/classes/chicken.rs` for the detail):
-* **Fire** (`0x2d2450`): ○ held in hero states 0 / 1 / 4 / 5 / 0xc, past the draw's key time 6: the arm up (`0x22ee08`),
+* **Fire** (`0x2d2450`): ○ held in movement groups 0x1413dc < 2 / 4 / 5 / 0xc (idle, walk / run, the jumps, the
+  packs, crouch), past the draw's key time 6: the arm up (`0x22ee08`),
   the look stance → first person (`SetState(0x1e, 1)`), the aim from Ratchet's facing (the camera in first person).
   The search `0x2d2018`: creatures (type 5) with a target record, not 0x58e / 0x452, within 8 of the muzzle in a 10°
   cone (the Devastator's cone test with the record's radius), or within 2.5 / 60° outright, clear lines.
