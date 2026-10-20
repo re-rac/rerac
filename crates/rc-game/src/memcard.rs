@@ -1520,13 +1520,14 @@ pub fn bcd_clock(unix: u64) -> [u8; 8] {
     bcd_clock_civil(y as u64, m as u64, d as u64, secs / 3600, secs / 60 % 60, secs % 60)
 }
 
-/// The save root of the native card: `RC_SAVE_DIR=<path>` (`0` or empty: no card), else `<config base>/rerac/memcard`
-/// next to the port settings (`base` = the per-OS config folder the engine resolves); None = no card.
-pub fn save_root(base: Option<&Path>) -> Option<PathBuf> {
+/// The save root of the native card: `RC_SAVE_DIR=<path>` (`0` or empty: no card), else `configured` (the engine's
+/// settings key or the folder beside the executable), else `<config base>/rerac/memcard` next to the port settings
+/// (`base` = the per-OS config folder the engine resolves); None = no card.
+pub fn save_root(configured: Option<PathBuf>, base: Option<&Path>) -> Option<PathBuf> {
     if let Some(v) = std::env::var_os("RC_SAVE_DIR") {
         return (!v.is_empty() && v != "0").then(|| PathBuf::from(v));
     }
-    base.map(|b| b.join("rerac").join("memcard"))
+    configured.or_else(|| base.map(|b| b.join("rerac").join("memcard")))
 }
 
 impl MemCard {
