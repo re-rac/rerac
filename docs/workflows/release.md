@@ -27,8 +27,9 @@ The script packages exactly these and fails if anything else ends up in the fold
 So nothing from `tools/`, `extracted/`, `work/` or `~/PS2/ratchet1/` can ship, and no disc data can be packaged. The
 script also runs the packaged `rerac --version-json` to check it.
 
-macOS is tested; the Linux and Windows (Git Bash) branches are written but untested. No signing yet: a downloaded zip is
-quarantined by macOS Gatekeeper.
+macOS and Windows (Git Bash) are tested; the Linux branch is written but untested. On Windows, `cargo xtask package`
+runs Git for Windows' bash (found through `git --exec-path`), not a bare `bash`, which can be WSL's. No signing yet: a
+downloaded zip is quarantined by macOS Gatekeeper.
 
 ## Where the runtime finds its shaders
 
@@ -53,7 +54,7 @@ in a macOS `.app`; when neither exists (`cargo dev`, `target/*/rerac`) it uses t
 ## GitHub Actions (`.github/workflows/`)
 
 Only releases run on GitHub (no CI on pushes: checks and tests run locally, `docs/workflows/testing.md`). The release
-workflow builds on `macos-14` (Apple Silicon, the tested platform), `windows-latest` and `ubuntu-22.04` (glibc 2.35;
+workflow builds on `macos-14` (Apple Silicon, the main tested platform), `windows-latest` and `ubuntu-22.04` (glibc 2.35;
 the job installs ALSA, udev, Wayland and xkbcommon headers and `zip`), installs stable Rust with
 rustup and caches with `Swatinem/rust-cache`.
 
@@ -61,8 +62,8 @@ rustup and caches with `Swatinem/rust-cache`.
   again, or empty to only build the packages as workflow artifacts): one build job per platform runs
   `tools/package/package.sh` (directly: on Windows a bare `bash` from `cargo xtask package` can be WSL's) and checks
   that the tag matches the workspace version; then one release job publishes `rerac-<version>-macos-arm64.zip`,
-  `rerac-<version>-windows-x86_64.zip` and `rerac-<version>-linux-x86_64.zip` (UNTESTED: built, never run; each left
-  out with a warning if its job failed) and the
+  `rerac-<version>-windows-x86_64.zip` and `rerac-<version>-linux-x86_64.zip` (each left out with a warning if its
+  job failed; the Linux one is UNTESTED: built, never run) and the
   macOS `rerac-manifest.json`. The launcher picks the zip for its OS and CPU. A missing macOS package stops the
   release. It is marked a prerelease when the tag contains `-alpha`,
   `-beta` or `-rc`. The notes are the tag's `CHANGELOG.md` section, else the tag's annotation. Permissions:

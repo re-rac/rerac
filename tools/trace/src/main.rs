@@ -324,7 +324,7 @@ fn run() -> Result<i32> {
         "pine-info" => {
             let slot = a.0.first().and_then(|s| s.parse().ok()).unwrap_or(pine::DEFAULT_SLOT);
             let mut c = pine::Pine::connect(slot)?;
-            println!("socket  {}", pine::socket_path(slot).display());
+            println!("socket  {}", pine::endpoint(slot));
             println!("version {}", c.version()?);
             println!("status  {}", c.status_name());
             println!("game    {} | {}", c.game_id().unwrap_or_default(), c.title().unwrap_or_default());

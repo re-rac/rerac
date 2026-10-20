@@ -13,7 +13,7 @@
 # Nothing from the disc is ever packaged: the folder is checked against that exact file list.
 # The folder itself is a valid launcher version (the launcher's Development source can point at it).
 #
-# macOS: tested. Linux and Windows (Git Bash / MSYS2): written, UNTESTED.
+# macOS and Windows (Git Bash): tested. Linux: written, UNTESTED.
 set -euo pipefail
 
 build=1
@@ -36,7 +36,7 @@ exe=""
 case "$(uname -s)" in
   Darwin) os=macos ;;
   Linux) os=linux ;;                                  # UNTESTED
-  MINGW*|MSYS*|CYGWIN*) os=windows; exe=".exe" ;;     # UNTESTED
+  MINGW*|MSYS*|CYGWIN*) os=windows; exe=".exe" ;;
   *) echo "unsupported OS: $(uname -s)" >&2; exit 1 ;;
 esac
 case "$(uname -m)" in
@@ -88,7 +88,7 @@ to rerac), rerac-manifest.json (the launcher's version manifest).
 Exit codes of rerac: 2 bad arguments, 3 data folder missing or incomplete, 4 data made for
 another version (re-extract).
 EOF
-if [ "$os" = windows ]; then  # UNTESTED
+if [ "$os" = windows ]; then
   sed -i 's#\./rerac#rerac#g; s/$/\r/' "$out/README.txt"
 fi
 
@@ -110,7 +110,7 @@ want="{\"name\":\"rerac\",\"version\":\"$version\",\"game\":\"rac1\",\"data_form
 case "$os" in
   macos) (cd "$dist" && ditto -c -k --keepParent "$name" "$name.zip") ;;
   # Windows' own bsdtar writes a standard zip ('/' separators); PowerShell 5.1's Compress-Archive writes '\'.
-  windows) (cd "$dist" && "$(cygpath "$SYSTEMROOT")/System32/tar.exe" -a -c -f "$name.zip" "$name") ;;  # UNTESTED
+  windows) (cd "$dist" && "$(cygpath "$SYSTEMROOT")/System32/tar.exe" -a -c -f "$name.zip" "$name") ;;
   linux) (cd "$dist" && zip -qry "$name.zip" "$name") ;;  # UNTESTED; needs `zip`
 esac
 

@@ -1559,6 +1559,7 @@ The tables below are the audit as taken, minus these four rows.
 | `classify::the_committed_table_loads` | port logic: the committed table loads | fast | lib:xtask | keep |
 | `regen::parses_flags` | port logic: parses flags | fast | lib:xtask | keep |
 | `regen::never_replaces_the_repo_home_or_root` | port logic: never replaces the repo home or root (disc data) | fast | lib:xtask | keep |
+| `regen::drops_the_windows_verbatim_prefix` | port logic: drops the Windows `\\?\` prefix from canonical paths | fast | lib:xtask | keep |
 | `regen::staging_sits_on_the_same_filesystem` | port logic: staging sits on the same filesystem (disc data) | fast | lib:xtask | keep |
 | `regen::formats_numbers` | port logic: formats numbers | fast | lib:xtask | keep |
 
