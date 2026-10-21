@@ -545,7 +545,11 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   world projection's x tangent is the game's × 6/5 / × 4/3 and culling reads the live projection; the 512×416 screen maps to
   the frame's centred 4:3 box, the HUD layer is 51 / 85 game px wider on each side (its left/right-anchored slots move out,
   primitives spanning the screen stretch) and the menu pages stay clipped to the box (`Prim::boxed`). The world is not re-rendered under the menu (the snapshot is shown), so the new
-  setting is visible from the first gameplay frame after the close.
+  setting is visible from the first gameplay frame after the close. The controller rows (port-only: the game has no
+  vibration) → `haptics::ControllerSettings`: Vibration: on / off and Vibration strength: Low / Medium / High (rumble from
+  game events), Fire button: Circle / R2 (R2 read as ○, at the held weapon's fire point; R1 still crouches) and Trigger
+  effects: on / off (R2's per-weapon DualSense feel); keys `vibration` / `vibration_strength` / `fire_button` /
+  `trigger_effects` in the settings file. A change of the vibration rows plays a short pulse at the new strength.
 * **Device support**: the row offers only the sample counts the GPU can use for every multisampled world attachment
   (`render_settings::SupportedMsaa`, detected at start from `RenderAdapter::get_texture_format_features` for
   `Rgba8UnormSrgb` and `Depth32Float` — the WebGPU guarantee {1, 4} when the device lacks
