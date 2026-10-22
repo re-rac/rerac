@@ -19,7 +19,7 @@
 //! go ([`crate::hud_render::IconMark`]); [`shown`] takes the frame's list (dimmed by the fades drawn over them) and
 //! [`place`] lays one UI image per icon on the HUD's 512×416 box. The art is Zacksly's "PS5 Button Icons and
 //! Controls" and "Xbox Series Button Icons and Controls" (Buttons Outline / White / 128w; CC BY 3.0,
-//! assets/button_icons/CREDITS.md), fitted to the cells' footprints, square on screen. The cells above stay for the
+//! art/button_icons/CREDITS.md), fitted to the cells' footprints, square on screen. The cells above stay for the
 //! monitors' canvases and the scene subtitles, which keep their own 2D lists.
 //!
 //! `RC_DUMP_BUTTONS=<dir>`: writes each font's original cells 0x10..0x1f (24×16 RGBA, raw GS alpha) as
@@ -243,7 +243,7 @@ static SHARP: AtomicBool = AtomicBool::new(false);
 pub fn sharp() -> bool { SHARP.load(Ordering::Relaxed) }
 
 macro_rules! art {
-    ($dir:literal: $($name:literal),*) => { [$(include_bytes!(concat!("../assets/button_icons/", $dir, "/", $name, ".png")) as &[u8]),*] };
+    ($dir:literal: $($name:literal),*) => { [$(include_bytes!(concat!("../art/button_icons/", $dir, "/", $name, ".png")) as &[u8]),*] };
 }
 
 /// The sharp art by code (0x10..0x19).
