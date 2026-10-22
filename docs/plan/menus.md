@@ -572,7 +572,7 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   `Hud2d::icons`) and `button_icons::place` draws each icon as a UI image over the 512×416 layer at the window's
   resolution, fitted to the cell's footprint, dimmed by the fades drawn over it (`button_icons::shown`). The art is
   Zacksly's "PS5 Button Icons and Controls" and "Xbox Series Button Icons and Controls" (CC BY 3.0,
-  https://zacksly.itch.io; crates/rc-engine/assets/button_icons/CREDITS.md). The monitors' canvases and scene
+  https://zacksly.itch.io; crates/rc-engine/art/button_icons/CREDITS.md). The monitors' canvases and scene
   subtitles keep the rewritten cells.
 * **Gadgetron Movement System** (GMS, idea by roxas997 on the ReRAC Discord): the Controller row does not
   cycle; ✕ opens its own page (`port::GMS_PAGE`, from the main menu `port::GMS_PAGE_FRONT`; Port Options' frames, parent
