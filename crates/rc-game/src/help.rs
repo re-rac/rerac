@@ -348,6 +348,16 @@ impl Help {
         true
     }
 
+    /// **Port-only**: [`Help::request`] for a message the port adds to the level text (rc-engine's Gadgetron
+    /// Movement System note), with no help record: none is checked or bumped (rec −1), and it is not in the help log's
+    /// id table, so it is not logged. The same conditions as the game's request otherwise.
+    pub fn request_port(&mut self, msg: i32) -> bool {
+        if self.bx.state != 0 || self.request != -1 || self.voice.busy || self.voice.request != -1 { return false; }
+        self.request = msg;
+        self.rec = -1;
+        true
+    }
+
     /// `fun_001fecc8(msg, 0, 0)`: the log-table index of help message `msg`.
     pub fn log_index(&self, msg: i32) -> Option<usize> { self.log_ids.iter().position(|&(m, _)| m as i32 == msg as i16 as i32) }
 

@@ -36,6 +36,9 @@ use crate::input_map::PadDevice;
 pub const VENDOR: u16 = 0x054c;
 pub const PRODUCTS: [u16; 2] = [0x0ce6, 0x0df2];
 
+/// Whether one of Bevy's gamepads is a DualSense (by its USB ids): skipped while the pad is read here.
+pub fn is_dualsense(g: &Gamepad) -> bool { g.vendor_id() == Some(VENDOR) && g.product_id().is_some_and(|p| PRODUCTS.contains(&p)) }
+
 /// Stick values within this of the centre read as centred (Bevy's default gamepad dead zone), so a resting stick
 /// leaves the keyboard's stick alone (crate::input_map::sample).
 const DEAD_ZONE: f32 = 0.05;

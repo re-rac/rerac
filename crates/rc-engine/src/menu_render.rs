@@ -562,9 +562,11 @@ fn port_rows_in(
     display: &crate::display::DisplaySettings,
     gfx: &crate::graphics::GraphicsSettings,
     supported: Option<&SupportedMsaa>,
-    haptics: Option<&crate::haptics::ControllerSettings>,
+    (haptics, gms): (Option<&crate::haptics::ControllerSettings>, Option<&crate::gms::Gms>),
 ) {
     if let Some(s) = shadows { menu.set_port_value(Setting::Shadows, !s.enabled as u8); }
+    // The Gadgetron Movement System page's rows: the connected controllers (crate::gms).
+    if let Some(g) = gms { menu.set_gms_rows(g.rows()); }
     if let Some(h) = haptics {
         menu.set_port_value(Setting::Vibration, !h.enabled as u8);
         menu.set_port_value(Setting::VibrationStrength, h.strength.index());
@@ -579,14 +581,19 @@ fn port_rows_in(
 
 /// The Port Options rows read back after the tick: a changed row changes its setting and saves it.
 fn port_rows_out(
-    menu: &PageMenu,
+    menu: &mut PageMenu,
     shadows: Option<&mut crate::shadow_render::ShadowSettings>,
     display: &mut crate::display::DisplaySettings,
     gfx: &mut crate::graphics::GraphicsSettings,
     gfx_before: &crate::graphics::GraphicsSettings,
     frame: u64,
-    haptics: Option<&mut crate::haptics::ControllerSettings>,
+    (haptics, gms): Controller<'_>,
 ) {
+    // ✕ on a GMS row: lock that controller, or free it.
+    if let (Some(g), Some(i)) = (gms, menu.take_gms_pick()) {
+        g.pick(i);
+        println!("menus: frame {frame}: GMS: lock {:?}", g.lock);
+    }
     if let Some(h) = haptics {
         let want = crate::haptics::ControllerSettings {
             enabled: menu.port_value(Setting::Vibration).map_or(h.enabled, |v| v == 0),
@@ -642,13 +649,16 @@ type InteractParams<'w> = (
     Option<ResMut<'w, crate::audio_out::AudioOut>>,
 );
 
-/// The settings the Port Options rows read and write (shadows, display, graphics, controller).
+/// The settings the Port Options rows read and write (shadows, display, graphics, controller, the GMS page).
 type PortParams<'w> = (
     Option<ResMut<'w, crate::shadow_render::ShadowSettings>>,
     ResMut<'w, crate::display::DisplaySettings>,
     ResMut<'w, crate::graphics::GraphicsSettings>,
-    Option<ResMut<'w, crate::haptics::ControllerSettings>>,
+    (Option<ResMut<'w, crate::haptics::ControllerSettings>>, Option<ResMut<'w, crate::gms::Gms>>),
 );
+
+/// The controller rows' settings and the Gadgetron Movement System's state (crate::haptics, crate::gms).
+type Controller<'a> = (Option<&'a mut crate::haptics::ControllerSettings>, Option<&'a mut crate::gms::Gms>);
 
 #[allow(clippy::too_many_arguments)]
 fn menu_frame(
@@ -661,7 +671,7 @@ fn menu_frame(
     source: Res<crate::game_camera::CameraSource>,
     supported: Option<Res<SupportedMsaa>>,
     (mut vr, mut feed, mut view, mut audio): InteractParams,
-    (mut shadows, mut display, mut gfx, mut haptics): PortParams,
+    (mut shadows, mut display, mut gfx, (mut haptics, mut gms)): PortParams,
     mut widgets3d: ResMut<crate::menu_models::GadgetsPreview>,
     (mut fer, movies): (ResMut<crate::saves::FrontEndRt>, Option<Res<crate::movie_render::MovieState>>),
 ) {
@@ -672,7 +682,7 @@ fn menu_frame(
     if fer.fe.is_some() {
         let busy = movies.as_deref().is_some_and(|m| m.busy());
         let fer = &mut *fer;
-        let port = (shadows.as_deref_mut(), &mut *display, &mut *gfx, supported.as_deref(), haptics.as_deref_mut());
+        let port = (shadows.as_deref_mut(), &mut *display, &mut *gfx, supported.as_deref(), (haptics.as_deref_mut(), gms.as_deref_mut()));
         front_end_frame(rt, &mut mm, &mut play, gs, fer, &pad, &source, busy, audio.as_deref_mut(), port);
         mm.state.end_frame();
         mm.loop_frame += 1;
@@ -814,14 +824,14 @@ fn menu_frame(
                 post_fade_step(rt, &mut mm, &mut play, gs, sess.hp, audio.as_deref_mut(), frame, true);
             } else if let Some(menu) = rt.menu.as_mut() {
                 let gfx_before = *gfx;
-                port_rows_in(menu, shadows.as_deref(), &display, &gfx_before, supported.as_deref(), haptics.as_deref());
+                port_rows_in(menu, shadows.as_deref(), &display, &gfx_before, supported.as_deref(), (haptics.as_deref(), gms.as_deref()));
                 // The card and the save inputs moved into the menu for its tick (crate::saves).
                 saves_in(menu, &play);
                 // 0x15172a as the widgets read it (the Helpdesk girl).
                 menu.media.voice_state = play.svc.help.voice.state;
                 let out = menu.tick(&inp, gs, &env);
                 if out.elapsed_hold { play.svc.elapsed_hold = true; }
-                port_rows_out(menu, shadows.as_deref_mut(), &mut display, &mut gfx, &gfx_before, frame, haptics.as_deref_mut());
+                port_rows_out(menu, shadows.as_deref_mut(), &mut display, &mut gfx, &gfx_before, frame, (haptics.as_deref_mut(), gms.as_deref_mut()));
                 if trace && !out.sounds.is_empty() { println!("menus: frame {frame}: sounds {:?}", out.sounds); }
                 // The class-0x472 sounds (`PlayClassSound(n, 0x11, frame moby)`), the close's audio, then the frame's sound_update.
                 if let Some(a) = audio.as_deref_mut() {
@@ -1383,13 +1393,14 @@ fn end_choice(rt: &mut MenuRt, play: &mut Play, gs: &mut rc_game::game_state::Ga
     }
 }
 
-/// The settings the Port Options page reads and writes (shadows, display, graphics, the device's MSAA counts, vibration).
+/// The settings the Port Options page reads and writes (shadows, display, graphics, the device's MSAA counts, the
+/// controller and the GMS page).
 type FrontPortSettings<'a> = (
     Option<&'a mut crate::shadow_render::ShadowSettings>,
     &'a mut crate::display::DisplaySettings,
     &'a mut crate::graphics::GraphicsSettings,
     Option<&'a SupportedMsaa>,
-    Option<&'a mut crate::haptics::ControllerSettings>,
+    Controller<'a>,
 );
 
 /// One main-loop frame of the front end (crate::saves; `rc_game::frontend`).
@@ -1405,7 +1416,7 @@ fn front_end_frame(
     movie_busy: bool,
     mut audio: Option<&mut crate::audio_out::AudioOut>,
     // The Port Options' settings: the main menu's copy of the page reads and writes them as the pause menu's does.
-    (shadows, display, gfx, supported, haptics): FrontPortSettings<'_>,
+    (shadows, display, gfx, supported, (haptics, gms)): FrontPortSettings<'_>,
 ) {
     let frame = mm.loop_frame;
     let vsync = frame as u32;
@@ -1473,9 +1484,9 @@ fn front_end_frame(
                 saves_in(menu, play);
                 menu.saves.card.front_end = true;
                 let gfx_before = *gfx;
-                port_rows_in(menu, shadows.as_deref(), display, &gfx_before, supported, haptics.as_deref());
+                port_rows_in(menu, shadows.as_deref(), display, &gfx_before, supported, (haptics.as_deref(), gms.as_deref()));
                 let o = menu.tick(&inp, gs, &env);
-                port_rows_out(menu, shadows, display, gfx, &gfx_before, frame, haptics);
+                port_rows_out(menu, shadows, display, gfx, &gfx_before, frame, (haptics, gms));
                 if o.elapsed_hold { play.svc.elapsed_hold = true; }
                 if let Some(a) = audio.as_deref_mut() {
                     play_menu_sounds(play, a, &o.sounds);

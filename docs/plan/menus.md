@@ -554,6 +554,12 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   `trigger_effects` in the settings file. A change of the vibration rows plays a short pulse at the new strength.
   On the hoverboard (`hoverboard::GROUP`) R2 stays R2, the board's fourth trick, without a weapon feel
   (`haptics::R2Raw`). Pads are read, and rumble and R2's effect sent, only while the game's window has the focus.
+* **Gadgetron Movement System** (GMS, idea by roxas997 on the ReRAC Discord): the Controller row (value "GMS") does not
+  cycle; ✕ opens its own page (`port::GMS_PAGE`, from the main menu `port::GMS_PAGE_FRONT`; Port Options' frames, parent
+  Port Options) titled "Gadgetron Movement System" (regular font: in the large one the title wraps and the label turns
+  into a scroller) listing the connected controllers (`port::GmsList`, filled by the engine's `gms::Gms` before each tick):
+  Active (the one last used) / Available, or with one locked by ✕: Locked / Off. On Veldin a text-only HelpDesk note
+  (`gms::HELP_TEXT`, no voice, no help record: `help::Help::request_port`) says what the GMS is, once.
 * **Device support**: the row offers only the sample counts the GPU can use for every multisampled world attachment
   (`render_settings::SupportedMsaa`, detected at start from `RenderAdapter::get_texture_format_features` for
   `Rgba8UnormSrgb` and `Depth32Float` — the WebGPU guarantee {1, 4} when the device lacks

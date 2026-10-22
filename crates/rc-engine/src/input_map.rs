@@ -131,7 +131,7 @@ const MIN_FIRE: f32 = 0.12;
 /// reads as ○.
 #[derive(SystemParam)]
 pub struct Pads<'w, 's> {
-    gamepads: Query<'w, 's, &'static Gamepad>,
+    gamepads: Query<'w, 's, (Entity, &'static Gamepad)>,
     dualsense: Option<Res<'w, crate::dualsense::DualSense>>,
     controller: Option<Res<'w, crate::haptics::ControllerSettings>>,
     fire_point: Option<Res<'w, crate::haptics::FirePoint>>,
@@ -140,6 +140,8 @@ pub struct Pads<'w, 's> {
     /// The game's window: pads are read only while it has the focus (the DualSense's own reports arrive regardless,
     /// unlike Windows.Gaming.Input's).
     windows: Query<'w, 's, &'static Window, With<bevy::window::PrimaryWindow>>,
+    /// The Gadgetron Movement System's lock (crate::gms): only the locked device counts.
+    gms: Option<Res<'w, crate::gms::Gms>>,
 }
 
 impl Pads<'_, '_> {
@@ -155,16 +157,18 @@ impl Pads<'_, '_> {
     /// The game's window has the focus (or there is none).
     pub fn focused(&self) -> bool { self.windows.iter().next().is_none_or(|w| w.focused) }
 
+    /// The GMS lock, for the keyboard (crate::gms::keyboard).
+    pub fn gms(&self) -> Option<&crate::gms::Gms> { self.gms.as_deref() }
+
     fn merged(&self) -> Option<PadDevice> {
+        use crate::gms::DeviceKey;
+        let allows = |k| self.gms.as_ref().is_none_or(|g| g.allows(k));
         let ds = self.dualsense.as_ref().and_then(|d| d.get());
-        let is_ds = |g: &Gamepad| {
-            g.vendor_id() == Some(crate::dualsense::VENDOR) && g.product_id().is_some_and(|p| crate::dualsense::PRODUCTS.contains(&p))
-        };
         self.gamepads
             .iter()
-            .filter(|g| ds.is_none() || !is_ds(g))
-            .map(PadDevice::from_gamepad)
-            .chain(ds)
+            .filter(|(e, g)| (ds.is_none() || !crate::dualsense::is_dualsense(g)) && allows(DeviceKey::Gamepad(*e)))
+            .map(|(_, g)| PadDevice::from_gamepad(g))
+            .chain(ds.filter(|_| allows(DeviceKey::DualSense)))
             .reduce(PadDevice::merge)
     }
 }
@@ -236,7 +240,8 @@ pub fn sample_system(
     pads: Pads,
     mut frame: ResMut<PadFrame>,
 ) {
-    frame.0 = sample(&keys, &mouse, &motion, pads.device());
+    let (keys, mouse, motion) = crate::gms::keyboard(pads.gms(), &keys, &mouse, &motion);
+    frame.0 = sample(keys, mouse, motion, pads.device());
 }
 
 /// `RC_PLAY_SCRIPT`: pad input per gameplay tick, `item,item,...` with `item = range:action`.
