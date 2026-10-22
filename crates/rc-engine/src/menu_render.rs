@@ -572,6 +572,7 @@ fn port_rows_in(
         menu.set_port_value(Setting::VibrationStrength, h.strength.index());
         menu.set_port_value(Setting::FireButton, h.fire_r2 as u8);
         menu.set_port_value(Setting::TriggerEffects, !h.triggers as u8);
+        menu.set_port_value(Setting::ButtonIcons, h.icons.index());
     }
     menu.set_port_value(Setting::Resolution, display.resolution.index());
     menu.set_port_value(Setting::Aspect, display.aspect.index());
@@ -600,6 +601,7 @@ fn port_rows_out(
             strength: menu.port_value(Setting::VibrationStrength).map_or(h.strength, crate::haptics::Strength::from_index),
             fire_r2: menu.port_value(Setting::FireButton).map_or(h.fire_r2, |v| v == 1),
             triggers: menu.port_value(Setting::TriggerEffects).map_or(h.triggers, |v| v == 0),
+            icons: menu.port_value(Setting::ButtonIcons).map_or(h.icons, crate::button_icons::IconStyle::from_index),
         };
         if *h != want {
             *h = want;
