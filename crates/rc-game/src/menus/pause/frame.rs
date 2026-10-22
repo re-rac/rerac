@@ -115,6 +115,15 @@ impl MenuProjection {
         }
     }
 
+    /// **Port-only**: the world move (Δy, Δz) that moves a point at depth `depth` (world x from the camera) by
+    /// (`dx`, `dy`) screen pixels: the inverse of [`MenuProjection::screen_rect`]'s slope at that depth.
+    pub fn world_delta(&self, depth: f32, dx: f32, dy: f32) -> (f32, f32) {
+        let f = f32::from_bits;
+        let (p0, p1, w, s0, s1) = (f(self.neg_p0x), f(self.neg_p1y), f(self.p2w), f(self.s050), f(self.s054));
+        // screen = (neg_p · Δ) / (p2w · depth) · s · 0.25 + centre.
+        (dx * w * depth / (p0 * s0 * 0.25), dy * w * depth / (p1 * s1 * 0.25))
+    }
+
     /// `MobyScreenRect(a, b, &w, &h, &x, &y)` 0x2ada30 for corner points `a`, `b` (world, game units);
     /// returns [x, y, w, h].
     pub fn screen_rect(&self, a: V4, b: V4) -> [i32; 4] {
@@ -152,6 +161,30 @@ pub fn cvt_w(x: u32) -> i32 {
     (if x & ps2::SIGN != 0 { -v } else { v }) as i32
 }
 
+/// **Port-only**: one panel's adjustment in screen pixels: `dx` moves it right, `top` / `bottom` move its top / bottom
+/// edge down (negative: up). Applied to the corner joints, scaled by how far the slot's sequence has played (0 at its
+/// first frame, the parent page's layout; 1 at its last, the page's own), so the panel grows in and out with the page's
+/// frames. The engine moves the 3D frame's corner joints by the same amounts ([`FrameMobys::shifts`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PanelAdjust {
+    pub dx: f32,
+    pub top: f32,
+    pub bottom: f32,
+}
+
+/// **Port-only**: a page's panels to rearrange (`crate::menus::pause::port::panel_layout`): its seqs and the slots of
+/// its title, list and hint panels. The title is centred; the list fills the height between the title and the hints.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PanelLayout {
+    pub seqs: [i32; SLOTS],
+    pub title: usize,
+    pub list: usize,
+    pub hint: usize,
+}
+
+/// The corner joints of the frame class, in corner order (the chains end on joints 2, 1, 4, 3).
+pub const CORNER_JOINTS: [usize; 4] = [2, 1, 4, 3];
+
 /// The 14 frame mobys (`0x1ba310[14]`, None when freed or never spawned) and the class they use.
 #[derive(Clone, Debug)]
 pub struct FrameMobys {
@@ -160,11 +193,50 @@ pub struct FrameMobys {
     pub rows: [V4; 3],
     pub proj: MenuProjection,
     pub slots: Option<[FrameMoby; SLOTS]>,
+    /// Port-only: each slot's adjustment, its sequence and that sequence's last frame ([`PanelAdjust`]).
+    pub adjust: [Option<(PanelAdjust, i32, i32)>; SLOTS],
+    /// Port-only: each slot's corner moves this update in the class's model units (packed, as the joint palette's
+    /// translations), for the engine's 3D frames ([`CORNER_JOINTS`]).
+    pub shifts: [[[f32; 3]; 4]; SLOTS],
 }
 
 impl FrameMobys {
     pub fn new(class: FrameClass, pal: bool) -> Self {
-        FrameMobys { class, rows: moby_light::rotation_rows([0.0; 3]), proj: MenuProjection::new(pal), slots: None }
+        FrameMobys {
+            class,
+            rows: moby_light::rotation_rows([0.0; 3]),
+            proj: MenuProjection::new(pal),
+            slots: None,
+            adjust: [None; SLOTS],
+            shifts: [[[0.0; 3]; 4]; SLOTS],
+        }
+    }
+
+    /// The panel rect sequence `seq` settles on (its last frame), as [`FrameMobys::place`] gives it.
+    pub fn settled_rect(&self, seq: i32) -> Option<[i32; 4]> {
+        let mut state = AnimState::spawn(&self.class.anim);
+        moby_anim::hard_cut(&mut state, &self.class.anim, u8::try_from(seq).ok()?, self.last_frame(seq)?);
+        let chains: [&[u8]; 4] = std::array::from_fn(|k| self.class.chains[k].as_slice());
+        let p = moby_anim::joint_translations(&self.class.anim, &state, None, &chains);
+        let w = moby_anim::bone_points(&p, &self.rows, CAMERA_POS, self.class.scale);
+        let [x, y, w, h] = self.proj.screen_rect(w[0], w[3]);
+        Some([x + 1, y + 1, w, h])
+    }
+
+    /// Port-only: the panels' adjustments for a page's layout (none: the game's layout).
+    pub fn set_layout(&mut self, layout: Option<PanelLayout>) {
+        self.adjust = [None; SLOTS];
+        let Some(l) = layout else { return };
+        let rect = |s: usize| self.settled_rect(l.seqs[s]);
+        let (Some(t), Some(li), Some(h)) = (rect(l.title), rect(l.list), rect(l.hint)) else { return };
+        let (title_last, list_last) = (self.last_frame(l.seqs[l.title]).unwrap_or(0), self.last_frame(l.seqs[l.list]).unwrap_or(0));
+        // The title panel centred on the 512-wide screen.
+        let title = PanelAdjust { dx: 256.0 - (t[0] as f32 + t[2] as f32 / 2.0), ..Default::default() };
+        // The list from just under the title to just above the hints.
+        let (top, bottom) = ((t[1] + t[3] + 12) as f32, (h[1] - 14) as f32);
+        let list = PanelAdjust { dx: 0.0, top: top - li[1] as f32, bottom: bottom - (li[1] + li[3]) as f32 };
+        self.adjust[l.title] = Some((title, l.seqs[l.title], title_last));
+        self.adjust[l.list] = Some((list, l.seqs[l.list], list_last));
     }
 
     /// Frame count − 1 of sequence `seq` (`*(class + 0x48 + 4·seq)` +0x10, minus 1), None when missing.
@@ -197,19 +269,46 @@ impl FrameMobys {
         if let Some(slots) = self.slots.as_mut() { slots[i].state.speed = if back { -1.0 } else { 1.0 }; }
     }
 
-    /// One `MobyUpdateLoop` for the frame mobys: advance, `MenuMobyUpdate`, corners.
+    /// **Port-only**: holds slot `i` on its sequence's last frame (a page change between two pages of the same frames:
+    /// neither direction's play would end on their layout).
+    pub fn hold(&mut self, i: usize, seq: i32) {
+        let last = self.last_frame(seq).unwrap_or(0);
+        self.cut(i, seq, last);
+        if let Some(slots) = self.slots.as_mut() { slots[i].state.speed = 0.0; }
+    }
+
+    /// One `MobyUpdateLoop` for the frame mobys: advance, `MenuMobyUpdate`, corners (moved by the port's panel
+    /// adjustments, [`PanelAdjust`]).
     pub fn update(&mut self) {
-        let FrameMobys { class, rows, slots, .. } = self;
+        let FrameMobys { class, rows, slots, proj, adjust, shifts } = self;
         let Some(slots) = slots.as_mut() else { return };
         let chains: [&[u8]; 4] = std::array::from_fn(|k| class.chains[k].as_slice());
-        for m in slots.iter_mut() {
+        for (i, m) in slots.iter_mut().enumerate() {
             if !m.state.skip_advance { moby_anim::advance(&mut m.state, &class.anim); }
             if m.state.flags & 2 != 0 {
                 m.state.t = if m.state.speed > 0.0 { 0.0 } else { 1.0 };
                 m.state.speed = 0.0;
             }
             let p = moby_anim::joint_translations(&class.anim, &m.state, None, &chains);
-            let w = moby_anim::bone_points(&p, rows, CAMERA_POS, class.scale);
+            let mut w = moby_anim::bone_points(&p, rows, CAMERA_POS, class.scale);
+            shifts[i] = [[0.0; 3]; 4];
+            if let Some((a, _, last)) = adjust[i].filter(|&(_, seq, _)| m.state.seq_b as i32 == seq) {
+                // How far the sequence has played: 0 on its first frame (the parent's layout), 1 on its last.
+                let s = &m.state;
+                let pos = s.frame_a as f32 + s.t * (s.frame_b as f32 - s.frame_a as f32);
+                let k = if last > 0 { (pos / last as f32).clamp(0.0, 1.0) } else { 1.0 };
+                let mid_z = w.iter().take(4).map(|c| f32::from_bits(c[2])).sum::<f32>() / 4.0;
+                // World → model units: rotation (0, 0, 0) rows are the identity; `bone_points` scales by scale/1024.
+                let to_model = 1024.0 / class.scale;
+                for (c, corner) in w.iter_mut().take(4).enumerate() {
+                    // World +z is screen up: the corners above the middle are the top edge.
+                    let dy = if f32::from_bits(corner[2]) > mid_z { a.top } else { a.bottom };
+                    let (wy, wz) = proj.world_delta(f32::from_bits(corner[0]) - CAMERA_POS[0], a.dx * k, dy * k);
+                    corner[1] = (f32::from_bits(corner[1]) + wy).to_bits();
+                    corner[2] = (f32::from_bits(corner[2]) + wz).to_bits();
+                    shifts[i][c] = [0.0, wy * to_model, wz * to_model];
+                }
+            }
             m.corners = std::array::from_fn(|k| w[k]);
         }
     }

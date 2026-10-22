@@ -80,8 +80,20 @@ const FRONT_SOUND_LABEL: i16 = 20258;
 /// backwards to it (another page's, e.g. Cheats', end on their own parent's layout under the Options page).
 pub const MODEL_FEW: u32 = 0x1b5788;
 pub const MODEL_MANY: u32 = 0x1b5ee0;
-/// The rows the Camera frame's list panel shows at once; the list scrolls ([`PortList::top`]).
-pub const VISIBLE: usize = 4;
+/// The rows a port list shows at once (in the pause menu the list panel is stretched for them: [`panel_layout`]); the
+/// list scrolls ([`PortList::top`]).
+pub const VISIBLE: usize = 7;
+
+/// **Port-only** frame layout (`frame::PanelLayout`) of the pause menu's port pages: the Camera page's frames put their
+/// title at the top left and their list in a short panel, so the title is centred and the list stretched from under it
+/// to the hints. The main menu's copies keep the front end's Sound page frames as they are (a centred title, a tall
+/// list); the game's own pages are never changed.
+pub fn panel_layout(m: &PageMenu, page: u32) -> Option<super::frame::PanelLayout> {
+    if page != PAGE && page != GMS_PAGE { return None; }
+    let p = m.pages.get(&page)?;
+    let title = p.widgets.iter().position(|&w| w == TITLE_W || w == GMS_TITLE_W)?;
+    Some(super::frame::PanelLayout { seqs: p.seqs, title, list: 3, hint: 4 })
+}
 
 /// The port's own strings (not in the game's text table). Ids are negative; [`MenuAssets::msg`] resolves them.
 pub mod text {
@@ -248,12 +260,18 @@ pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::Aspect, label: text::ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9] },
     Entry { setting: Setting::Resolution, label: text::RESOLUTION, values: &[text::RES_WINDOW, text::RES_416, text::RES_720, text::RES_1080, text::RES_1440, text::RES_2160] },
     Entry { setting: Setting::Fullscreen, label: text::FULLSCREEN, values: &[text::OFF, text::ON] },
-    Entry { setting: Setting::Controller, label: text::CONTROLLER, values: &[text::GMS] },
+    Entry { setting: Setting::Controller, label: text::CONTROLLER, values: &[] },
+    // The Controller page's rows ([`PORT_ROWS`] on): listed there above the connected controllers.
     Entry { setting: Setting::Vibration, label: text::VIBRATION, values: &[text::ON, text::OFF] },
     Entry { setting: Setting::VibrationStrength, label: text::VIBRATION_STRENGTH, values: &[text::LOW, text::MEDIUM, text::HIGH] },
     Entry { setting: Setting::FireButton, label: text::FIRE_BUTTON, values: &[text::CIRCLE, text::R2] },
     Entry { setting: Setting::TriggerEffects, label: text::TRIGGER_EFFECTS, values: &[text::ON, text::OFF] },
 ];
+
+/// The Port Options page shows [`ENTRIES`]`[..PORT_ROWS]` (the last one the Controller row); the Controller page the
+/// rest, then the connected controllers. Every row's value lives in the Port Options list ([`PortList::values`], by
+/// [`ENTRIES`] index), whichever page shows it.
+pub const PORT_ROWS: usize = 10;
 
 /// The list's run-time state: cursor, each row's value index and each row's selectable values (bit k = value k;
 /// a missing entry = all).
@@ -431,8 +449,9 @@ impl PageMenu {
     /// The GMS page's rows (the connected controllers, from the engine), the cursor kept on the list.
     pub fn set_gms_rows(&mut self, rows: Vec<GmsRow>) {
         if let Some(g) = gms_mut(self, GMS_LIST_W) {
-            g.cursor = g.cursor.clamp(0, (rows.len() as i32 - 1).max(0));
-            g.top = g.top.clamp(0, (rows.len() as i32 - VISIBLE as i32).max(0));
+            let n = (GMS_SETTINGS + rows.len()) as i32;
+            g.cursor = g.cursor.clamp(0, n - 1);
+            g.top = g.top.clamp(0, (n - VISIBLE as i32).max(0));
             g.rows = rows;
         }
     }
@@ -448,7 +467,7 @@ pub fn update(m: &mut PageMenu, w: u32, inp: &MenuInput, out: &mut MenuOut) -> i
     let Some(p) = list_mut(m, w) else { return 0 };
     let start = p.cursor;
     if inp.pressed_u & button::UP != 0 && p.cursor != 0 { p.cursor -= 1; }
-    if inp.pressed_u & button::DOWN != 0 && (p.cursor as usize + 1) < ENTRIES.len() { p.cursor += 1; }
+    if inp.pressed_u & button::DOWN != 0 && (p.cursor as usize + 1) < PORT_ROWS { p.cursor += 1; }
     if p.cursor != start { out.sounds.push(MenuSound::Cursor); }
     p.top = p.top.clamp(p.cursor - VISIBLE as i32 + 1, p.cursor).max(0);
     let r = p.cursor as usize;
@@ -474,19 +493,23 @@ pub fn draw(m: &mut PageMenu, w: u32, a: &MenuAssets, out: &mut Vec<MenuDraw>) -
     let [_, _, ww, wh] = wd.rect;
     let Data::Port(p) = &wd.data else { return 1 };
     // The camera list's spacing for the rows shown (h/(n+1), n = VISIBLE).
-    let shown = ENTRIES.len().min(VISIBLE);
+    let shown = PORT_ROWS.min(VISIBLE);
     let step = wh / (shown as i32 + 1);
     let mut y = step - 8;
-    let top = (p.top.max(0) as usize).min(ENTRIES.len() - shown);
-    for (i, e) in ENTRIES.iter().enumerate().skip(top).take(shown) {
+    let top = (p.top.max(0) as usize).min(PORT_ROWS - shown);
+    for (i, e) in ENTRIES.iter().enumerate().take(PORT_ROWS).skip(top).take(shown) {
         let col = if i as i32 == p.cursor { YELLOW } else { LIGHT_BLUE };
         print(out, Font::Regular, 0xc, y, col, a.msg(e.label));
-        let v = p.values.get(i).copied().unwrap_or(0) as usize;
-        right(out, a, ww - 0xc, y, LIGHT_BLUE, a.msg(e.values.get(v).copied().unwrap_or(0)));
+        value(out, a, ww, y, e, p.values.get(i).copied().unwrap_or(0));
         y += step;
     }
     arrows(out, a, ww, wh, step, scroll_marks(top, shown));
     2
+}
+
+/// A row's value, right-aligned; nothing for a row without values (the Controller row opens a page).
+fn value(out: &mut Vec<MenuDraw>, a: &MenuAssets, ww: i32, y: i32, e: &Entry, v: u8) {
+    if let Some(&id) = e.values.get(v as usize) { right(out, a, ww - 0xc, y, LIGHT_BLUE, a.msg(id)); }
 }
 
 /// Rows hidden above / below: the Epilogue's arrow (`media::epilogue_arrows`: icon 0xe99e frame 6, 0x20 × 0x10
@@ -500,44 +523,67 @@ fn arrows(out: &mut Vec<MenuDraw>, a: &MenuAssets, ww: i32, wh: i32, step: i32, 
     if more_below { out.push(super::map_page::rotated(frame, cx, (wh as f32 - gap).min(wh as f32 - ARROW_W), ARROW_W, ARROW_H, -half, 0x20, 0x10)); }
 }
 
-/// The GMS list update: Up / Down as the Port Options list, ✕ reports the row to the engine ([`GmsList::pick`]),
-/// which locks or frees that controller.
+/// The Controller page's settings rows ([`ENTRIES`]`[PORT_ROWS..]`), before its controllers.
+const GMS_SETTINGS: usize = ENTRIES.len() - PORT_ROWS;
+
+/// The Controller page's list update: Up / Down over its settings and then its controllers; ✕ on a setting cycles
+/// its value (kept in the Port Options list, where the engine reads it), on a controller reports it to the engine
+/// ([`GmsList::pick`]), which locks or frees it.
 pub fn gms_update(m: &mut PageMenu, w: u32, inp: &MenuInput, out: &mut MenuOut) -> i32 {
     if !m.is_focus(w) { return 0; }
     if let Some(r) = keys(m, inp, 1) { return r; }
     let Some(g) = gms_mut(m, w) else { return 0 };
+    let total = GMS_SETTINGS + g.rows.len();
     let start = g.cursor;
     if inp.pressed_u & button::UP != 0 && g.cursor != 0 { g.cursor -= 1; }
-    if inp.pressed_u & button::DOWN != 0 && (g.cursor as usize + 1) < g.rows.len() { g.cursor += 1; }
+    if inp.pressed_u & button::DOWN != 0 && (g.cursor as usize + 1) < total { g.cursor += 1; }
     if g.cursor != start { out.sounds.push(MenuSound::Cursor); }
     g.top = g.top.clamp(g.cursor - VISIBLE as i32 + 1, g.cursor).max(0);
-    if inp.pressed_u & button::CROSS != 0 && (g.cursor as usize) < g.rows.len() {
-        g.pick = Some(g.cursor as usize);
+    if inp.pressed_u & button::CROSS == 0 { return 0; }
+    let row = g.cursor as usize;
+    if row >= GMS_SETTINGS {
+        g.pick = Some(row - GMS_SETTINGS);
         out.sounds.push(MenuSound::Confirm);
+        return 0;
+    }
+    let r = PORT_ROWS + row;
+    if let Some(p) = list_mut(m, LIST_W) {
+        let choices = p.choices.get(r).copied().unwrap_or(u32::MAX);
+        if let Some(v) = p.values.get_mut(r) {
+            *v = next_choice(*v, ENTRIES[r].values.len(), choices);
+            out.sounds.push(MenuSound::Confirm);
+        }
     }
     0
 }
 
-/// The GMS list draw: each controller's name left, its status right, as the Port Options rows.
+/// The Controller page's list draw: its settings (label left, value right), then each controller (name left, status
+/// right), as the Port Options rows.
 pub fn gms_draw(m: &mut PageMenu, w: u32, a: &MenuAssets, out: &mut Vec<MenuDraw>) -> u32 {
+    let values = list(m).map(|p| p.values.clone()).unwrap_or_default();
     let Some(wd) = m.widgets.get(&w) else { return 1 };
     let [_, _, ww, wh] = wd.rect;
     let Data::Gms(g) = &wd.data else { return 1 };
-    let n = g.rows.len();
+    let n = GMS_SETTINGS + g.rows.len();
     let shown = n.min(VISIBLE);
     let step = wh / (shown.max(1) as i32 + 1);
     let mut y = step - 8;
     let top = (g.top.max(0) as usize).min(n - shown);
-    for (i, row) in g.rows.iter().enumerate().skip(top).take(shown) {
+    for i in (0..n).skip(top).take(shown) {
         let col = if i as i32 == g.cursor { YELLOW } else { LIGHT_BLUE };
-        print(out, Font::Regular, 0xc, y, col, &row.name);
-        let status = match row.status {
-            gms_status::ACTIVE => text::ACTIVE,
-            gms_status::LOCKED => text::LOCKED,
-            gms_status::OFF => text::GMS_OFF,
-            _ => text::AVAILABLE,
-        };
-        right(out, a, ww - 0xc, y, LIGHT_BLUE, a.msg(status));
+        if let Some(e) = ENTRIES.get(PORT_ROWS + i).filter(|_| i < GMS_SETTINGS) {
+            print(out, Font::Regular, 0xc, y, col, a.msg(e.label));
+            value(out, a, ww, y, e, values.get(PORT_ROWS + i).copied().unwrap_or(0));
+        } else if let Some(row) = g.rows.get(i - GMS_SETTINGS) {
+            print(out, Font::Regular, 0xc, y, col, &row.name);
+            let status = match row.status {
+                gms_status::ACTIVE => text::ACTIVE,
+                gms_status::LOCKED => text::LOCKED,
+                gms_status::OFF => text::GMS_OFF,
+                _ => text::AVAILABLE,
+            };
+            right(out, a, ww - 0xc, y, LIGHT_BLUE, a.msg(status));
+        }
         y += step;
     }
     arrows(out, a, ww, wh, step, (top > 0, top + shown < n));
@@ -548,18 +594,26 @@ pub fn gms_draw(m: &mut PageMenu, w: u32, a: &MenuAssets, out: &mut Vec<MenuDraw
 const ARROW_W: f32 = 6.0;
 const ARROW_H: f32 = 10.0;
 
-/// Whether rows are hidden above and below when `shown` rows from `top` are drawn.
-pub fn scroll_marks(top: usize, shown: usize) -> (bool, bool) { (top > 0, top + shown < ENTRIES.len()) }
+/// Whether Port Options rows are hidden above and below when `shown` rows from `top` are drawn.
+pub fn scroll_marks(top: usize, shown: usize) -> (bool, bool) { (top > 0, top + shown < PORT_ROWS) }
 
 #[cfg(test)]
 mod tests {
-    use super::{next_choice, scroll_marks, ENTRIES, VISIBLE};
+    use super::{next_choice, scroll_marks, Setting, ENTRIES, PORT_ROWS, VISIBLE};
 
     #[test]
     fn scroll_marks_show_hidden_rows() {
         assert_eq!(scroll_marks(0, VISIBLE), (false, true));
         assert_eq!(scroll_marks(1, VISIBLE), (true, true));
-        assert_eq!(scroll_marks(ENTRIES.len() - VISIBLE, VISIBLE), (true, false));
+        assert_eq!(scroll_marks(PORT_ROWS - VISIBLE, VISIBLE), (true, false));
+    }
+
+    #[test]
+    fn controller_rows_are_on_the_controller_page() {
+        // Port Options ends with the Controller row (no value: it opens a page); the controller settings follow.
+        assert_eq!((ENTRIES[PORT_ROWS - 1].setting, ENTRIES[PORT_ROWS - 1].values.len()), (Setting::Controller, 0));
+        let gms: Vec<Setting> = ENTRIES[PORT_ROWS..].iter().map(|e| e.setting).collect();
+        assert_eq!(gms, vec![Setting::Vibration, Setting::VibrationStrength, Setting::FireButton, Setting::TriggerEffects]);
     }
 
     #[test]

@@ -1725,7 +1725,15 @@ fn menu_layer(
         let pal = palette.get_or_insert_with(|| buffers.get(&fr.extra.palette).and_then(|b| b.data.clone()).unwrap_or_default());
         let rec = records.get_or_insert_with(|| buffers.get(&fr.extra.instances).and_then(|b| b.data.clone()).unwrap_or_default());
         // MobyAnimEval of the slot's state (the frame mobys have no pose layers and no blends).
-        let m = rc_formats::moby_anim::evaluate_with_snapshot(&f.class.anim, &slots[i].state, None);
+        let mut m = rc_formats::moby_anim::evaluate_with_snapshot(&f.class.anim, &slots[i].state, None);
+        // Port-only: the port pages' panel adjustments (rc_game::menus::pause::frame::PanelAdjust) move the corner
+        // joints as they moved the panel rects, so the 3D border follows (its thickness unchanged).
+        for (c, &j) in frame::CORNER_JOINTS.iter().enumerate() {
+            let s = f.shifts[i][c];
+            if let Some(r) = m.get_mut(j) {
+                for l in 0..3 { r[3][l] += s[l]; }
+            }
+        }
         let base = i * fr.slots as usize;
         let bytes: Vec<u8> = m.iter().take(fr.slots as usize).flat_map(|r| r.iter().flatten().flat_map(|v| v.to_le_bytes())).collect();
         if let Some(dst) = pal.get_mut(base * 64..base * 64 + bytes.len()) { dst.copy_from_slice(&bytes); }
