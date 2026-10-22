@@ -156,10 +156,32 @@ pub struct Hud2d {
     /// The primitives (indices into `prims`, ascending) drawn under ALPHA_1 0x48 (`Cs·As + Cd`) instead of 0x44: the
     /// vehicle HUDs' screen primitives after their gauge (`ScreenPrim::add`).
     pub add: Vec<usize>,
+    /// Port-only (crate::button_icons): the pad icons `FontPrint` left out of [`Hud2d::prims`], drawn sharp over the
+    /// layer at the window's resolution. Only lists with [`Hud2d::sharp_icons`] set collect them.
+    pub icons: Vec<IconMark>,
+    /// Pad icons go to [`Hud2d::icons`] while a PS5 or Xbox style is shown: the HUD's and the page menus' lists (the
+    /// monitors' canvases and the scene subtitles keep the 24×16 cells).
+    pub sharp_icons: bool,
 }
 
 impl Default for Hud2d {
-    fn default() -> Self { Hud2d { prims: Vec::new(), scissor: FULL_SCISSOR, frame_sizes: Vec::new(), fine: Vec::new(), add: Vec::new() } }
+    fn default() -> Self {
+        Hud2d { prims: Vec::new(), scissor: FULL_SCISSOR, frame_sizes: Vec::new(), fine: Vec::new(), add: Vec::new(), icons: Vec::new(), sharp_icons: false }
+    }
+}
+
+/// Port-only: a pad icon `FontPrint` drew at (x, y) (its 24×16 cell's corner, game pixels) in `rgba` (the grey of the
+/// text's colour), before primitive `at`, under `scissor`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IconMark {
+    pub code: u8,
+    pub x: i32,
+    pub y: i32,
+    pub rgba: u32,
+    pub scissor: [i32; 4],
+    pub at: usize,
+    /// A page menu's: hidden off the 512×416 screen, like its primitives (`Prim::boxed`).
+    pub boxed: bool,
 }
 
 impl Hud2d {
@@ -167,7 +189,13 @@ impl Hud2d {
         self.prims.clear();
         self.fine.clear();
         self.add.clear();
+        self.icons.clear();
         self.scissor = FULL_SCISSOR;
+    }
+
+    /// A sharp pad icon ([`Hud2d::icons`]) in place of its cell.
+    pub fn icon(&mut self, code: u8, x: i32, y: i32, rgba: u32) {
+        self.icons.push(IconMark { code, x, y, rgba, scissor: self.scissor, at: self.prims.len(), boxed: false });
     }
 
     /// A primitive with 1/16-pixel corners (strip order).
@@ -664,6 +692,8 @@ pub struct Hud2dHook {
     /// 0 under the noise, 1 the noise (ALPHA_1 0x68, added), 2 over it. Set by crate::menu_render and
     /// crate::vendor_render each frame.
     pub statics: [Vec<Prim>; 3],
+    /// The sharp pad icons among [`Hud2dHook::prims`] (`IconMark::at` indexes them).
+    pub icons: Vec<IconMark>,
     /// The HUD's own calls are not drawn (mode 3 draws no HUD).
     pub replace_hud: bool,
     /// The HUD update loop does not run (it is part of the mode-0 render only).
@@ -775,7 +805,7 @@ impl Plugin for HudPlugin {
         if std::env::var("RC_HUD").is_ok_and(|v| v.trim() == "0") { return; }
         app.add_plugins((Material2dPlugin::<HudMaterial>::default(), UiMaterialPlugin::<HudComposite>::default(), UiMaterialPlugin::<HudCompositeOver>::default(), UiMaterialPlugin::<HudStaticComposite>::default()))
             .add_systems(crate::level_switch::LevelStartup, setup)
-            .add_systems(Update, (target_main_camera, tick_and_build, apply_fx_cuts, apply_button_icons).chain().in_set(HudBuild))
+            .add_systems(Update, (target_main_camera, tick_and_build, apply_fx_cuts, apply_button_icons, export_icons).chain().in_set(HudBuild))
             .add_systems(PostUpdate, apply_scaling);
     }
 }
@@ -899,7 +929,7 @@ fn setup(
         built: Default::default(),
         ticks_done: 0,
         draws: Vec::new(),
-        hud2d: Hud2d { frame_sizes, ..default() },
+        hud2d: Hud2d { frame_sizes, sharp_icons: true, ..default() },
         // Until the first frame reads the game state (Persistent / Session / HeldWeapon): 4/4, no bolts, no slot.
         game: Inputs { lang: lh.lang, ..Default::default() },
         banner_seq: 0,
@@ -1058,6 +1088,8 @@ fn tick_and_build(
     // HudDraw 0x24fb50 skips the HUD in a frame whose tick set 0x17e988 (the Visibomb's flight: crate::visibomb_view).
     let hud_off = crate::visibomb_view::hud_off(play.as_deref());
     if !hook.replace_hud && !scene.hide_hud && !hud_off { crate::text_render::execute(&mut rt.hud2d, &mut st, &rt.glyphs, &rt.draws); }
+    let base = rt.hud2d.prims.len();
+    rt.hud2d.icons.extend(hook.icons.iter().map(|m| IconMark { at: m.at + base, ..*m }));
     rt.hud2d.prims.extend(hook.prims.iter().copied());
     rt.hud2d.prims.extend(scene.prims.iter().copied());
     // The main loop's card icon (`entry` 0x259c40) while the card is in use (an autosave, any save or load), drawn
@@ -1084,6 +1116,12 @@ fn tick_and_build(
     for ((m, prims), b) in rt.static_meshes.iter().zip(&hook.statics).zip(&mut rt.built[1..]) {
         if b.update(prims, &[], &[], &dyns, e) { let _ = meshes.insert(m, build_mesh(prims, &[], &[], &rt.atlas_frames, &rt.atlas_fx, &dyns, e)); }
     }
+}
+
+/// Port-only: the frame's sharp pad icons (crate::button_icons), once the layer's primitives are final.
+fn export_icons(rt: Option<Res<HudRuntime>>, marks: Option<ResMut<crate::button_icons::Marks>>) {
+    let Some(mut marks) = marks else { return };
+    marks.0 = rt.map_or_else(Vec::new, |rt| crate::button_icons::shown(&rt.hud2d.prims, &rt.hud2d.add, &rt.hud2d.icons));
 }
 
 /// The HUD inputs the hero and the classes hold (rc_game::hud::Inputs: the callers the HUD sees through the state).
