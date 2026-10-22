@@ -146,6 +146,10 @@ pub mod text {
     pub const AVAILABLE: i32 = -0x1c4;
     pub const LOCKED: i32 = -0x1c5;
     pub const GMS_OFF: i32 = -0x1c6;
+    pub const BUTTON_ICONS: i32 = -0x1d0;
+    pub const PS5: i32 = -0x1d1;
+    pub const XBOX_ONE: i32 = -0x1d2;
+    pub const AUTO: i32 = -0x1d3;
     /// The game's own "on" / "off" (20314 / 20315, the Subtitles / HelpDesk toggle values).
     pub const ON: i32 = 20314;
     pub const OFF: i32 = 20315;
@@ -200,6 +204,10 @@ pub mod text {
             AVAILABLE => b"Available",
             LOCKED => b"Locked",
             GMS_OFF => b"Off",
+            BUTTON_ICONS => b"Button icons",
+            PS5 => b"PS5",
+            XBOX_ONE => b"Xbox One",
+            AUTO => b"Auto",
             _ => return None,
         })
     }
@@ -239,6 +247,9 @@ pub enum Setting {
     TriggerEffects,
     /// Not a value: ✕ opens the Gadgetron Movement System page (module docs).
     Controller,
+    /// The button icons in text (the engine's): value 0 Original (the disc's), 1 PS5, 2 Xbox One, 3 Auto (the
+    /// controller last used).
+    ButtonIcons,
 }
 
 /// One row: the setting, its label and the ids of its values (✕ cycles through them).
@@ -266,6 +277,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::VibrationStrength, label: text::VIBRATION_STRENGTH, values: &[text::LOW, text::MEDIUM, text::HIGH] },
     Entry { setting: Setting::FireButton, label: text::FIRE_BUTTON, values: &[text::CIRCLE, text::R2] },
     Entry { setting: Setting::TriggerEffects, label: text::TRIGGER_EFFECTS, values: &[text::ON, text::OFF] },
+    Entry { setting: Setting::ButtonIcons, label: text::BUTTON_ICONS, values: &[text::ORIGINAL, text::PS5, text::XBOX_ONE, text::AUTO] },
 ];
 
 /// The Port Options page shows [`ENTRIES`]`[..PORT_ROWS]` (the last one the Controller row); the Controller page the
@@ -613,7 +625,7 @@ mod tests {
         // Port Options ends with the Controller row (no value: it opens a page); the controller settings follow.
         assert_eq!((ENTRIES[PORT_ROWS - 1].setting, ENTRIES[PORT_ROWS - 1].values.len()), (Setting::Controller, 0));
         let gms: Vec<Setting> = ENTRIES[PORT_ROWS..].iter().map(|e| e.setting).collect();
-        assert_eq!(gms, vec![Setting::Vibration, Setting::VibrationStrength, Setting::FireButton, Setting::TriggerEffects]);
+        assert_eq!(gms, vec![Setting::Vibration, Setting::VibrationStrength, Setting::FireButton, Setting::TriggerEffects, Setting::ButtonIcons]);
     }
 
     #[test]

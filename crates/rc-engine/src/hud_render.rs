@@ -588,6 +588,8 @@ struct HudRuntime {
     pending: Vec<rc_game::hud::Call>,
     /// The CLUT cut each FX texture's atlas region holds (none: the stored CLUT) ([`apply_fx_cuts`]).
     fx_cuts: std::collections::HashMap<usize, u8>,
+    /// The style the fonts' button cells hold in the atlas (none: as built, the disc's) ([`apply_button_icons`]).
+    button_icons: Option<crate::button_icons::IconStyle>,
 }
 
 /// The inputs a HUD mesh was last built from. [`tick_and_build`] re-inserts a mesh only when they change: every
@@ -773,7 +775,7 @@ impl Plugin for HudPlugin {
         if std::env::var("RC_HUD").is_ok_and(|v| v.trim() == "0") { return; }
         app.add_plugins((Material2dPlugin::<HudMaterial>::default(), UiMaterialPlugin::<HudComposite>::default(), UiMaterialPlugin::<HudCompositeOver>::default(), UiMaterialPlugin::<HudStaticComposite>::default()))
             .add_systems(crate::level_switch::LevelStartup, setup)
-            .add_systems(Update, (target_main_camera, tick_and_build, apply_fx_cuts).chain().in_set(HudBuild))
+            .add_systems(Update, (target_main_camera, tick_and_build, apply_fx_cuts, apply_button_icons).chain().in_set(HudBuild))
             .add_systems(PostUpdate, apply_scaling);
     }
 }
@@ -908,6 +910,7 @@ fn setup(
         calls_cursor: None,
         pending: Vec::new(),
         fx_cuts: Default::default(),
+        button_icons: None,
     });
 }
 
@@ -1241,6 +1244,44 @@ fn apply_fx_cuts(rt: Option<ResMut<HudRuntime>>, level: Res<crate::Level>, play:
         }
         rt.fx_cuts.insert(fx, cut);
     }
+}
+
+/// The fonts' button cells (codes 0x10..0x19) in the style crate::button_icons wants, rewritten in the atlas when it
+/// changes and in every new atlas (each level's; built with the disc's cells, so `Original` then needs no write).
+fn apply_button_icons(
+    rt: Option<ResMut<HudRuntime>>,
+    level: Res<crate::Level>,
+    want: Option<Res<crate::button_icons::Icons>>,
+    dyn_images: Option<Res<crate::hud_images::HudImages>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    use crate::button_icons::{self, IconStyle, CELL_H, CELL_W};
+    let (Some(mut rt), Some(want), Some(di), Some(lh)) = (rt, want, dyn_images, level.0.hud.as_ref()) else { return };
+    let style = want.0;
+    if rt.button_icons.unwrap_or(IconStyle::Original) == style { return; }
+    let Some(mut img) = images.get_mut(&di.atlas) else { return };
+    let Some(data) = img.data.as_mut() else { return };
+    for f in 0..3 {
+        let (Some(Some([ax, ay, aw, ah])), Some(Some(src))) = (rt.atlas_fx.get(f + 1).copied(), lh.fx.get(f + 1)) else { continue };
+        for code in button_icons::CODES {
+            let g = rt.glyphs[f][code as usize];
+            if g.advance == 0 { continue; }
+            let (u, v) = (g.u as u32, g.v as u32);
+            let texel = |x: u32, y: u32| {
+                let i = (((v + y) * src.width + u + x) * 4) as usize;
+                src.rgba.get(i..i + 4).map_or([0; 4], |p| [p[0], p[1], p[2], p[3]])
+            };
+            let cell = button_icons::cell(style, code, texel);
+            // Inside the font texture's atlas region only (the stick cells end at its right edge).
+            for y in 0..CELL_H.min(ah.saturating_sub(v)) {
+                let w = CELL_W.min(aw.saturating_sub(u));
+                let dst = (((ay + v + y) * ATLAS_W + ax + u) * 4) as usize;
+                let row: Vec<u8> = cell[(y * CELL_W) as usize..(y * CELL_W + w) as usize].concat();
+                if let Some(d) = data.get_mut(dst..dst + row.len()) { d.copy_from_slice(&row); }
+            }
+        }
+    }
+    rt.button_icons = Some(style);
 }
 
 

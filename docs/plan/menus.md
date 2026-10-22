@@ -558,6 +558,12 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   pages' panels are rearranged (`port::panel_layout` → `frame::PanelAdjust`): the title centred, the list stretched to
   the hints (`port::VISIBLE` rows), by moving the corner joints in the rects and the engine's 3D frames alike; the
   game's own pages keep their layout.
+* **Button icons** (Controller page, port-only): Original / PS5 / Xbox One / Auto → `haptics::ControllerSettings::icons`
+  (key `button_icons`). The pad icons in text are the three fonts' glyph cells 0x10..0x19 (✕ ○ △ □, L1 R1 L2 R2, the
+  left / right stick; 24×16 at the glyph's (u, v) of FX 1..3); `hud_render::apply_button_icons` rewrites them in the HUD
+  atlas with `button_icons::cell` (drawn in code on the disc cells' footprints) when the style changes and in every new
+  atlas, so menus, vendor, help box and prompts all follow. Xbox One maps by position: ✕ A, ○ B, △ Y, □ X; LB RB LT RT.
+  Auto: PS5 for a Sony pad, Xbox One for any other, as the controller last used (`gms::Gms::active`).
 * **Gadgetron Movement System** (GMS, idea by roxas997 on the ReRAC Discord): the Controller row does not
   cycle; ✕ opens its own page (`port::GMS_PAGE`, from the main menu `port::GMS_PAGE_FRONT`; Port Options' frames, parent
   Port Options) titled "Gadgetron Movement System" (regular font: in the large one the title wraps and the label turns

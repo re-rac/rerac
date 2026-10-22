@@ -56,6 +56,7 @@ mod draw_stats;
 mod dualsense;
 mod haptics;
 mod gms;
+mod button_icons;
 mod frame_pace;
 mod graphics;
 mod menu_models;
@@ -189,6 +190,8 @@ fn main() -> anyhow::Result<()> {
     .add_plugins(haptics::HapticsPlugin)
     // The Gadgetron Movement System: the controllers' page and lock, and its HelpDesk note (crate::gms).
     .add_plugins(gms::GmsPlugin)
+    // The button icons in text as the PS2's, a PS5's or an Xbox One's (crate::button_icons).
+    .add_plugins(button_icons::ButtonIconsPlugin)
     // One game tick per drawn frame, at most 60 frames a second (crate::frame_pace).
     .add_plugins(frame_pace::FramePacePlugin)
     .add_plugins(no_clusters::NoClustersPlugin)

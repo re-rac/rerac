@@ -71,11 +71,13 @@ pub struct ControllerSettings {
     pub fire_r2: bool,
     /// R2 takes the held weapon's effect (with `fire_r2`).
     pub triggers: bool,
+    /// The button icons in text (crate::button_icons).
+    pub icons: crate::button_icons::IconStyle,
 }
 
 impl ControllerSettings {
     /// The port settings file, `RC_VIBRATION=0|1` over its vibration; by default rumble on at medium strength, ○ fires,
-    /// trigger effects on (felt once R2 fires).
+    /// trigger effects on (felt once R2 fires), the disc's button icons.
     pub fn startup() -> Self {
         let key = |k: &str| crate::render_settings::load_key(k).map(|v| v.trim().to_string());
         let strength = key("vibration_strength").and_then(|v| Strength::KEYS.iter().position(|k| *k == v)).map_or(Strength::Medium, |i| Strength::ALL[i]);
@@ -85,7 +87,8 @@ impl ControllerSettings {
         };
         let fire_r2 = key("fire_button").is_some_and(|v| v == "r2");
         let triggers = key("trigger_effects").is_none_or(|v| v != "off");
-        ControllerSettings { enabled, strength, fire_r2, triggers }
+        let icons = key("button_icons").and_then(|v| crate::button_icons::IconStyle::from_key(&v)).unwrap_or_default();
+        ControllerSettings { enabled, strength, fire_r2, triggers, icons }
     }
 
     /// Writes the settings into the port settings file.
@@ -95,6 +98,7 @@ impl ControllerSettings {
         crate::render_settings::save_key("vibration_strength", self.strength.key());
         crate::render_settings::save_key("fire_button", if self.fire_r2 { "r2" } else { "circle" });
         crate::render_settings::save_key("trigger_effects", on(self.triggers));
+        crate::render_settings::save_key("button_icons", self.icons.key());
     }
 }
 

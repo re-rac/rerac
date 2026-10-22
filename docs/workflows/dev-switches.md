@@ -61,6 +61,7 @@ module that reads it: `grep -rn '"RC_' crates/` lists them all.
 | `RC_DUALSENSE` | `0`: do not read DualSense pads from their HID reports (crate::dualsense; they then go through Bevy's gamepads, which miss a Bluetooth pad in its extended report mode); no rumble or trigger effects either |
 | `RC_DUALSENSE_TRACE` | `1`: print every DualSense report as decoded (sticks, buttons, R2's travel) |
 | `RC_VIBRATION` | `0` / `1`: controller rumble off / on at start, over the Port Options value (crate::haptics) |
+| `RC_DUMP_BUTTONS` | `<dir>`: write the fonts' button cells (codes 0x10..0x1f, 24×16 RGBA with raw GS alpha) and the port's PS5 / Xbox One art there, and print their glyph table entries (crate::button_icons) |
 | `RC_GMS_TRACE` | `1`: every 120 ticks, the Gadgetron Movement System HelpDesk note's conditions (level, held buttons, the help box's state; crate::gms). The note shows once; `gms_help = shown` in the settings file records it |
 | `RC_RESOLUTION` | `window` (default: the largest frame of the Aspect ratio that fits the window) or `416`, `720`, `1080`, `1440`, `2160` (a frame that many lines high at the Aspect ratio, scaled to the window); overrides the Port Options value at start (crate::display) |
 | `RC_FULLSCREEN` | `1`: borderless fullscreen on the current monitor; `0`: windowed; overrides the Port Options value at start (F11 toggles in game) |
