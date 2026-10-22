@@ -554,7 +554,15 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   `trigger_effects` in the settings file. A change of the vibration rows plays a short pulse at the new strength.
   On the hoverboard (`hoverboard::GROUP`) R2 stays R2, the board's fourth trick, without a weapon feel
   (`haptics::R2Raw`). Pads are read, and rumble and R2's effect sent, only while the game's window has the focus.
-* **Gadgetron Movement System** (GMS, idea by roxas997 on the ReRAC Discord): the Controller row (value "GMS") does not
+* **Controller page and panel layout** (port-only): Port Options shows `port::ENTRIES[..PORT_ROWS]`, its last row
+  "Controller" (no value, a page button); the controller rows (Vibration, Vibration strength, Fire button, Trigger
+  effects) are on the Controller page, above the connected controllers, their values still in the Port Options list.
+  Between two pages of the same frames (Port Options ↔ its Controller page) the frames hold (`frame::FrameMobys::hold`):
+  △ would play them back to the frames' parent layout (the main menu's small Options panel). In the pause menu the port
+  pages' panels are rearranged (`port::panel_layout` → `frame::PanelAdjust`): the title centred, the list stretched to
+  the hints (`port::VISIBLE` rows), by moving the corner joints in the rects and the engine's 3D frames alike; the
+  game's own pages keep their layout.
+* **Gadgetron Movement System** (GMS, idea by roxas997 on the ReRAC Discord): the Controller row does not
   cycle; ✕ opens its own page (`port::GMS_PAGE`, from the main menu `port::GMS_PAGE_FRONT`; Port Options' frames, parent
   Port Options) titled "Gadgetron Movement System" (regular font: in the large one the title wraps and the label turns
   into a scroller) listing the connected controllers (`port::GmsList`, filled by the engine's `gms::Gms` before each tick):
