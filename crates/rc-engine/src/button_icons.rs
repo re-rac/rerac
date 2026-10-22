@@ -14,10 +14,23 @@
 //! * **Xbox One**: the letters in their colours on the dark disc, by position (✕ the bottom button: A green, ○ B red,
 //!   △ Y yellow, □ X blue); LB RB LT RT.
 //!
+//! **Sharp icons**: the PS5 and Xbox styles are drawn at the window's resolution, over the 512×416 layer:
+//! `text_render::font_print` leaves those codes out of the HUD's and the page menus' primitives and records where they
+//! go ([`crate::hud_render::IconMark`]); [`shown`] takes the frame's list (dimmed by the fades drawn over them) and
+//! [`place`] lays one UI image per icon on the HUD's 512×416 box. The art is Zacksly's "PS5 Button Icons and
+//! Controls" and "Xbox Series Button Icons and Controls" (Buttons Outline / White / 128w; CC BY 3.0,
+//! assets/button_icons/CREDITS.md), fitted to the cells' footprints, square on screen. The cells above stay for the
+//! monitors' canvases and the scene subtitles, which keep their own 2D lists.
+//!
 //! `RC_DUMP_BUTTONS=<dir>`: writes each font's original cells 0x10..0x1f (24×16 RGBA, raw GS alpha) as
 //! `f<font>_<code>.rgba` and prints their glyph table entries.
 
+use crate::hud_render::{IconMark, Prim, Tex, H, W};
+use bevy::asset::RenderAssetUsages;
+use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::prelude::*;
+use bevy::render::render_resource::TextureFormat;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// The pad-icon cells' size in the font textures (`text_render::font_print`).
 pub const CELL_W: u32 = 24;
@@ -221,6 +234,212 @@ fn resolve(
         s => s,
     };
     if icons.0 != style { icons.0 = style; }
+    SHARP.store(matches!(style, IconStyle::Ps5 | IconStyle::Xbox), Ordering::Relaxed);
+}
+
+/// A PS5 or Xbox style is shown: `text_render::font_print` hands the pad icons to the sharp overlay.
+static SHARP: AtomicBool = AtomicBool::new(false);
+
+pub fn sharp() -> bool { SHARP.load(Ordering::Relaxed) }
+
+macro_rules! art {
+    ($dir:literal: $($name:literal),*) => { [$(include_bytes!(concat!("../assets/button_icons/", $dir, "/", $name, ".png")) as &[u8]),*] };
+}
+
+/// The sharp art by code (0x10..0x19).
+const PS5_ART: [&[u8]; 10] = art!("ps5": "cross", "circle", "triangle", "square", "l1", "r1", "l2", "r2", "left_stick", "right_stick");
+const XBOX_ART: [&[u8]; 10] = art!("xbox": "a", "b", "y", "x", "lb", "rb", "lt", "rt", "left_stick", "right_stick");
+
+/// A PNG as 8-bit sRGB RGBA: (width, height, texels).
+fn decode(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let img = Image::from_buffer(bytes, ImageType::Extension("png"), CompressedImageFormats::NONE, true, ImageSampler::linear(), RenderAssetUsages::all()).ok()?;
+    let img = if img.texture_descriptor.format == TextureFormat::Rgba8UnormSrgb { img } else { img.convert(TextureFormat::Rgba8UnormSrgb)? };
+    Some((img.width(), img.height(), img.data?))
+}
+
+/// Half the size, 2×2 boxes (colour weighted by coverage): the copy drawn below ~96 pixels, where the 128-texel art
+/// would alias under bilinear sampling.
+fn half(w: u32, h: u32, rgba: &[u8]) -> Vec<u8> {
+    let (hw, hh) = (w / 2, h / 2);
+    let mut out = vec![0u8; (hw * hh * 4) as usize];
+    for y in 0..hh {
+        for x in 0..hw {
+            let (mut c, mut a) = ([0u32; 3], 0u32);
+            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                let i = (((2 * y + dy) * w + 2 * x + dx) * 4) as usize;
+                let pa = rgba[i + 3] as u32;
+                for (k, ck) in c.iter_mut().enumerate() { *ck += rgba[i + k] as u32 * pa; }
+                a += pa;
+            }
+            let o = ((y * hw + x) * 4) as usize;
+            for (k, ck) in c.iter().enumerate() { out[o + k] = ck.checked_div(a).unwrap_or(0) as u8; }
+            out[o + 3] = (a / 4) as u8;
+        }
+    }
+    out
+}
+
+/// The drawn part of a picture: x0, y0, x1, y1 (ends exclusive), in texels.
+fn bounds(w: u32, h: u32, rgba: &[u8]) -> [f32; 4] {
+    let lit = |x: u32, y: u32| rgba[((y * w + x) * 4 + 3) as usize] > 0;
+    let (mut b, mut any) = ([w, h, 0, 0], false);
+    for y in 0..h {
+        for x in 0..w {
+            if lit(x, y) {
+                any = true;
+                b = [b[0].min(x), b[1].min(y), b[2].max(x + 1), b[3].max(y + 1)];
+            }
+        }
+    }
+    if any { b.map(|v| v as f32) } else { [0.0, 0.0, w as f32, h as f32] }
+}
+
+/// The sharp art, `[PS5 0x10..0x19, Xbox 0x10..0x19]`: each picture at full and [`half`] size, its [`bounds`] and
+/// its side, in full-size texels.
+#[derive(Resource)]
+struct Art {
+    images: Vec<[Handle<Image>; 2]>,
+    bounds: Vec<[f32; 4]>,
+    side: Vec<f32>,
+}
+
+fn load_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    use bevy::render::render_resource::{Extent3d, TextureDimension};
+    let image = |w: u32, h: u32, data: Vec<u8>| {
+        let mut i = Image::new(Extent3d { width: w, height: h, depth_or_array_layers: 1 }, TextureDimension::D2, data, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD);
+        i.sampler = ImageSampler::linear();
+        i
+    };
+    let mut art = Art { images: Vec::new(), bounds: Vec::new(), side: Vec::new() };
+    for bytes in PS5_ART.iter().chain(&XBOX_ART) {
+        let (w, h, rgba) = decode(bytes).filter(|(w, h, _)| *w >= 2 && *h >= 2).unwrap_or((2, 2, vec![0; 16]));
+        let small = image(w / 2, h / 2, half(w, h, &rgba));
+        art.bounds.push(bounds(w, h, &rgba));
+        art.side.push(w.max(h) as f32);
+        art.images.push([images.add(image(w, h, rgba)), images.add(small)]);
+    }
+    commands.insert_resource(art);
+}
+
+/// The box an icon's drawn part fits in, in its 24×16 cell: centre x, y and width, height (the disc's footprints: the
+/// face buttons' 16×16 disc at x 2..17, y 0..15; the shoulders' 21×13 box at x 3..23, y 2..14; the sticks' 15×14 knob
+/// at x 1..15, y 1..14).
+fn footprint(code: u8) -> [f32; 4] {
+    match code {
+        0x10..=0x13 => [10.0, 8.0, 16.0, 16.0],
+        0x14..=0x17 => [13.5, 8.5, 21.0, 13.0],
+        _ => [8.5, 8.0, 15.0, 14.0],
+    }
+}
+
+/// An icon to draw this frame: its cell's corner in game pixels and its tint (sRGB and alpha, 0..1).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shown {
+    pub code: u8,
+    pub x: i32,
+    pub y: i32,
+    pub colour: [f32; 4],
+}
+
+/// The frame's sharp icons (crate::hud_render sets them once the layer's primitives are final).
+#[derive(Resource, Default)]
+pub struct Marks(pub Vec<Shown>);
+
+/// The marks to draw: those inside their scissor (a page menu's only on the 512×416 screen), in the text colour's
+/// grey (`FontPrint`: texel × grey / 0x80) and alpha, faded toward the untextured rectangles drawn over them after
+/// (the fades: a black or white rectangle over the screen).
+pub fn shown(prims: &[Prim], add: &[usize], marks: &[IconMark]) -> Vec<Shown> {
+    let full = [0, W - 1, 0, H - 1];
+    let ch = |v: u32, k: u32| ((v >> k) & 0xff) as f32;
+    marks
+        .iter()
+        .filter_map(|m| {
+            let (cx, cy) = (m.x + 12, m.y + 8);
+            let s = m.scissor;
+            if s != full && !(s[0] <= cx && cx <= s[1] && s[2] <= cy && cy <= s[3]) { return None; }
+            if m.boxed && !(0..W).contains(&cx) { return None; }
+            let k = (ch(m.rgba, 0) / 128.0).min(1.0);
+            let mut colour = [k, k, k, (ch(m.rgba, 24) / 128.0).min(1.0)];
+            for (i, p) in prims.iter().enumerate().skip(m.at) {
+                if p.tex != Tex::None || add.binary_search(&i).is_ok() { continue; }
+                let [x, y, w, h] = rect(p);
+                if !(x <= cx && cx < x + w && y <= cy && cy < y + h) { continue; }
+                let a = (ch(p.rgba, 24) / 128.0).min(1.0);
+                for (c, v) in colour.iter_mut().take(3).enumerate() { *v += (ch(p.rgba, 8 * c as u32) / 255.0 - *v) * a; }
+            }
+            (colour[3] > 0.0).then_some(Shown { code: m.code, x: m.x, y: m.y, colour })
+        })
+        .collect()
+}
+
+/// A primitive's bounding rectangle `[x, y, w, h]`.
+fn rect(p: &Prim) -> [i32; 4] {
+    let (x0, x1) = (p.pos.iter().map(|v| v[0]).min().unwrap_or(0), p.pos.iter().map(|v| v[0]).max().unwrap_or(0));
+    let (y0, y1) = (p.pos.iter().map(|v| v[1]).min().unwrap_or(0), p.pos.iter().map(|v| v[1]).max().unwrap_or(0));
+    [x0, y0, x1 - x0, y1 - y0]
+}
+
+/// One sharp icon's UI image, a child of the HUD's 512×416 box (pooled: hidden while unused).
+#[derive(Component)]
+struct IconNode;
+
+/// The [`Marks`] as UI images on the HUD's box: square on screen (the game's pixels are not), the art's drawn part
+/// fitted to the cell's [`footprint`].
+fn place(
+    marks: Res<Marks>,
+    icons: Res<Icons>,
+    art: Option<Res<Art>>,
+    hud_box: Query<(Entity, &ComputedNode), With<crate::hud_render::HudBoxNode>>,
+    mut nodes: Query<(&mut Node, &mut ImageNode, &mut Visibility), With<IconNode>>,
+    mut commands: Commands,
+) {
+    let style = match icons.0 {
+        IconStyle::Ps5 => Some(0),
+        IconStyle::Xbox => Some(1),
+        _ => None,
+    };
+    let (Some(art), Some(style), Ok((parent, computed))) = (art, style, hud_box.single()) else {
+        for (_, _, mut v) in &mut nodes { v.set_if_neq(Visibility::Hidden); }
+        return;
+    };
+    let size = computed.size();
+    // Horizontal game pixels per vertical one's length on screen (0.92 in the 4:3 box).
+    let ax = if size.x > 0.0 && size.y > 0.0 { (size.y / H as f32) / (size.x / W as f32) } else { 0.75 * W as f32 / H as f32 };
+    let px_per_y = size.y / H as f32;
+    let mut pool = nodes.iter_mut();
+    for m in &marks.0 {
+        let k = style * 10 + (m.code - 0x10) as usize;
+        let [bx0, by0, bx1, by1] = art.bounds[k];
+        let [cx, cy, tw, th] = footprint(m.code);
+        // Vertical game pixels per art texel.
+        let s = (th / (by1 - by0)).min(tw / ((bx1 - bx0) * ax));
+        let side = art.side[k] * s;
+        let left = m.x as f32 + cx - (bx0 + bx1) / 2.0 * s * ax;
+        let top = m.y as f32 + cy - (by0 + by1) / 2.0 * s;
+        let node = Node {
+            position_type: PositionType::Absolute,
+            left: Val::Percent(left * 100.0 / W as f32),
+            top: Val::Percent(top * 100.0 / H as f32),
+            width: Val::Percent(side * ax * 100.0 / W as f32),
+            height: Val::Percent(side * 100.0 / H as f32),
+            ..default()
+        };
+        let image = art.images[k][usize::from(side * px_per_y < 96.0)].clone();
+        let [r, g, b, a] = m.colour;
+        let color = Color::srgba(r, g, b, a);
+        match pool.next() {
+            Some((mut n, mut img, mut v)) => {
+                if *n != node { *n = node; }
+                if img.image != image { img.image = image; }
+                if img.color != color { img.color = color; }
+                v.set_if_neq(Visibility::Inherited);
+            }
+            None => {
+                commands.spawn((node, ImageNode { image, color, ..default() }, ZIndex(10), IconNode, ChildOf(parent), Name::new("sharp button icon")));
+            }
+        }
+    }
+    for (_, _, mut v) in pool { v.set_if_neq(Visibility::Hidden); }
 }
 
 /// `RC_DUMP_BUTTONS`: the level's cells, once per level.
@@ -256,7 +475,11 @@ pub struct ButtonIconsPlugin;
 
 impl Plugin for ButtonIconsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Icons>().add_systems(PostUpdate, resolve).add_systems(Update, dump);
+        app.init_resource::<Icons>()
+            .init_resource::<Marks>()
+            .add_systems(Startup, load_art)
+            .add_systems(PostUpdate, resolve)
+            .add_systems(Update, (dump, place.after(crate::hud_render::HudBuild)));
     }
 }
 
@@ -283,6 +506,28 @@ mod tests {
     fn original_copies_the_disc() {
         let c = cell(IconStyle::Original, 0x10, |x, y| [x as u8, y as u8, 7, 0x80]);
         assert_eq!((c[0], c[(5 * CELL_W + 9) as usize]), ([0, 0, 7, 0x80], [9, 5, 7, 0x80]));
+    }
+
+    #[test]
+    fn art_decodes() {
+        for bytes in PS5_ART.iter().chain(&XBOX_ART) {
+            let (w, h, rgba) = decode(bytes).expect("png");
+            assert_eq!((w, h, rgba.len()), (128, 128, 128 * 128 * 4));
+            let b = bounds(w, h, &rgba);
+            assert!(b[2] - b[0] > 60.0 && b[3] - b[1] > 40.0, "{b:?}");
+            assert_eq!(half(w, h, &rgba).len(), 64 * 64 * 4);
+        }
+    }
+
+    #[test]
+    fn fades_dim_the_icons() {
+        let mark = IconMark { code: 0x10, x: 100, y: 100, rgba: 0x8080_8080, scissor: [0, W - 1, 0, H - 1], at: 1, boxed: true };
+        let fade = |a: u32| Prim { tex: Tex::None, pos: [[0, 0], [W, 0], [0, H], [W, H]], uv: [[0, 0]; 4], rgba: a << 24, scissor: [0, W - 1, 0, H - 1], repeat: false, nearest: false, boxed: false, uv16: false };
+        // Drawn before the icon: no effect; after it: halfway to black.
+        assert_eq!(shown(&[fade(0x80), fade(0x40)], &[], &[mark])[0].colour, [0.5, 0.5, 0.5, 1.0]);
+        // Off the screen (a page menu's unused panel) or outside its scissor: not drawn.
+        assert!(shown(&[], &[], &[IconMark { x: 600, ..mark }]).is_empty());
+        assert!(shown(&[], &[], &[IconMark { scissor: [0, 50, 0, 50], ..mark }]).is_empty());
     }
 
     #[test]

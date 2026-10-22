@@ -59,7 +59,11 @@ pub fn font_print(out: &mut Hud2d, st: &mut TextState, glyphs: &GlyphTable, font
             if c < 0x20 {
                 let avg = ((colour & 0xff) + ((colour >> 8) & 0xff) + ((colour >> 16) & 0xff)) / 3;
                 let grey = (colour & 0xff00_0000).wrapping_add(avg << 16).wrapping_add(avg << 8).wrapping_add(avg);
-                out.strip_glyph(fx, x, y + g.y_off as i32, 24, 16, g.u as i32, g.v as i32, 24, 16, grey);
+                if out.sharp_icons && crate::button_icons::sharp() && crate::button_icons::CODES.contains(&c) {
+                    out.icon(c, x, y + g.y_off as i32, grey);
+                } else {
+                    out.strip_glyph(fx, x, y + g.y_off as i32, 24, 16, g.u as i32, g.v as i32, 24, 16, grey);
+                }
             } else if c > 0x20 {
                 out.strip_glyph(fx, x, y + g.y_off as i32, 16, 16, g.u as i32, g.v as i32, 16, 16, colour);
             }

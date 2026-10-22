@@ -1576,6 +1576,7 @@ fn build_prims(
     let Some(mut rt) = rt else { return };
     let Some(lh) = level.0.hud.as_ref() else { return };
     let mut h = Hud2d::default();
+    h.sharp_icons = true;
     h.frame_sizes = rt.assets.hud.frame_sizes.clone();
     let mut st = TextState::default();
     let mut statics: [Vec<Prim>; 3] = Default::default();
@@ -1585,6 +1586,7 @@ fn build_prims(
     // The pages stay clipped to the 512×416 screen in a 16:9 frame (`Prim::boxed`): their unused panels lie off it.
     for p in h.prims.iter_mut().chain(statics.iter_mut().flatten()) { p.boxed = true; }
     hook.prims = h.prims;
+    hook.icons = h.icons.into_iter().map(|m| crate::hud_render::IconMark { boxed: true, ..m }).collect();
     hook.statics = statics;
     hook.replace_hud = matches!(rt.render_mode, Mode::Menu | Mode::Slideshow) || menu_under_freeze(&rt);
     // The vendor (mode 5) runs `HudUpdate(1)` every frame: the HUD ticks and draws over its screens.
