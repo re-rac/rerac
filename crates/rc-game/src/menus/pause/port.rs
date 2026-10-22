@@ -33,6 +33,13 @@
 //! [`text`]); the engine maps the [`Setting`] to its resource and persistence. The engine can restrict a row to
 //! some of its values ([`PageMenu::set_port_choices`], e.g. the sample counts the GPU supports): ✕ then skips
 //! the others.
+//!
+//! **The Gadgetron Movement System** (GMS, the controllers in the game's own lore): the "Controller" row ([`Setting::
+//! Controller`], value "GMS") does not cycle; ✕ opens a page of its own ([`GMS_PAGE`], from the main menu
+//! [`GMS_PAGE_FRONT`]) with the same frames, its title "Gadgetron Movement System" and a list of the connected
+//! controllers ([`GmsList`]): each row a device's name and its status (Active, Available, Locked, Off). The engine fills
+//! the rows before every menu tick ([`PageMenu::set_gms_rows`]) and reads the row ✕ was pressed on after it
+//! ([`PageMenu::take_gms_pick`]); △ goes back to Port Options.
 
 use super::super::{text as print, MenuAssets, MenuDraw, MenuInput, MenuSound, Overlay};
 use super::options::{keys, right};
@@ -51,6 +58,14 @@ pub const UPDATE: u32 = 0x7f00_1000;
 pub const DRAW: u32 = 0x7f00_1004;
 /// The page kind (no game code keys on it).
 pub const KIND: i32 = 0x7f;
+/// The Gadgetron Movement System page (from the pause menu's Port Options), its main-menu copy, its title and list
+/// widgets and the list's callbacks.
+pub const GMS_PAGE: u32 = 0x7f00_0020;
+pub const GMS_PAGE_FRONT: u32 = 0x7f00_0030;
+pub const GMS_TITLE_W: u32 = 0x7f00_0300;
+pub const GMS_LIST_W: u32 = 0x7f00_0400;
+pub const GMS_UPDATE: u32 = 0x7f00_1008;
+pub const GMS_DRAW: u32 = 0x7f00_100c;
 
 /// Game records the page is attached to / modelled on (level01).
 pub const OPTIONS: u32 = 0x1b4dd0;
@@ -112,6 +127,13 @@ pub mod text {
     pub const CIRCLE: i32 = -0x1b1;
     pub const R2: i32 = -0x1b2;
     pub const TRIGGER_EFFECTS: i32 = -0x1b3;
+    pub const CONTROLLER: i32 = -0x1c0;
+    pub const GMS: i32 = -0x1c1;
+    pub const GMS_TITLE: i32 = -0x1c2;
+    pub const ACTIVE: i32 = -0x1c3;
+    pub const AVAILABLE: i32 = -0x1c4;
+    pub const LOCKED: i32 = -0x1c5;
+    pub const GMS_OFF: i32 = -0x1c6;
     /// The game's own "on" / "off" (20314 / 20315, the Subtitles / HelpDesk toggle values).
     pub const ON: i32 = 20314;
     pub const OFF: i32 = 20315;
@@ -159,6 +181,13 @@ pub mod text {
             CIRCLE => b"Circle",
             R2 => b"R2",
             TRIGGER_EFFECTS => b"Trigger effects",
+            CONTROLLER => b"Controller",
+            GMS => b"GMS",
+            GMS_TITLE => b"Gadgetron Movement System",
+            ACTIVE => b"Active",
+            AVAILABLE => b"Available",
+            LOCKED => b"Locked",
+            GMS_OFF => b"Off",
             _ => return None,
         })
     }
@@ -196,6 +225,8 @@ pub enum Setting {
     FireButton,
     /// R2's adaptive-trigger feel per weapon (DualSense, with R2 as the fire button): value 0 on, 1 off.
     TriggerEffects,
+    /// Not a value: ✕ opens the Gadgetron Movement System page (module docs).
+    Controller,
 }
 
 /// One row: the setting, its label and the ids of its values (✕ cycles through them).
@@ -217,6 +248,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::Aspect, label: text::ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9] },
     Entry { setting: Setting::Resolution, label: text::RESOLUTION, values: &[text::RES_WINDOW, text::RES_416, text::RES_720, text::RES_1080, text::RES_1440, text::RES_2160] },
     Entry { setting: Setting::Fullscreen, label: text::FULLSCREEN, values: &[text::OFF, text::ON] },
+    Entry { setting: Setting::Controller, label: text::CONTROLLER, values: &[text::GMS] },
     Entry { setting: Setting::Vibration, label: text::VIBRATION, values: &[text::ON, text::OFF] },
     Entry { setting: Setting::VibrationStrength, label: text::VIBRATION_STRENGTH, values: &[text::LOW, text::MEDIUM, text::HIGH] },
     Entry { setting: Setting::FireButton, label: text::FIRE_BUTTON, values: &[text::CIRCLE, text::R2] },
@@ -232,6 +264,34 @@ pub struct PortList {
     pub top: i32,
     pub values: Vec<u8>,
     pub choices: Vec<u32>,
+}
+
+/// A GMS row's status ([`GmsRow::status`]).
+pub mod gms_status {
+    /// The controller last used, input from all of them counting.
+    pub const ACTIVE: u8 = 0;
+    pub const AVAILABLE: u8 = 1;
+    /// The only controller read (the player picked it).
+    pub const LOCKED: u8 = 2;
+    /// Ignored while another one is locked.
+    pub const OFF: u8 = 3;
+}
+
+/// One connected controller on the GMS page: its name (the device's own, or the port's) and its status.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GmsRow {
+    pub name: Vec<u8>,
+    pub status: u8,
+}
+
+/// The GMS list's run-time state: cursor, first row shown, the rows the engine filled, and the row ✕ was pressed on
+/// this tick (taken by the engine).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GmsList {
+    pub cursor: i32,
+    pub top: i32,
+    pub rows: Vec<GmsRow>,
+    pub pick: Option<usize>,
 }
 
 /// The value after `v` among `n` values that `choices` allows (wrapping); `v` when no other is allowed.
@@ -253,8 +313,20 @@ fn list_mut(m: &mut PageMenu, w: u32) -> Option<&mut PortList> {
     }
 }
 
+fn gms_mut(m: &mut PageMenu, w: u32) -> Option<&mut GmsList> {
+    match m.widgets.get_mut(&w).map(|w| &mut w.data) {
+        Some(Data::Gms(g)) => Some(g),
+        _ => None,
+    }
+}
+
 /// The row of a setting in [`ENTRIES`].
 pub fn row_of(s: Setting) -> Option<usize> { ENTRIES.iter().position(|e| e.setting == s) }
+
+/// A list widget of the port pages (the callbacks dispatch on `update` / `draw`).
+fn list_widget(addr: u32, update: u32, draw: u32, data: Data) -> Widget {
+    Widget { addr, update, draw, enter: 0, leave: 0, dflags: 0, moby: 0, rect: [0; 4], raw: [0; 8], data }
+}
 
 impl PageMenu {
     /// Adds the page, its widgets and the Options entry (module docs). `ov` is read for the description
@@ -272,19 +344,24 @@ impl PageMenu {
         let Data::Label(l) = &mut title.data else { return false };
         l.id = text::TITLE as u32;
         title.addr = TITLE_W;
-        let settings = Widget {
-            addr: LIST_W,
-            update: UPDATE,
-            draw: DRAW,
-            enter: 0,
-            leave: 0,
-            dflags: 0,
-            moby: 0,
-            rect: [0; 4],
-            raw: [0; 8],
-            data: Data::Port(PortList { cursor: 0, top: 0, values: vec![0; ENTRIES.len()], choices: vec![u32::MAX; ENTRIES.len()] }),
-        };
+        // The GMS page's title: the same label with its own text, in the regular font (flag 8 off): "Gadgetron Movement
+        // System" in the large one wraps to two lines the box cannot hold, which turns the label into a scroller; 0x2000
+        // keeps it still.
+        let mut gms_title = title.clone();
+        if let Data::Label(l) = &mut gms_title.data {
+            l.id = text::GMS_TITLE as u32;
+            l.flags = (l.flags & !8) | 0x2000;
+        }
+        gms_title.addr = GMS_TITLE_W;
+        let settings = list_widget(
+            LIST_W,
+            UPDATE,
+            DRAW,
+            Data::Port(PortList { cursor: 0, top: 0, values: vec![0; ENTRIES.len()], choices: vec![u32::MAX; ENTRIES.len()] }),
+        );
+        let gms = list_widget(GMS_LIST_W, GMS_UPDATE, GMS_DRAW, Data::Gms(GmsList::default()));
         let page = self.port_page(PAGE, &model, ad.port_options);
+        let gms_page = self.sub_page(GMS_PAGE, &model, PAGE, GMS_TITLE_W, GMS_LIST_W);
         // The Options description label: the disc table (one id per item, variant 0) with ours inserted.
         if let Some(Data::Label(l)) = self.widgets.get_mut(&ad.port_options_label).map(|w| &mut w.data) {
             let mut t: Vec<u32> = (0..n as u32).map(|k| ov.u32(l.id.wrapping_add(k.wrapping_mul(l.stride) & !3)).unwrap_or(0)).collect();
@@ -296,18 +373,25 @@ impl PageMenu {
         }
         self.widgets.insert(TITLE_W, title);
         self.widgets.insert(LIST_W, settings);
+        self.widgets.insert(GMS_TITLE_W, gms_title);
+        self.widgets.insert(GMS_LIST_W, gms);
         self.pages.insert(PAGE, page);
+        self.pages.insert(GMS_PAGE, gms_page);
         self.install_front_port_page(ad.port_front_options);
         true
     }
 
     /// A port page modelled on `model`: its frames and fillers, the model's title label replaced by [`TITLE_W`] and
     /// its list (widget 3) by [`LIST_W`].
-    fn port_page(&self, addr: u32, model: &Page, parent: u32) -> Page {
+    fn port_page(&self, addr: u32, model: &Page, parent: u32) -> Page { self.sub_page(addr, model, parent, TITLE_W, LIST_W) }
+
+    /// A page modelled on `model` (its frames and fillers) with the title label `title` and the list `list` (widget 3).
+    /// The GMS page uses the Port Options page's model too, so its frames play from that page's layout and back.
+    fn sub_page(&self, addr: u32, model: &Page, parent: u32, title: u32, list: u32) -> Page {
         let mut widgets = model.widgets;
-        if let Some(t) = widgets.iter_mut().find(|w| matches!(self.widgets.get(w).map(|x| &x.data), Some(Data::Label(_)))) { *t = TITLE_W; }
-        widgets[3] = LIST_W;
-        Page { addr, seqs: model.seqs, parent, kind: KIND, focus: LIST_W, widgets, pending: 0 }
+        if let Some(t) = widgets.iter_mut().find(|w| matches!(self.widgets.get(w).map(|x| &x.data), Some(Data::Label(_)))) { *t = title; }
+        widgets[3] = list;
+        Page { addr, seqs: model.seqs, parent, kind: KIND, focus: list, widgets, pending: 0 }
     }
 
     /// [`PAGE_FRONT`] and its entry in the front end's Options lists (nothing when the front end's pages are missing).
@@ -316,7 +400,9 @@ impl PageMenu {
         let sound = self.saves.front_options.iter().flatten().find(|it| it.action == 3 && it.label == FRONT_SOUND_LABEL).map(|it| it.arg);
         let Some(model) = sound.and_then(|a| self.pages.get(&a)).cloned() else { return };
         let page = self.port_page(PAGE_FRONT, &model, front_options);
+        let gms_page = self.sub_page(GMS_PAGE_FRONT, &model, PAGE_FRONT, GMS_TITLE_W, GMS_LIST_W);
         self.pages.insert(PAGE_FRONT, page);
+        self.pages.insert(GMS_PAGE_FRONT, gms_page);
         for list in self.saves.front_options.iter_mut() {
             if !list.iter().any(|it| it.arg == PAGE_FRONT) { list.push(Item { label: text::ENTRY as i16, action: 3, arg: PAGE_FRONT, sublabel: 0, hl: 0 }); }
         }
@@ -341,6 +427,18 @@ impl PageMenu {
             p.choices[r] = mask | 1;
         }
     }
+
+    /// The GMS page's rows (the connected controllers, from the engine), the cursor kept on the list.
+    pub fn set_gms_rows(&mut self, rows: Vec<GmsRow>) {
+        if let Some(g) = gms_mut(self, GMS_LIST_W) {
+            g.cursor = g.cursor.clamp(0, (rows.len() as i32 - 1).max(0));
+            g.top = g.top.clamp(0, (rows.len() as i32 - VISIBLE as i32).max(0));
+            g.rows = rows;
+        }
+    }
+
+    /// The GMS row ✕ was pressed on since the last call.
+    pub fn take_gms_pick(&mut self) -> Option<usize> { gms_mut(self, GMS_LIST_W)?.pick.take() }
 }
 
 /// The list update, as the camera list 0x294cc0.
@@ -354,12 +452,18 @@ pub fn update(m: &mut PageMenu, w: u32, inp: &MenuInput, out: &mut MenuOut) -> i
     if p.cursor != start { out.sounds.push(MenuSound::Cursor); }
     p.top = p.top.clamp(p.cursor - VISIBLE as i32 + 1, p.cursor).max(0);
     let r = p.cursor as usize;
-    if inp.pressed_u & button::CROSS != 0 {
+    let opens_gms = ENTRIES.get(r).is_some_and(|e| e.setting == Setting::Controller);
+    if inp.pressed_u & button::CROSS != 0 && !opens_gms {
         let choices = p.choices.get(r).copied().unwrap_or(u32::MAX);
         if let (Some(e), Some(v)) = (ENTRIES.get(r), p.values.get_mut(r)) {
             *v = next_choice(*v, e.values.len(), choices);
             out.sounds.push(MenuSound::Confirm);
         }
+    }
+    if inp.pressed_u & button::CROSS != 0 && opens_gms {
+        // The Controller row opens the GMS page (the main menu's copy from the main menu's Port Options).
+        m.target = if m.current == PAGE_FRONT { GMS_PAGE_FRONT } else { GMS_PAGE };
+        out.sounds.push(MenuSound::Confirm);
     }
     0
 }
@@ -381,15 +485,62 @@ pub fn draw(m: &mut PageMenu, w: u32, a: &MenuAssets, out: &mut Vec<MenuDraw>) -
         right(out, a, ww - 0xc, y, LIGHT_BLUE, a.msg(e.values.get(v).copied().unwrap_or(0)));
         y += step;
     }
-    // Rows hidden above / below: the Epilogue's arrow (`media::epilogue_arrows`: icon 0xe99e frame 6, 0x20 × 0x10
-    // texels), half its size, centred between the panel's edge and the first / last row shown.
-    let (more_above, more_below) = scroll_marks(top, shown);
+    arrows(out, a, ww, wh, step, scroll_marks(top, shown));
+    2
+}
+
+/// Rows hidden above / below: the Epilogue's arrow (`media::epilogue_arrows`: icon 0xe99e frame 6, 0x20 × 0x10
+/// texels), half its size, centred between the panel's edge and the first / last row shown.
+fn arrows(out: &mut Vec<MenuDraw>, a: &MenuAssets, ww: i32, wh: i32, step: i32, (more_above, more_below): (bool, bool)) {
     let frame = a.frame(0xe99e, 6);
     let (cx, gap) = (ww as f32 / 2.0, (step - 8) as f32 / 2.0);
     // At angle 0 the arrow points right (`rotated`: a quarter clockwise); ±π/2 turn it to point up / down.
     let half = std::f32::consts::FRAC_PI_2;
     if more_above { out.push(super::map_page::rotated(frame, cx, gap.max(ARROW_W), ARROW_W, ARROW_H, half, 0x20, 0x10)); }
     if more_below { out.push(super::map_page::rotated(frame, cx, (wh as f32 - gap).min(wh as f32 - ARROW_W), ARROW_W, ARROW_H, -half, 0x20, 0x10)); }
+}
+
+/// The GMS list update: Up / Down as the Port Options list, ✕ reports the row to the engine ([`GmsList::pick`]),
+/// which locks or frees that controller.
+pub fn gms_update(m: &mut PageMenu, w: u32, inp: &MenuInput, out: &mut MenuOut) -> i32 {
+    if !m.is_focus(w) { return 0; }
+    if let Some(r) = keys(m, inp, 1) { return r; }
+    let Some(g) = gms_mut(m, w) else { return 0 };
+    let start = g.cursor;
+    if inp.pressed_u & button::UP != 0 && g.cursor != 0 { g.cursor -= 1; }
+    if inp.pressed_u & button::DOWN != 0 && (g.cursor as usize + 1) < g.rows.len() { g.cursor += 1; }
+    if g.cursor != start { out.sounds.push(MenuSound::Cursor); }
+    g.top = g.top.clamp(g.cursor - VISIBLE as i32 + 1, g.cursor).max(0);
+    if inp.pressed_u & button::CROSS != 0 && (g.cursor as usize) < g.rows.len() {
+        g.pick = Some(g.cursor as usize);
+        out.sounds.push(MenuSound::Confirm);
+    }
+    0
+}
+
+/// The GMS list draw: each controller's name left, its status right, as the Port Options rows.
+pub fn gms_draw(m: &mut PageMenu, w: u32, a: &MenuAssets, out: &mut Vec<MenuDraw>) -> u32 {
+    let Some(wd) = m.widgets.get(&w) else { return 1 };
+    let [_, _, ww, wh] = wd.rect;
+    let Data::Gms(g) = &wd.data else { return 1 };
+    let n = g.rows.len();
+    let shown = n.min(VISIBLE);
+    let step = wh / (shown.max(1) as i32 + 1);
+    let mut y = step - 8;
+    let top = (g.top.max(0) as usize).min(n - shown);
+    for (i, row) in g.rows.iter().enumerate().skip(top).take(shown) {
+        let col = if i as i32 == g.cursor { YELLOW } else { LIGHT_BLUE };
+        print(out, Font::Regular, 0xc, y, col, &row.name);
+        let status = match row.status {
+            gms_status::ACTIVE => text::ACTIVE,
+            gms_status::LOCKED => text::LOCKED,
+            gms_status::OFF => text::GMS_OFF,
+            _ => text::AVAILABLE,
+        };
+        right(out, a, ww - 0xc, y, LIGHT_BLUE, a.msg(status));
+        y += step;
+    }
+    arrows(out, a, ww, wh, step, (top > 0, top + shown < n));
     2
 }
 

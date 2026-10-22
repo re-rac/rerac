@@ -55,6 +55,7 @@ mod media_render;
 mod draw_stats;
 mod dualsense;
 mod haptics;
+mod gms;
 mod frame_pace;
 mod graphics;
 mod menu_models;
@@ -186,6 +187,8 @@ fn main() -> anyhow::Result<()> {
     .add_plugins(dualsense::DualSensePlugin)
     // The controller rumble from game events, and its Port Options settings (crate::haptics).
     .add_plugins(haptics::HapticsPlugin)
+    // The Gadgetron Movement System: the controllers' page and lock, and its HelpDesk note (crate::gms).
+    .add_plugins(gms::GmsPlugin)
     // One game tick per drawn frame, at most 60 frames a second (crate::frame_pace).
     .add_plugins(frame_pace::FramePacePlugin)
     .add_plugins(no_clusters::NoClustersPlugin)

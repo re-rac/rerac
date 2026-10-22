@@ -868,7 +868,11 @@ fn setup(
     });
     commands.spawn((full(), MaterialNode(static_composites.add(HudStaticComposite { image: static_target.clone(), scaling: sc })), ZIndex(1), ChildOf(hud_node), Name::new("hud static composite")));
 
-    let assets = HudAssets::new(&lh.hud, lh.glyphs, lh.messages.clone());
+    // The level text with the port's Gadgetron Movement System note at the end, as the help box's copy has it
+    // (crate::gameplay's help setup): the help box's index reads the same message here (crate::gms).
+    let mut messages = lh.messages.clone();
+    crate::gms::add_help_message(&mut messages);
+    let assets = HudAssets::new(&lh.hud, lh.glyphs, messages);
     let frame_sizes = assets.frame_sizes.clone();
     let env = HudEnv::read();
     println!(

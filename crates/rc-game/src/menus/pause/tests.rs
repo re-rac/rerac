@@ -523,6 +523,24 @@ fn port_page_from_the_disc() {
     // Its values are the game's own on / off strings (the Subtitles toggle's).
     let Data::Toggle(sub_t) = &m.widgets[&0x1b5160].data else { panic!() };
     assert_eq!((sub_t.entries[0].on, sub_t.entries[0].off), (port::text::ON as u32, port::text::OFF as u32));
+    // The Controller row ("GMS") does not cycle: ✕ opens the Gadgetron Movement System page, a page of the same frames
+    // under Port Options; its rows are the engine's, ✕ reports the row, △ goes back to Port Options.
+    for _ in port::row_of(Setting::Shadows).unwrap()..port::row_of(Setting::Controller).unwrap() { m.tick(&press(button::DOWN), &mut g, &env); }
+    m.tick(&press(button::CROSS), &mut g, &env);
+    assert_eq!(m.target, port::GMS_PAGE);
+    for _ in 0..13 { m.tick(&NONE, &mut g, &env); }
+    assert_eq!(m.current, port::GMS_PAGE);
+    let gp = &m.pages[&port::GMS_PAGE];
+    assert_eq!((gp.seqs, gp.parent, gp.focus, gp.widgets[3]), (sub.seqs, port::PAGE, port::GMS_LIST_W, port::GMS_LIST_W));
+    assert!(matches!(&m.widgets[&port::GMS_TITLE_W].data, Data::Label(t) if t.id == port::text::GMS_TITLE as u32));
+    let row = |name: &[u8], status| port::GmsRow { name: name.to_vec(), status };
+    m.set_gms_rows(vec![row(b"Keyboard", port::gms_status::AVAILABLE), row(b"DualSense", port::gms_status::ACTIVE)]);
+    m.tick(&press(button::DOWN), &mut g, &env);
+    let o = m.tick(&press(button::CROSS), &mut g, &env);
+    assert_eq!((o.sounds, m.take_gms_pick(), m.take_gms_pick()), (vec![MenuSound::Confirm], Some(1), None));
+    m.tick(&press(button::TRIANGLE), &mut g, &env);
+    assert_eq!(m.target, port::PAGE);
+    for _ in 0..13 { m.tick(&NONE, &mut g, &env); }
     m.tick(&press(button::TRIANGLE), &mut g, &env);
     assert_eq!(m.target, port::OPTIONS);
 }
