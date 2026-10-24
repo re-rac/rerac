@@ -89,6 +89,7 @@ pub mod text {
     pub const ASPECT_4_3: i32 = -0x151;
     pub const ASPECT_16_9: i32 = -0x152;
     pub const ASPECT_16_10: i32 = -0x153;
+    pub const ASPECT_FILL: i32 = -0x154;
     pub const PRESET: i32 = -0x160;
     pub const ORIGINAL: i32 = -0x161;
     pub const ENHANCED: i32 = -0x162;
@@ -127,6 +128,7 @@ pub mod text {
             ASPECT_4_3 => b"4:3",
             ASPECT_16_9 => b"16:9",
             ASPECT_16_10 => b"16:10",
+            ASPECT_FILL => b"Fill",
             PRESET => b"Preset",
             ORIGINAL => b"Original",
             ENHANCED => b"Enhanced",
@@ -160,7 +162,9 @@ pub enum Setting {
     Resolution,
     /// The window: value 0 windowed, 1 fullscreen.
     Fullscreen,
-    /// The frame's aspect: value 0 the TV's 4:3, 1 16:10, 2 16:9 (the 3D view widens; the 2D screen stays 4:3, centred).
+    /// The frame's aspect: value 0 the TV's 4:3, 1 16:10, 2 16:9, 3 the window's own (Fill: the frame is the window's
+    /// shape, never narrower than 4:3 — a narrower window is letterboxed, not squashed; the 3D view widens; the 2D
+    /// screen stays 4:3, centred).
     Aspect,
     /// How the game's 2D screen reaches the frame: value 0 Original (scaled smoothly, as on a TV), 1 Sharp pixels.
     Hud,
@@ -187,7 +191,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::Textures, label: text::TEXTURES, values: &[text::ORIGINAL, text::SMOOTH, text::SHARP] },
     Entry { setting: Setting::Hud, label: text::HUD, values: &[text::ORIGINAL, text::SHARP_PIXELS] },
     Entry { setting: Setting::Shadows, label: text::SHADOWS, values: &[text::ON, text::OFF] },
-    Entry { setting: Setting::Aspect, label: text::ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9] },
+    Entry { setting: Setting::Aspect, label: text::ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9, text::ASPECT_FILL] },
     Entry { setting: Setting::Resolution, label: text::RESOLUTION, values: &[text::RES_WINDOW, text::RES_416, text::RES_720, text::RES_1080, text::RES_1440, text::RES_2160] },
     Entry { setting: Setting::Fullscreen, label: text::FULLSCREEN, values: &[text::OFF, text::ON] },
 ];

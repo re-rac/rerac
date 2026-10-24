@@ -7,16 +7,19 @@
 //! frame itself.
 //!
 //! **Aspect.** The PS2 drew 512×416 and the TV showed it at 4:3; the frame is 4:3 ([`Aspect::Original`], the
-//! default), 16:10 ([`Aspect::Wide16x10`], a MacBook's screen) or 16:9 ([`Aspect::Wide16x9`]). The game's 512×416
-//! screen (the HUD, the menus, the item canvases) always maps onto the frame's centred 4:3 box ([`ui_box`]: the whole
-//! frame at 4:3) and the 3D view widens around it: the world cameras' horizontal tangent is the game's ×6/5 at 16:10,
-//! ×4/3 at 16:9 ([`hor_scale`], Hor+: the vertical view is the game's).
+//! default), 16:10 ([`Aspect::Wide16x10`], a MacBook's screen), 16:9 ([`Aspect::Wide16x9`]) or the window's own
+//! ([`Aspect::Fill`]: the frame is the window's shape — an ultrawide monitor's 3440×1440, whose 43:18 is not the 21:9
+//! the label suggests — never narrower than 4:3 ([`MIN_RATIO`], so a window narrower than the TV's is letterboxed
+//! rather than squashed). The game's 512×416 screen (the HUD, the menus, the item canvases) always maps onto the
+//! frame's centred 4:3 box ([`ui_box`]: the whole frame at 4:3) and the 3D view widens around it: the world cameras'
+//! horizontal tangent is the game's ×6/5 at 16:10, ×4/3 at 16:9, the frame's ratio ÷ 4:3 at Fill ([`hor_scale`], Hor+:
+//! the vertical view is the game's).
 //!
 //! **Settings** ([`DisplaySettings`], the Port Options page; persisted in the port settings file,
 //! `crate::render_settings::save_key`): the aspect, the render resolution — "Window" (the largest frame of the aspect
 //! that fits the window, in physical pixels) or a frame of a fixed height (416p, the PS2's lines, or 720p / 1080p /
 //! 1440p / 2160p; the width follows the aspect) scaled to the window — and fullscreen (borderless on the current
-//! monitor). `RC_ASPECT=4:3|16:10|16:9`, `RC_RESOLUTION=window|416|720|1080|1440|2160` and
+//! monitor). `RC_ASPECT=4:3|16:10|16:9|fill`, `RC_RESOLUTION=window|416|720|1080|1440|2160` and
 //! `RC_FULLSCREEN=0|1` override the file at start; F11 toggles fullscreen and saves it.
 //!
 //! The frame's format is the window's swap-chain format (`Bgra8UnormSrgb`), so every pipeline is specialised as it
@@ -44,44 +47,62 @@ pub struct GameFrame {
     pub size: UVec2,
 }
 
-/// The frame's shape: the TV's 4:3, or a wide screen's 16:10 / 16:9 (the Port Options row's order).
+impl GameFrame {
+    /// The frame's width / height: its effective aspect (the window's own for [`Aspect::Fill`]). Floored at
+    /// [`MIN_RATIO`]: a frame whose pixels round a hair narrower than the game's 4:3 is treated as 4:3, so the UI is
+    /// never squashed and [`side_extra`] stays ≥ 0.
+    pub fn ratio(&self) -> f32 { (self.size.x.max(1) as f32 / self.size.y.max(1) as f32).max(MIN_RATIO) }
+}
+
+/// The game's own shape, 512×416 shown at 4:3: the narrowest the frame may be. [`Aspect::Fill`] in a narrower window
+/// keeps this ratio and letterboxes (top / bottom bars), so the 512×416 screen's UI and menus are never squashed.
+pub const MIN_RATIO: f32 = 4.0 / 3.0;
+
+/// The frame's shape: the TV's 4:3, a wide screen's 16:10 / 16:9, or the window's own (the Port Options row's order).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Aspect {
     Original,
     Wide16x10,
     Wide16x9,
+    Fill,
 }
 
 impl Aspect {
     /// The Port Options row's values, in order.
-    pub const ALL: [Aspect; 3] = [Aspect::Original, Aspect::Wide16x10, Aspect::Wide16x9];
+    pub const ALL: [Aspect; 4] = [Aspect::Original, Aspect::Wide16x10, Aspect::Wide16x9, Aspect::Fill];
     pub fn index(self) -> u8 { Self::ALL.iter().position(|&a| a == self).unwrap_or(0) as u8 }
     pub fn from_index(i: u8) -> Self { Self::ALL.get(i as usize).copied().unwrap_or(Aspect::Original) }
-    /// Width / height.
-    pub fn ratio(self) -> f32 {
+    /// Width / height: the fixed ratio, or the `window`'s own for [`Aspect::Fill`], never below [`MIN_RATIO`] (the
+    /// game's 4:3: a narrower window is letterboxed rather than squashed).
+    pub fn ratio(self, window: UVec2) -> f32 {
         match self {
             Aspect::Original => 4.0 / 3.0,
             Aspect::Wide16x10 => 16.0 / 10.0,
             Aspect::Wide16x9 => 16.0 / 9.0,
+            Aspect::Fill => (window.x.max(1) as f32 / window.y.max(1) as f32).max(MIN_RATIO),
         }
     }
-    fn parse(v: &str) -> Option<Self> { Self::ALL.into_iter().find(|a| a.key() == v.trim()) }
+    /// The value for a settings-file / `RC_ASPECT` string, case-insensitively (`fill` or `Fill`).
+    fn parse(v: &str) -> Option<Self> { let v = v.trim(); Self::ALL.into_iter().find(|a| a.key().eq_ignore_ascii_case(v)) }
     fn key(self) -> &'static str {
         match self {
             Aspect::Original => "4:3",
             Aspect::Wide16x10 => "16:10",
             Aspect::Wide16x9 => "16:9",
+            Aspect::Fill => "fill",
         }
     }
 }
 
-/// The factor on the game camera's horizontal tangent (0.63) for `aspect`: 1 at 4:3, 6/5 at 16:10, 4/3 at 16:9 (the
-/// frame is that much wider at the same height, and the view keeps the TV's proportions).
-pub fn hor_scale(aspect: Aspect) -> f32 { aspect.ratio() / Aspect::Original.ratio() }
+/// The factor on the game camera's horizontal tangent (0.63) for a frame of width/height `ratio`: 1 at 4:3, 6/5 at
+/// 16:10, 4/3 at 16:9, 43/24 at an ultrawide's ratio of 43/18 (3440×1440): the frame is that much wider at the same
+/// height, and the view keeps the TV's proportions.
+pub fn hor_scale(ratio: f32) -> f32 { ratio / (4.0 / 3.0) }
 
-/// The game pixels the frame extends past the 512-wide game screen on each side (0 at 4:3, 51 at 16:10, 85 at 16:9): the HUD's
-/// layer is that much wider (crate::hud_render), its left / right slots move out by it (`rc_game::hud`).
-pub fn side_extra(aspect: Aspect) -> i32 { ((SCREEN_W * hor_scale(aspect) - SCREEN_W) * 0.5).round() as i32 }
+/// The game pixels the frame extends past the 512-wide game screen on each side (0 at 4:3, 51 at 16:10, 85 at 16:9,
+/// the frame's own margin at Fill): the HUD's layer is that much wider (crate::hud_render), its left / right slots
+/// move out by it (`rc_game::hud`).
+pub fn side_extra(ratio: f32) -> i32 { ((SCREEN_W * hor_scale(ratio) - SCREEN_W) * 0.5).round() as i32 }
 
 /// The render resolution: fit to the window, or a fixed frame height (the width follows the aspect): the PS2's 416
 /// lines or a common screen height.
@@ -157,7 +178,7 @@ impl DisplaySettings {
 /// The frame's size for `res` and `aspect` in a window of `window` physical pixels: the largest rectangle of the
 /// aspect that fits, or one of the chosen height.
 pub fn frame_size(res: Resolution, aspect: Aspect, window: UVec2) -> UVec2 {
-    let a = aspect.ratio();
+    let a = aspect.ratio(window);
     match res {
         Resolution::Height(h) => {
             let h = h as f32;
@@ -341,11 +362,11 @@ fn box_views(frame: Res<GameFrame>, mut cams: Query<&mut Camera, With<BoxedView>
 /// [`hor_scale`] (Hor+), y the game's (`× 0.775`, NTSC). Every writer of the world cameras' projection goes through
 /// this (crate::play_camera, crate::scene_render, crate::flight_render, [`fly_view`]); the game's own screen-space
 /// code keeps `game_tan` (its 512×416 screen is the 4:3 box).
-pub fn view_tans(game_tan: f32, aspect: Aspect) -> (f32, f32) { (game_tan * hor_scale(aspect), game_tan * crate::game_camera::NTSC_Y_RATIO) }
+pub fn view_tans(game_tan: f32, ratio: f32) -> (f32, f32) { (game_tan * hor_scale(ratio), game_tan * crate::game_camera::NTSC_Y_RATIO) }
 
 /// Sets `p`'s tangents to [`view_tans`] of `game_tan` when they differ; true when it changed them.
-pub fn set_view_tans(p: &mut Projection, game_tan: f32, aspect: Aspect) -> bool {
-    let (tx, ty) = view_tans(game_tan, aspect);
+pub fn set_view_tans(p: &mut Projection, game_tan: f32, ratio: f32) -> bool {
+    let (tx, ty) = view_tans(game_tan, ratio);
     let Projection::Custom(c) = p else { return false };
     let Some(g) = c.get_mut::<crate::game_camera::GameProjection>() else { return false };
     if g.tan_x == tx && g.tan_y == ty { return false; }
@@ -354,9 +375,9 @@ pub fn set_view_tans(p: &mut Projection, game_tan: f32, aspect: Aspect) -> bool 
 }
 
 /// The fly camera (no game camera writes the projection): the game's default tangent through [`view_tans`].
-fn fly_view(settings: Res<DisplaySettings>, source: Option<Res<crate::game_camera::CameraSource>>, mut cams: Query<&mut Projection, With<crate::fly_cam::FlyCam>>) {
+fn fly_view(frame: Res<GameFrame>, source: Option<Res<crate::game_camera::CameraSource>>, mut cams: Query<&mut Projection, With<crate::fly_cam::FlyCam>>) {
     if source.is_some_and(|s| *s == crate::game_camera::CameraSource::Play) { return; }
-    for mut p in &mut cams { set_view_tans(&mut p, crate::game_camera::TAN_HALF_FOV_X, settings.aspect); }
+    for mut p in &mut cams { set_view_tans(&mut p, crate::game_camera::TAN_HALF_FOV_X, frame.ratio()); }
 }
 
 /// The frame's sprite fills the window at the frame's aspect, centred (the camera clears the rest to black).
@@ -382,15 +403,30 @@ mod tests {
         assert_eq!(frame_size(Resolution::Height(1080), Aspect::Wide16x10, UVec2::new(300, 300)), UVec2::new(1728, 1080));
         assert_eq!(frame_size(Resolution::Height(1080), w, UVec2::new(300, 300)), UVec2::new(1920, 1080));
         assert_eq!(frame_size(Resolution::Window, Aspect::Wide16x10, UVec2::new(3024, 1890)), UVec2::new(3024, 1890));
-        assert_eq!(side_extra(Aspect::Wide16x10), 51);
+        // Fill: the frame is the window itself (a 3440×1440 ultrawide), or the same shape at a fixed height.
+        assert_eq!(frame_size(Resolution::Window, Aspect::Fill, UVec2::new(3440, 1440)), UVec2::new(3440, 1440));
+        assert_eq!(frame_size(Resolution::Height(1080), Aspect::Fill, UVec2::new(3440, 1440)), UVec2::new(2580, 1080));
+        // A window narrower than 4:3 keeps the game's shape and letterboxes (the frame is shorter than the window).
+        assert_eq!(Aspect::Fill.ratio(UVec2::new(1000, 1200)), MIN_RATIO);
+        assert_eq!(frame_size(Resolution::Window, Aspect::Fill, UVec2::new(1000, 1200)), UVec2::new(1000, 750));
+        // The frame's own ratio is floored too: pixels that round a hair narrower than 4:3 are treated as 4:3.
+        let frame = |size: UVec2| GameFrame { image: Handle::default(), size };
+        assert_eq!(frame(UVec2::new(101, 76)).ratio(), MIN_RATIO);
+        assert_eq!(frame(UVec2::new(3440, 1440)).ratio(), 3440.0 / 1440.0);
+        assert_eq!(side_extra(16.0 / 10.0), 51);
+        assert_eq!(side_extra(16.0 / 9.0), 85);
         assert_eq!(Resolution::parse("720"), Some(Resolution::Height(720)));
         assert_eq!(ui_box(UVec2::new(2560, 1440)), (Vec2::new(320.0, 0.0), Vec2::new(1920.0, 1440.0)));
         assert_eq!(ui_box(UVec2::new(1024, 768)), (Vec2::ZERO, Vec2::new(1024.0, 768.0)));
-        assert_eq!(hor_scale(o), 1.0);
-        assert!((hor_scale(w) - 4.0 / 3.0).abs() < 1e-6);
+        assert_eq!(hor_scale(4.0 / 3.0), 1.0);
+        assert!((hor_scale(16.0 / 10.0) - 6.0 / 5.0).abs() < 1e-6);
+        assert!((hor_scale(16.0 / 9.0) - 4.0 / 3.0).abs() < 1e-6);
         assert_eq!(fit(UVec2::new(1024, 832), Vec2::new(1600.0, 832.0)), Vec2::new(1024.0, 832.0));
         assert_eq!(fit(UVec2::new(1024, 832), Vec2::new(1024.0, 1000.0)), Vec2::new(1024.0, 832.0));
         for r in Resolution::ALL { assert_eq!(Resolution::from_index(r.index()), r); assert_eq!(Resolution::parse(&r.key()), Some(r)); }
         for a in Aspect::ALL { assert_eq!(Aspect::from_index(a.index()), a); assert_eq!(Aspect::parse(a.key()), Some(a)); }
+        // `RC_ASPECT` / the settings file are read case-insensitively (`Fill` as the menu shows it).
+        assert_eq!(Aspect::parse("Fill"), Some(Aspect::Fill));
+        assert_eq!(Aspect::parse(" fill "), Some(Aspect::Fill));
     }
 }

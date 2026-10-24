@@ -936,7 +936,7 @@ fn upload(mut commands: Commands, mut rt: ResMut<SceneRuntime>, active: Res<Acti
 }
 
 /// The scene camera over the play camera (after `play_camera::apply`, before any reader of the transform).
-fn apply_camera(active: Res<ActiveScene>, source: Option<Res<CameraSource>>, display: Res<crate::display::DisplaySettings>, mut cams: Query<(&mut Transform, &mut Projection), With<FlyCam>>) {
+fn apply_camera(active: Res<ActiveScene>, source: Option<Res<CameraSource>>, frame: Res<crate::display::GameFrame>, mut cams: Query<(&mut Transform, &mut Projection), With<FlyCam>>) {
     let Some(c) = active.camera else { return };
     if source.is_some_and(|s| *s == CameraSource::Fly) { return; }
     let [fwd, _left, up] = c.rows;
@@ -944,7 +944,7 @@ fn apply_camera(active: Res<ActiveScene>, source: Option<Res<CameraSource>>, dis
     for (mut tf, mut proj) in &mut cams {
         if *tf != t { *tf = t; }
         // The scene's tangent (Hor+ in 16:9, crate::display).
-        crate::display::set_view_tans(&mut proj, c.tan_half_fov, display.aspect);
+        crate::display::set_view_tans(&mut proj, c.tan_half_fov, frame.ratio());
     }
 }
 
