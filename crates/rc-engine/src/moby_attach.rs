@@ -31,6 +31,15 @@
 //!    normalised (`FUN_00271030`) — the item keeps its own class scale (moby+0x2c) and Ratchet's joint
 //!    scale does not reach it. (Gloves 10/17/20/25, head items 5–7 and boots 28/29 instead copy Ratchet's
 //!    finger / head / foot joints into a synthetic keyframe, `FUN_0022a9c8`; not needed here, not ported.)
+//! 4. The Hologuise's squash (`0x229158`, `rc_game::hero::hologuise`), which the game runs at the end of the
+//!    frame, after the items are attached: in body 0 every slot's first moby is scaled on rows +0xc0 / +0xd0
+//!    and pulled toward Ratchet's body point in x / y twice (the loop's j = 0 and j = 2), its second moby once
+//!    (j = 1: slot 1's right boot, slot 3's Clank, slot 4's Bolt Grabber); the hand item is the game's, already
+//!    squashed by `hologuise::squash_hand`. So the attach matrices here are taken from the hero moby's rows
+//!    *before* the tick's squash (the game scales those rows in place), and [`squash_item`] scales each item on
+//!    its own — the items shrink and grow with Ratchet. In a scene the actor loop's attachment ([`place_on_actor`])
+//!    comes after this and re-places the extras on the cutscene's Ratchet, so they are not squashed there: the
+//!    game's `update_cutscene_playback` (0x298f90) also runs the hero update, squash included, before its actor loop.
 //!
 //! Draw: the item's palette is `MobyAnimEval` of its own state (after its advance), its record the usual
 //! `MobyInst` (crate::moby_render "Extra" block), in a record / palette buffer of its own.
@@ -456,7 +465,7 @@ fn build(
     };
     // Placement before the first tick (the game creates the items in the first hero update).
     let host = &anim.instances[host_k];
-    place(&mut a, &level.mobys.anim[placed.class], &host.state, anim.snapshots[host_k].as_ref(), false, false, &[]);
+    place(&mut a, &level.mobys.anim[placed.class], &host.state, anim.snapshots[host_k].as_ref(), false, false, &[], None);
     for (slot, (item, class)) in a.items.iter_mut().zip(&geometry).enumerate() {
         let t = Transform::from_matrix(model_of(item));
         item.entities = a.extra.spawn(commands, level, class, slot as u32, t, item.name, meshes, images, materials);
@@ -533,18 +542,64 @@ const EXTRAS: [(i32, i32, usize, &str); 3] = [
 /// The Sonic Summoner's class (0x1b1): its own joint table with 6 identity joints (`HeroItemsAttach` 0x22fec0).
 const SONIC_SUMMONER_O_CLASS: i16 = 0x1b1;
 const CLANK_O_CLASS: i32 = 601;
+/// The Bolt Grabber's class: item slot 4's second moby (`items[4].moby2` in `HeroItemsCreate`).
+const BOLT_GRABBER_O_CLASS: i16 = EXTRAS[1].1 as i16;
 
 fn rows_f32(rows: &[V4; 3]) -> [[f32; 3]; 3] { rows.map(|r| [0, 1, 2].map(|k| f32::from_bits(r[k]))) }
 
 fn model_of(item: &Item) -> Mat4 { moby_render::extra_model(rows_f32(&item.rows), item.scale, item.position) }
 
+/// The Hologuise's squash (`0x229158`) as the game tick left it: the table's factor and the point the item loop
+/// pulls the items toward (`hero.motion.unkD0` = Ratchet's body point, 0x13f420).
+#[derive(Clone, Copy, Debug)]
+struct Squash {
+    factor: f32,
+    body: [f32; 3],
+}
+
+/// The hero moby's rows as `HeroItemsAttach` saw them: `hologuise::squash` scales rows +0xc0 / +0xd0 (lanes
+/// x / y / z) in place at the end of the tick, after the items were attached. The table's factors are 0.01 … 1.5
+/// (0 is index 0's, never read), so the division is safe.
+fn unsquash_rows(rows: &[V4; 3], factor: f32) -> [V4; 3] {
+    let mut out = *rows;
+    for r in 0..2 { for c in 0..3 { out[r][c] = (f32::from_bits(rows[r][c]) / factor).to_bits(); } }
+    out
+}
+
+/// `0x229158`'s item loop on an item this module placed: the slot's first moby is scaled (rows +0xc0 / +0xd0)
+/// and pulled toward the body point in x / y at the loop's j = 0 and again at j = 2, its second moby once (j = 1).
+/// The hand item is the game's (`hologuise::squash_hand`).
+fn squash_item(item: &mut Item, sq: Squash) {
+    let passes = if is_second_moby(item) { 1 } else { 2 };
+    for _ in 0..passes {
+        for r in 0..2 { for c in 0..3 { item.rows[r][c] = (f32::from_bits(item.rows[r][c]) * sq.factor).to_bits(); } }
+        // Planar (`gravity_set_z` on the offset): the pull leaves the height alone.
+        for c in 0..2 { item.position[c] = sq.body[c] + (item.position[c] - sq.body[c]) * sq.factor; }
+    }
+}
+
+/// Whether the item is its slot's second moby (`items[i].moby2`, scaled once by the item loop) rather than its
+/// first (twice): slot 1's right boot (attach word 3, `HeroItemsAttach` forces it), slot 3's Clank
+/// (`HeroItemsCreate` 0x22f3c0 makes him after the pack) and slot 4's Bolt Grabber (item 0x22 after the
+/// Map-o-Matic).
+fn is_second_moby(item: &Item) -> bool {
+    match item.attach.slot {
+        Slot::Feet => item.attach.joint_list == worn::RIGHT_BOOT_ATTACH,
+        Slot::Back => item.o_class == CLANK_O_CLASS as i16,
+        Slot::Extra => item.o_class == BOLT_GRABBER_O_CLASS,
+        _ => false,
+    }
+}
+
 /// Steps 2–3 of the tick (module docs): attach matrices from Ratchet's current state, then every item's
-/// position, (optionally) advance, rows, column normalisation.
+/// position, (optionally) advance, rows, column normalisation, and the Hologuise's squash.
 /// `mods`: the host's joint-modifier list (moby +0x64; Ratchet's head look / lean when the game ticks).
-fn place(a: &mut MobyAttach, host_class: &MobyAnimClass, host: &AnimState, snap: Option<&MobyFrame>, advance_back: bool, advance_hand: bool, mods: &[moby_anim::JointModifier]) {
+#[allow(clippy::too_many_arguments)]
+fn place(a: &mut MobyAttach, host_class: &MobyAnimClass, host: &AnimState, snap: Option<&MobyFrame>, advance_back: bool, advance_hand: bool, mods: &[moby_anim::JointModifier], squash: Option<Squash>) {
     let chains: Vec<&[u8]> = a.chains.iter().map(|c| c.1.as_slice()).collect();
     let ps = moby_anim::evaluate_chains_posed(host_class, host, snap, &chains, &[], mods);
-    let ws: Vec<(usize, Rows)> = a.chains.iter().zip(&ps).map(|(c, p)| (c.0, moby_anim::attach_matrix(p, &a.host_rows, a.host_pos, a.host_scale))).collect();
+    let host_rows = squash.map_or(a.host_rows, |s| unsquash_rows(&a.host_rows, s.factor));
+    let ws: Vec<(usize, Rows)> = a.chains.iter().zip(&ps).map(|(c, p)| (c.0, moby_anim::attach_matrix(p, &host_rows, a.host_pos, a.host_scale))).collect();
     for item in &mut a.items {
         if matches!(item.attach.slot, Slot::Hook | Slot::Antenna) { continue; }
         let Some(&(_, w)) = ws.iter().find(|(l, _)| *l == item.attach.joint_list) else { continue };
@@ -558,6 +613,8 @@ fn place(a: &mut MobyAttach, host_class: &MobyAnimClass, host: &AnimState, snap:
         let mut rows: [V4; 3] = [0, 1, 2].map(|i| w[i].map(f32::to_bits));
         if item.attach.normalise { moby_anim::normalise_columns(&mut rows); }
         item.rows = rows;
+        // The hand item is the game's, placed later in `update` from its moby; `squash_hand` already squashed it.
+        if let Some(sq) = squash.filter(|_| item.attach.slot != Slot::Hand) { squash_item(item, sq); }
     }
 }
 
@@ -625,7 +682,13 @@ fn update(
     }
     let (k, class) = (a.host_k, &level.0.mobys.anim[a.host_class]);
     let mods = play.as_ref().map(|p| p.game.mobys.mobys[p.game.hero_moby].joint_mods.clone()).unwrap_or_default();
-    place(a, class, &anim.instances[k].state, anim.snapshots[k].as_ref(), back.is_none(), hand.is_none(), &mods);
+    // The Hologuise's squash as the tick left it (the factor only exists in body 0): the items this module places
+    // scale and pull with Ratchet's moby (module docs step 4).
+    let squash = play.as_ref().and_then(|p| {
+        let h = &p.game.hero;
+        Some(Squash { factor: h.gadgets.disguise.factor?, body: rc_game::hero::physics::to_f32x3(h.body_point) })
+    });
+    place(a, class, &anim.instances[k].state, anim.snapshots[k].as_ref(), back.is_none(), hand.is_none(), &mods, squash);
     place_antenna(a, play.as_ref().map(|p| p.game.hero.idle.counter));
     // `FUN_0024a0e8`: in a scene (mode 2) or the take-off / landing (mode 6) Ratchet is a scene actor, and the extras
     // attach to it instead of the hidden hero moby (`HeroComputeAttachMatrices(actor)` → `HeroItemsAttach`, which
@@ -1294,5 +1357,56 @@ mod tests {
         // The actor's scale multiplies its joint point (moby +0x2c / 1024).
         place_on_actor(&mut items, &chains, &class, &state, &rows, [0.0, 0.0, 10.0], 2.0, &[]);
         assert!((items[0].position[2] - 12.0).abs() < 1e-4, "scaled: {:?}", items[0].position);
+    }
+
+    /// `0x229158`'s item loop: the attach matrices come from Ratchet's rows before the squash, then each item's
+    /// rows +0xc0 / +0xd0 are scaled and its position pulled toward the body point in x / y — twice for the
+    /// slot's first moby (the pack), once for its second (slot 1's right boot, slot 3's Clank, slot 4's Bolt
+    /// Grabber) — so the items shrink and grow with Ratchet.
+    #[test]
+    fn the_hologuise_squash_scales_the_attached_items() {
+        let class = MobyAnimClass { joint_count: 0, skeleton: vec![], rest: vec![], parent_word: vec![], sequences: vec![] };
+        let state = AnimState { seq_a: 0, frame_a: 0, seq_b: 0, frame_b: 0, t: 0.0, speed: 1.0, rate: 1.0, flags: 0, trigger_count: 0, skip_advance: true };
+        let item = |slot, joint_list, o_class| Item {
+            name: "item", o_class, extra_item: 0, visible: true, shown: None,
+            attach: AttachedTo { host: 0, slot, joint_list, normalise: true },
+            anim: class.clone(), state, snapshot: None, scale: 1.0, base: 0, slots: 1,
+            rows: [[0; 4]; 3], position: [0.0; 3], entities: Vec::new(), mods: Vec::new(),
+            glow: None, glow_written: None, class_glow: 0, phase: 0.0, manip_attached: false, target_joint: None,
+            gold: false, gold_written: None, lists: [Vec::new(), Vec::new()],
+        };
+        // The loop's j = 1 mobys: slot 1's right boot, slot 3's Clank, slot 4's Bolt Grabber.
+        assert!(is_second_moby(&item(Slot::Feet, worn::RIGHT_BOOT_ATTACH, 195)));
+        assert!(!is_second_moby(&item(Slot::Feet, worn::LEFT_BOOT_ATTACH, 195)));
+        assert!(is_second_moby(&item(Slot::Back, BACK_ATTACH, CLANK_O_CLASS as i16)));
+        assert!(!is_second_moby(&item(Slot::Back, BACK_ATTACH, 607)));
+        assert!(is_second_moby(&item(Slot::Extra, 7, EXTRAS[1].1 as i16)), "the Bolt Grabber is slot 4's moby2");
+        assert!(!is_second_moby(&item(Slot::Extra, 7, EXTRAS[0].1 as i16)), "the Map-o-Matic is slot 4's moby");
+        assert!(!is_second_moby(&item(Slot::Extra, 8, EXTRAS[2].1 as i16)), "the Persuader is slot 5's moby");
+        assert!(!is_second_moby(&item(Slot::Head, 4, 433)));
+        let f = 0.5;
+        let body = [1.0, 2.0, 3.0];
+        let identity = [[1.0f32, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]].map(|r| r.map(f32::to_bits));
+        // The hero moby's rows after the tick's squash (rows 0 and 1, x / y / z).
+        let mut host = identity;
+        for row in host.iter_mut().take(2) { for c in &mut row[..3] { *c = (f32::from_bits(*c) * f).to_bits(); } }
+        assert_eq!(unsquash_rows(&host, f), identity, "the attach sees the rows before the squash");
+        // The joint 2048 model units up: 2.0 above the host position, whatever the squash did to its rows.
+        let joint: moby_anim::Rows = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 2048.0, 1.0]];
+        let w = moby_anim::attach_matrix(&joint, &unsquash_rows(&host, f), [0.0, 0.0, 10.0], 1.0);
+        assert!((w[3][2] - 12.0).abs() < 1e-4, "unsquashed attach: {:?}", w[3]);
+        let mut clank = item(Slot::Back, BACK_ATTACH, CLANK_O_CLASS as i16);
+        let mut pack = item(Slot::Back, BACK_ATTACH, 607);
+        for it in [&mut clank, &mut pack] {
+            it.rows = [0, 1, 2].map(|i| w[i].map(f32::to_bits));
+            it.position = [w[3][0], w[3][1], w[3][2]];
+        }
+        squash_item(&mut clank, Squash { factor: f, body });
+        squash_item(&mut pack, Squash { factor: f, body });
+        assert_eq!(f32::from_bits(clank.rows[0][0]), 0.5, "Clank, the slot's second moby: one pass");
+        assert_eq!(f32::from_bits(pack.rows[0][0]), 0.25, "the pack, its first: j = 0 and j = 2");
+        assert_eq!(f32::from_bits(clank.rows[2][2]), 1.0, "row 2 is not scaled");
+        assert_eq!(clank.position, [0.5, 1.0, 12.0], "pulled once in x / y, the height kept");
+        assert_eq!(pack.position, [0.75, 1.5, 12.0]);
     }
 }
