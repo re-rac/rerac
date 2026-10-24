@@ -1,6 +1,7 @@
 //! The creature-layer class units (docs/plan/creatures.md §9, gaps.md G-ENM-009): each unit resolves to its port on
 //! its levels and runs headless on one of them (movement, its attack on Ratchet, a weapon hit, the side effects its
-//! coverage table marks ported). Skipped when `extracted/` is absent.
+//! coverage table marks ported); and the Morph-o-Ray's chicken 270 as Kalebo III places it. Skipped when `extracted/`
+//! is absent.
 //!
 //! `cargo xtask test-job --test classes --filter creature_classes:: --nocapture` prints the per-unit survey.
 
@@ -673,4 +674,48 @@ fn trooper_lands_after_a_flat_push() {
         lv.table.mobys[t].state != 0xa
     });
     assert!(left.is_some(), "still knocked after 200 ticks at {:?}", lv.table.mobys[t].position);
+}
+
+// ---------------------------------------------------------------------------------------------------
+// The Morph-o-Ray's chicken 270, as Kalebo III places it
+
+/// Kalebo III's 16 breakroom chickens are level instances, not morphs: their pvar block is the game's 0x80 bytes (the
+/// ring slot's knockback and suck records after it belong to `0x2defb0`'s morph only). The class update must run them
+/// anyway: they peck, cluck and flee, take a wrench hit, and burst into state 6, which is what the chicken pad 1923
+/// waits for to send one through the teleporter pad again (`units::kalebo_chicken_pad`, `chicken::respawn_at`).
+#[test]
+fn placed_chickens_walk_cluck_and_burst() {
+    let Some(mut lv) = load(16) else { eprintln!("skipped: no extracted/"); return };
+    let chickens = lv.of_class(270);
+    assert_eq!(chickens.len(), 16, "the breakroom's group 86");
+    for &c in &chickens { assert_eq!(lv.table.mobys[c].pvars.len(), 0x80, "chicken {c}: the game's own pvar block"); }
+    let at = lv.table.mobys[chickens[0]].position;
+    let hero = hero_at([at[0] + 2.0, at[1], at[2]]);
+    let sounds0 = lv.sink.slots.len();
+    lv.load_pass(&hero);
+    // State 0 → 1 with health 1 (the update's init), which it never reached while it demanded the morph's records;
+    // the same tick may already have taken it on to a flee state (2 / 3).
+    for &c in &chickens {
+        let m = &lv.table.mobys[c];
+        assert!((1..0x80).contains(&m.state), "chicken {c} initialised (state {})", m.state);
+        assert_eq!(p::ff(&m.pvars, 0x78), 1.0, "chicken {c} health");
+    }
+    let start = lv.table.mobys[chickens[0]].position;
+    for _ in 0..400 { lv.tick(&hero); }
+    let p1 = lv.table.mobys[chickens[0]].position;
+    let moved = ((p1[0] - start[0]).powi(2) + (p1[1] - start[1]).powi(2)).sqrt();
+    assert!(moved > 0.5, "chicken {} fled Ratchet by {moved} from {start:?} to {p1:?}", chickens[0]);
+    assert!(lv.sink.slots[sounds0..].iter().any(|s| chickens.contains(s)), "no chicken clucked in 400 ticks");
+    // The wrench's hit (flags 0x10000, damage 1): its burst hides it in state 6, off the target list, with feathers.
+    let c = chickens[1];
+    let feathers0 = lv.of_class(428).len();
+    lv.hit(&hero, c, &wrench(lv.hero_idx, [1.0, 0.0]));
+    lv.tick(&hero);
+    let m = &lv.table.mobys[c];
+    assert_eq!(m.state, 6, "chicken {c} burst");
+    assert_eq!(m.mode & mode::TARGETABLE, 0);
+    assert!(lv.of_class(428).len() > feathers0, "its feathers");
+    // What the chicken pad 1923 then sends through the teleporter pad: a group-86 chicken back in state 6.
+    assert!(rc_game::moby_update::scheduler::group_ids(&lv.world(&hero), 86).contains(&c));
+    assert!(rc_game::moby_update::classes::chicken::available(&lv.world(&hero), c));
 }

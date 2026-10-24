@@ -43,6 +43,8 @@
 //! manipulator record (the big-head cheat 0x15edb7: `manip::big_head`, 5.0 gold / 7.7), +0x64 s16 cluck timer, +0x66 s16 state timer, +0x68 turn
 //! velocity, +0x6c fall speed, +0x70 displaced timer (−1: not displaced), +0x74 gold, +0x78 health, +0x7c hit
 //! cooldown; +0x80 the knockback record ([`KNOCK`]), +0xe0 the suck record ([`SUCK`] = `react::CHICKEN.record`).
+//! The last two belong to a **morph-created** chicken only: a level-placed one (Kalebo III's breakroom places 16) keeps
+//! the game's 0x80-byte block ([`BLOCK`]), so it is never suckable and its update reads only the base fields.
 //!
 //! Native `f32`; the rand draws are the game's, at its points. [L]: a `GroundHeight` miss leaves the chicken's z as it
 //! was (the game reads the collision output's stale point) and reads surface −1 (not 0: no death).
@@ -62,8 +64,11 @@ pub const FEATHER_FN: u32 = 0x2e2f68;
 pub const FEATHER_CLASSES: [i16; 1] = [FEATHER];
 pub const FEATHER: i16 = 0x1ac;
 
-/// The chicken's pvar block: the game's 0x80 bytes, then the knockback record (0x60) and the suck record (0xb0) of
-/// its ring slot.
+/// The chicken's pvar block as the game's level data gives it (0x80 bytes). [`PVARS`] adds the ring slot's knockback
+/// and suck records, which only the morph sets up; a level-placed chicken does without them.
+pub const BLOCK: usize = 0x80;
+/// The morph-created chicken's pvar block: the game's 0x80 bytes, then the knockback record (0x60) and the suck
+/// record (0xb0) of its ring slot.
 pub const PVARS: usize = 0x190;
 pub const KNOCK: usize = 0x80;
 pub const SUCK: usize = 0xe0;
@@ -376,7 +381,10 @@ fn loads(w: &World) -> (f32, f32) { (w.svc.frame_load[0].to_f32(), w.svc.frame_l
 /// `0x2df448`: the chicken's update (module doc).
 #[allow(clippy::too_many_lines)]
 pub fn update(w: &mut World, id: MobyId) {
-    if w.m(id).pvars.len() < PVARS { return; }
+    // A level-placed chicken (Kalebo's breakroom places 16) has the game's own 0x80-byte block: the ring slot's records
+    // after it exist only on morph-created chickens (`0x2defb0`), and without them the chicken is simply never suckable.
+    // Demanding [`PVARS`] here left those chickens frozen: no init (state stayed 0), so no peck, no cluck and no hit intake.
+    if w.m(id).pvars.len() < BLOCK { return; }
     let hp = hero_pos(w);
     let pos0 = c::pos(w, id);
     let away = c::atan(pos0[0] - hp[0], pos0[1] - hp[1]);
@@ -572,6 +580,8 @@ pub fn update(w: &mut World, id: MobyId) {
             }
         }
         5 => {
+            // Only the Suck Cannon reaches this state, and it takes a chicken only with its record (`react::record`: the
+            // suck record at +0xe0 of a full [`PVARS`] block).
             if react::carried(w, id, KNOCK) != 0 {
                 w.mm(id).state = 0;
                 c::set_pi16(w, id, SUCK + react::rec::STATE, 0);

@@ -912,6 +912,10 @@ and the pulse loop; an R5900-aware disassembly of lq / sq / por, scratch `morph/
   the gold burst: `SpawnBeamExplosion` with the colour shift and a damage-1 sphere of 3) into 5–8 feathers and hides
   (state 6); in the Suck Cannon (state 5) through its reaction table `react::CHICKEN` and `react::carried`, a feather
   one tick in four. Clucks (class sound 0 / 1) every 2–5 s.
+* **Placed chickens** (Kalebo III's breakroom, 16 level instances in group 86): these keep the game's 0x80-byte pvar
+  block; the ring slot's knockback and suck records after it belong to the morph, so a placed chicken is never
+  suckable but runs the same update from the base block. Its burst leaves it in state 6, which is what the chicken
+  pad (`0x2e8970`) waits for to send one through teleporter pad #1192 again (`chicken::respawn_at`).
 * **The beam** (`0x2d2d08`, draw `0x2d38b8`): 12 points bending from the last tick's shape to the aim and the target,
   rings of 20, two helix strands, type-53 sparkle pairs at their ends, type-78 sparks (not ported), three pulses (8 u/s,
   0.1 → 1.5); drawn as the tube (FX 13, two counter-scrolled layers, back faces culled), the strands (FX 14 / 16), the
