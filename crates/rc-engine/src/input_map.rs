@@ -9,9 +9,15 @@
 //! (0 / 255), or half deflection (`PadInput::axis_byte(±0.5)`) with Shift held. Buttons are digital: pressure
 //! 0xff while held (`PadInput::press`).
 //!
+//! Every connected pad counts, not just the first ([`Pads`]): a remapper's virtual pad (DualSenseX, DS4Windows, Steam
+//! Input) sits next to the real pad it reads, which may report nothing. Buttons combine; each stick is the one
+//! deflected furthest. DualSense pads are read from their own reports (crate::dualsense) and their Bevy gamepad is
+//! then skipped.
+//!
 //! Scripted input (`RC_PLAY_SCRIPT`), for deterministic runs: see [`Script`]. With a script the devices are
 //! ignored.
 
+use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use rc_game::pad::{button, PadInput};
@@ -21,7 +27,7 @@ play controls (PS2 pad):  left stick = WASD / arrow keys (Shift: half stick = wa
                           L1 = Q | R1 = E or Ctrl (crouch) | L2 = Z | R2 = C | Start = Enter | Select = Backspace
                           d-pad = T/F/G/H | right stick = mouse with the right button held, or , and . | R3 = V or middle mouse
                           gamepad: sticks, South = X, East = O, West = [], North = /\\, bumpers L1/R1, triggers L2/R2,
-                          Start/Select, stick clicks L3/R3, d-pad
+                          Start/Select, stick clicks L3/R3, d-pad; DualSense over USB or Bluetooth, touchpad click = Select
 engine keys:              Tab = fly camera <-> game camera (the fly camera takes the keys; the pad is neutral) |
                           R = respawn at the level's uid-0 moby | P = print the camera | Esc releases the cursor
                           F9 = dump the hero and the mobys near him | F10 = the respawn state (compare with work/scratch/respawn_probe.py) | N = noclip (dev builds)";
@@ -44,8 +50,102 @@ pub struct PadFrame(pub PadInput);
 /// A Bevy stick value in [−1, 1] (y up) → the raw libpad2 byte (y down).
 fn raw_axis(v: f32) -> u8 { (127.5 + 127.5 * v.clamp(-1.0, 1.0)).round().clamp(0.0, 255.0) as u8 }
 
-/// Keyboard + mouse + the first gamepad → one pad read.
-pub fn sample(keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, motion: &AccumulatedMouseMotion, gamepad: Option<&Gamepad>) -> PadInput {
+/// One pad's state: sticks in Bevy's convention ([−1, 1], y up), buttons as libpad2 bits (`rc_game::pad::button`), and
+/// R2's travel (0 released .. 1 fully pulled; 0 on a pad that only reports R2 as a button).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PadDevice {
+    pub left: Vec2,
+    pub right: Vec2,
+    pub buttons: u32,
+    pub r2: f32,
+}
+
+impl PadDevice {
+    pub fn from_gamepad(g: &Gamepad) -> PadDevice {
+        let mut buttons = 0;
+        for (gb, b) in [
+            (GamepadButton::South, button::CROSS),
+            (GamepadButton::West, button::SQUARE),
+            (GamepadButton::East, button::CIRCLE),
+            (GamepadButton::North, button::TRIANGLE),
+            (GamepadButton::LeftTrigger, button::L1),
+            (GamepadButton::RightTrigger, button::R1),
+            (GamepadButton::LeftTrigger2, button::L2),
+            (GamepadButton::RightTrigger2, button::R2),
+            (GamepadButton::Start, button::START),
+            (GamepadButton::Select, button::SELECT),
+            (GamepadButton::LeftThumb, button::L3),
+            (GamepadButton::RightThumb, button::R3),
+            (GamepadButton::DPadUp, button::UP),
+            (GamepadButton::DPadDown, button::DOWN),
+            (GamepadButton::DPadLeft, button::LEFT),
+            (GamepadButton::DPadRight, button::RIGHT),
+        ] {
+            if g.pressed(gb) { buttons |= b; }
+        }
+        let r2 = g.get(GamepadButton::RightTrigger2).unwrap_or(0.0);
+        PadDevice { left: g.left_stick(), right: g.right_stick(), buttons, r2 }
+    }
+
+    /// R2 as the fire button: R2 reads as ○ (the game's fire), so it no longer crouches; R1 still does (the game reads
+    /// R1 and R2 as one crouch button, `held & (R1 | R2)`). It fires once R2 is pulled to `point` (0..1: where the held
+    /// weapon's trigger effect clicks or resists, crate::haptics::FirePoint), so the shot follows the feel; a pad
+    /// without R2's travel fires on its button.
+    pub fn fire_on_r2(self, point: f32) -> PadDevice {
+        let pulled = if self.r2 > 0.0 { self.r2 >= point.max(MIN_FIRE) } else { self.buttons & button::R2 != 0 };
+        let buttons = self.buttons & !button::R2 | if pulled { button::CIRCLE } else { 0 };
+        PadDevice { buttons, ..self }
+    }
+
+    /// Two pads as one: the buttons of both, each stick from the pad that deflects it further, R2's furthest travel.
+    pub fn merge(self, o: PadDevice) -> PadDevice {
+        let far = |a: Vec2, b: Vec2| if b.length_squared() > a.length_squared() { b } else { a };
+        PadDevice { left: far(self.left, o.left), right: far(self.right, o.right), buttons: self.buttons | o.buttons, r2: self.r2.max(o.r2) }
+    }
+}
+
+/// The least R2 travel that fires (a resting trigger reads a little above 0).
+const MIN_FIRE: f32 = 0.12;
+
+/// Every connected pad: Bevy's gamepads and the DualSense read directly (crate::dualsense), whose Bevy gamepad is
+/// skipped while it is read there. With Port Options' "Fire button: R2" (crate::haptics::ControllerSettings) a pad's R2
+/// reads as ○.
+#[derive(SystemParam)]
+pub struct Pads<'w, 's> {
+    gamepads: Query<'w, 's, (Entity, &'static Gamepad)>,
+    dualsense: Option<Res<'w, crate::dualsense::DualSense>>,
+    controller: Option<Res<'w, crate::haptics::ControllerSettings>>,
+    fire_point: Option<Res<'w, crate::haptics::FirePoint>>,
+    /// The Gadgetron Movement System's lock (crate::gms): only the locked device counts.
+    gms: Option<Res<'w, crate::gms::Gms>>,
+}
+
+impl Pads<'_, '_> {
+    /// All pads as one, `None` without any.
+    pub fn device(&self) -> Option<PadDevice> {
+        let pad = self.merged()?;
+        let point = self.fire_point.as_ref().map_or(0.0, |p| p.0);
+        Some(if self.controller.as_ref().is_some_and(|c| c.fire_r2) { pad.fire_on_r2(point) } else { pad })
+    }
+
+    /// The GMS lock, for the keyboard (crate::gms::keyboard).
+    pub fn gms(&self) -> Option<&crate::gms::Gms> { self.gms.as_deref() }
+
+    fn merged(&self) -> Option<PadDevice> {
+        use crate::gms::DeviceKey;
+        let allows = |k| self.gms.as_ref().is_none_or(|g| g.allows(k));
+        let ds = self.dualsense.as_ref().and_then(|d| d.get());
+        self.gamepads
+            .iter()
+            .filter(|(e, g)| (ds.is_none() || !crate::dualsense::is_dualsense(g)) && allows(DeviceKey::Gamepad(*e)))
+            .map(|(_, g)| PadDevice::from_gamepad(g))
+            .chain(ds.filter(|_| allows(DeviceKey::DualSense)))
+            .reduce(PadDevice::merge)
+    }
+}
+
+/// Keyboard + mouse + the pads ([`Pads::device`]) → one pad read.
+pub fn sample(keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, motion: &AccumulatedMouseMotion, pad: Option<PadDevice>) -> PadInput {
     let mut p = PadInput::neutral();
     let mut buttons = 0u32;
 
@@ -88,8 +188,8 @@ pub fn sample(keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, mot
     }
     if mouse.pressed(MouseButton::Middle) { buttons |= button::R3; }
 
-    if let Some(g) = gamepad {
-        let (l, r) = (g.left_stick(), g.right_stick());
+    if let Some(g) = pad {
+        let (l, r) = (g.left, g.right);
         if l != Vec2::ZERO {
             p.lx = raw_axis(l.x * STICK_SCALE);
             p.ly = raw_axis(-l.y * STICK_SCALE);
@@ -98,26 +198,7 @@ pub fn sample(keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, mot
             p.rx = raw_axis(r.x * STICK_SCALE);
             p.ry = raw_axis(-r.y * STICK_SCALE);
         }
-        for (gb, b) in [
-            (GamepadButton::South, button::CROSS),
-            (GamepadButton::West, button::SQUARE),
-            (GamepadButton::East, button::CIRCLE),
-            (GamepadButton::North, button::TRIANGLE),
-            (GamepadButton::LeftTrigger, button::L1),
-            (GamepadButton::RightTrigger, button::R1),
-            (GamepadButton::LeftTrigger2, button::L2),
-            (GamepadButton::RightTrigger2, button::R2),
-            (GamepadButton::Start, button::START),
-            (GamepadButton::Select, button::SELECT),
-            (GamepadButton::LeftThumb, button::L3),
-            (GamepadButton::RightThumb, button::R3),
-            (GamepadButton::DPadUp, button::UP),
-            (GamepadButton::DPadDown, button::DOWN),
-            (GamepadButton::DPadLeft, button::LEFT),
-            (GamepadButton::DPadRight, button::RIGHT),
-        ] {
-            if g.pressed(gb) { buttons |= b; }
-        }
+        buttons |= g.buttons;
     }
     p.press(buttons)
 }
@@ -127,10 +208,11 @@ pub fn sample_system(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,
-    gamepads: Query<&Gamepad>,
+    pads: Pads,
     mut frame: ResMut<PadFrame>,
 ) {
-    frame.0 = sample(&keys, &mouse, &motion, gamepads.iter().next());
+    let (keys, mouse, motion) = crate::gms::keyboard(pads.gms(), &keys, &mouse, &motion);
+    frame.0 = sample(keys, mouse, motion, pads.device());
 }
 
 /// `RC_PLAY_SCRIPT`: pad input per gameplay tick, `item,item,...` with `item = range:action`.
@@ -240,6 +322,20 @@ mod tests {
         assert!(Script::parse("5-1:press X").is_err());
         assert!(Script::parse("1:press Y").is_err());
         assert!(Script::parse("1:jump").is_err());
+    }
+
+    #[test]
+    fn r2_fires_r1_still_crouches() {
+        let pad = |buttons, r2| PadDevice { buttons, r2, ..Default::default() };
+        // A pad without R2's travel: its button fires.
+        assert_eq!(pad(button::R2 | button::CROSS, 0.0).fire_on_r2(0.8).buttons, button::CIRCLE | button::CROSS);
+        assert_eq!(pad(button::R1, 0.0).fire_on_r2(0.0).buttons, button::R1);
+        assert_eq!(pad(button::CIRCLE, 0.0).fire_on_r2(0.0).buttons, button::CIRCLE);
+        // With R2's travel: only once pulled past the weapon's point (the button bit alone never fires, nor crouches).
+        assert_eq!(pad(button::R2, 0.5).fire_on_r2(0.8).buttons, 0);
+        assert_eq!(pad(button::R2, 0.85).fire_on_r2(0.8).buttons, button::CIRCLE);
+        assert_eq!(pad(button::R2, 0.1).fire_on_r2(0.0).buttons, 0);
+        assert_eq!(pad(button::R2, 0.2).fire_on_r2(0.0).buttons, button::CIRCLE);
     }
 
     #[test]

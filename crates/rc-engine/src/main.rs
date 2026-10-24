@@ -14,6 +14,8 @@
 //! - `RC_GS_ALPHA=0` the previous alpha mapping (one blended draw without Z for any As != 0x80), crate::gs_state
 //! - `RC_FOG_ZONES=0`, `RC_UNDERWATER=1`, `RC_CAM_PATH` fog zones / underwater / camera walk-through, crate::fog_state
 //! - `RC_PLAY=0`, `RC_PLAY_SCRIPT`, `RC_PLAY_TRACE=1` the game tick / scripted pad / per-tick trace, crate::gameplay
+//! - `RC_DUALSENSE=0`, `RC_DUALSENSE_TRACE=1` DualSense pads read from their HID reports / their decoded reports,
+//!   crate::dualsense; `RC_VIBRATION=0|1` the controller rumble at start (Port Options "Vibration"), crate::haptics
 //! - `RC_PLAY_FLY=1` start on the fly camera with the game ticking; `RC_DEBUG_HIT=moby@tick,...` debug hits
 //!   (flags 0x10000, damage 1) before those ticks' moby loop, crate::gameplay
 //! - `RC_FRONTEND`   the front end (card check, logos, title, main menu) is the default start; `0` skips it, `1` keeps it
@@ -55,6 +57,10 @@ mod level_load;
 mod level_switch;
 mod media_render;
 mod draw_stats;
+mod dualsense;
+mod haptics;
+mod gms;
+mod button_icons;
 mod frame_pace;
 mod graphics;
 mod menu_models;
@@ -182,6 +188,14 @@ fn main() -> anyhow::Result<()> {
     .add_plugins(display::DisplayPlugin)
     // Frame-exact ticks / capture and the deterministic phase order, before anything spawns a camera.
     .add_plugins(determinism::DeterminismPlugin)
+    // DualSense pads read from their HID reports (crate::dualsense; crate::input_map::Pads).
+    .add_plugins(dualsense::DualSensePlugin)
+    // The controller rumble from game events, and its Port Options settings (crate::haptics).
+    .add_plugins(haptics::HapticsPlugin)
+    // The Gadgetron Movement System: the controllers' page and lock, and its HelpDesk note (crate::gms).
+    .add_plugins(gms::GmsPlugin)
+    // The button icons in text as the PS2's, a PS5's or an Xbox One's (crate::button_icons).
+    .add_plugins(button_icons::ButtonIconsPlugin)
     // One game tick per drawn frame, at most 60 frames a second (crate::frame_pace).
     .add_plugins(frame_pace::FramePacePlugin)
     .add_plugins(no_clusters::NoClustersPlugin)

@@ -781,10 +781,13 @@ fn cheat_patterns() -> Vec<Vec<u8>> {
 }
 
 /// The help system's level data (rc_game::help): the level text and the small font's glyphs (the box sizing), and the
-/// help log's id table 0x1798d0 from the level's overlay (relocated against level 01's).
+/// help log's id table 0x1798d0 from the level's overlay (relocated against level 01's). The level text gets the port's
+/// Gadgetron Movement System note (crate::gms).
 fn help_setup(svc: &mut Services, lv: &crate::level_load::LoadedLevel, index: u32) {
     if let Some(h) = lv.hud.as_ref() {
-        svc.help.text = rc_game::help::HelpText { messages: std::sync::Arc::new(h.messages.clone()), small: Some(h.glyphs[rc_formats::font::Font::Small as usize]), lang: h.lang };
+        let mut messages = h.messages.clone();
+        crate::gms::add_help_message(&mut messages);
+        svc.help.text = rc_game::help::HelpText { messages: std::sync::Arc::new(messages), small: Some(h.glyphs[rc_formats::font::Font::Small as usize]), lang: h.lang };
     }
     let root = crate::level_load::extracted_root();
     let (Ok(target), reference) = (crate::disc_source::level_file(&root, index, "overlay.bin"), crate::disc_source::level_file(&root, 1, "overlay.bin").ok()) else {

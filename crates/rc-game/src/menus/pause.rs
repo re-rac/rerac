@@ -364,6 +364,8 @@ pub enum Data {
     Scroller(media::Scroller),
     /// Port-only: the "Port Options" list ([`port`]).
     Port(port::PortList),
+    /// Port-only: the Gadgetron Movement System's controller list ([`port::GmsList`]).
+    Gms(port::GmsList),
     /// The icon grids, the item preview and the 3D Ratchet of the Gadgets / Weapons pages ([`gadgets`]).
     Grid(gadgets::Grid),
     Preview(gadgets::Preview),
@@ -770,13 +772,21 @@ impl PageMenu {
                     if let Some(wd) = self.wm(w) { wd.moby = i as i32; }
                 }
             }
+            // Port-only: between two pages of the same frames (Port Options and its Controller page) the frames hold
+            // their layout: played back they would end on the frames' parent's, played forward start from it.
+            let same = self.current != self.target && tgt.as_ref().is_some_and(|p| Some(p.seqs) == cur_seqs);
+            // Port-only: the panel layout of the page the frames end on (port::panel_layout; none for the game's pages).
+            let layout = port::panel_layout(self, if back && !same { self.current } else { self.target });
+            if let Some(f) = self.frames.as_mut() { f.set_layout(layout); }
             for i in 0..14 {
-                self.mobys[i] = if back {
+                self.mobys[i] = if back && !same {
                     (cur_seqs.map_or(0, |s| s[i]), true)
                 } else {
                     (tgt.as_ref().map_or(0, |p| p.seqs[i]), false)
                 };
-                if let Some(f) = self.frames.as_mut() { f.start(i, self.mobys[i].0, back); }
+                if let Some(f) = self.frames.as_mut() {
+                    if same { f.hold(i, self.mobys[i].0) } else { f.start(i, self.mobys[i].0, back) }
+                }
             }
             out.transition = Some((self.current, self.target));
             self.kind = 1;
@@ -955,6 +965,7 @@ impl PageMenu {
             func::MISSIONS_UPDATE => planet_select::missions_update(self, w, inp, gs, out),
             func::PICTURE_UPDATE => map_page::picture_update(self, w),
             port::UPDATE => port::update(self, w, inp, out),
+            port::GMS_UPDATE => port::gms_update(self, w, inp, out),
             gadgets::func::GRID_UPDATE => gadgets::grid_update(self, w, inp, gs, out),
             // `LoadHandGadget` 0x297d70: the models follow the page's copy of the saved items (engine side).
             gadgets::func::MODEL_UPDATE => 0,
@@ -1169,6 +1180,7 @@ impl PageMenu {
             func::PLANET_LIST_DRAW => planet_select::list_draw(self, w, a, gs, out),
             func::GALAXY_DRAW => planet_select::galaxy_draw(self, w, a, gs, env, out),
             port::DRAW => port::draw(self, w, a, out),
+            port::GMS_DRAW => port::gms_draw(self, w, a, out),
             gadgets::func::GRID_DRAW => gadgets::grid_draw(self, w, a, gs, env.vsync, out),
             gadgets::func::MODEL_DRAW => gadgets::model_draw(self, w, gs),
             gadgets::func::PREVIEW_DRAW => gadgets::preview_draw(self, w, a, gs),
