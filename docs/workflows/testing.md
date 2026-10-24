@@ -1351,7 +1351,7 @@ The tables below are the audit as taken, minus these four rows.
 | `water::overlay_walk_and_read` | port logic: overlay walk and read | fast | lib:formats | keep |
 | `water::novalis_water_tables` | data/format: The Novalis tables match docs/plan/world_animation.md and every FX texture they name exists. [`0x1cad1c`] (L01) | fast | lib:formats | keep |
 
-### rc-engine: unit tests (67)
+### rc-engine: unit tests (68)
 
 | test | pins | runtime | group | verdict |
 |---|---|---|---|---|
@@ -1375,6 +1375,7 @@ The tables below are the audit as taken, minus these four rows.
 | `input_map::device_encoding_decodes_like_a_pad` | game-checked: device encoding decodes like a pad | fast | lib:engine | keep |
 | `moby_attach::one_hand_item_per_equipped_item` | game-checked: The 21 gadget classes of every level (docs/formats/moby_rac1.md §0.4) [`0x1413ff`] (all levels) | fast | lib:engine | keep |
 | `moby_attach::absent_items_stay_hidden_after_a_show_again` | port logic: A swap (Bomb Glove 192 → Hologuise / Drone 483 → Pyrocitor 176 → wrench 71), then the vendor's or a scene's… | fast | lib:engine | keep |
+| `moby_attach::the_hologuise_squash_scales_the_attached_items` | game-checked: `0x229158`'s item loop scales and pulls Clank once and the slot's first moby twice, the attach matrices taken before the squash [`0x229158`] | fast | lib:engine | keep |
 | `moby_lod::glow_word_of_mode_and_colour` | port logic: The glow word | fast | lib:engine | keep |
 | `moby_lod::test_1_fade_word` | game-checked: test 1 fade word | fast | lib:engine | keep |
 | `moby_lod::draw_distance_fade_and_lod` | game-checked: draw distance fade and lod | fast | lib:engine | keep |
