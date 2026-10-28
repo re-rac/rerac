@@ -318,7 +318,9 @@ pub fn weapon_feel(item: i32) -> Option<Feel> {
 }
 
 /// Each frame: the new ticks' events, then the motors (off while no tick runs, unless a settings preview plays) and
-/// R2's effect.
+/// R2's effect. While the game's window is not focused the motors and R2 are off, as its input is
+/// (crate::input_map::Pads).
+#[allow(clippy::too_many_arguments)]
 fn haptics_frame(
     mut h: Local<Haptics>,
     settings: Res<ControllerSettings>,
@@ -327,8 +329,10 @@ fn haptics_frame(
     gs: Option<Res<Persistent>>,
     mode: Option<Res<crate::menu_render::MenuMode>>,
     mut fire: ResMut<FirePoint>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
     let Some(pad) = pad else { return };
+    let focused = windows.iter().next().is_none_or(|w| w.focused);
     let vib = |s: &ControllerSettings| (s.enabled, s.strength);
     if h.settings.is_some_and(|s| vib(&s) != vib(&settings)) && settings.enabled { h.preview = PREVIEW_FRAMES; }
     h.settings = Some(*settings);
@@ -404,14 +408,14 @@ fn haptics_frame(
         h.preview -= 1;
         let f = h.preview as f32 / PREVIEW_FRAMES as f32;
         (0.9 * f, 0.6 * f)
-    } else if !settings.enabled || !ticking {
+    } else if !settings.enabled || !ticking || !focused {
         (0.0, 0.0)
     } else {
         let (ph, pl) = h.pulse.level();
         (ph.max(long_shake), pl.max(long_shake * 0.5))
     };
     pad.set_rumble(motor(heavy, scale), motor(light, scale));
-    pad.set_trigger(trigger);
+    pad.set_trigger(if focused { trigger } else { Trigger::OFF });
     if fire.0 != point { fire.0 = point; }
 }
 

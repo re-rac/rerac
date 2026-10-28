@@ -129,15 +129,22 @@ pub struct Pads<'w, 's> {
     dualsense: Option<Res<'w, crate::dualsense::DualSense>>,
     controller: Option<Res<'w, crate::haptics::ControllerSettings>>,
     fire_point: Option<Res<'w, crate::haptics::FirePoint>>,
+    /// The game's window: pads are read only while it has the focus (the DualSense's own reports arrive regardless,
+    /// unlike Windows.Gaming.Input's).
+    windows: Query<'w, 's, &'static Window, With<bevy::window::PrimaryWindow>>,
 }
 
 impl Pads<'_, '_> {
     /// All pads as one, `None` without any.
     pub fn device(&self) -> Option<PadDevice> {
+        if !self.focused() { return None; }
         let pad = self.merged()?;
         let point = self.fire_point.as_ref().map_or(0.0, |p| p.0);
         Some(if self.controller.as_ref().is_some_and(|c| c.fire_r2) { pad.fire_on_r2(point) } else { pad })
     }
+
+    /// The game's window has the focus (or there is none).
+    pub fn focused(&self) -> bool { self.windows.iter().next().is_none_or(|w| w.focused) }
 
     fn merged(&self) -> Option<PadDevice> {
         let ds = self.dualsense.as_ref().and_then(|d| d.get());
