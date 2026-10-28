@@ -38,7 +38,10 @@ works today.
 ## Building from source
 
 You need Rust, installed through [rustup](https://rustup.rs), and an image (`.iso`) of your own disc. macOS on Apple
-Silicon is the only platform tested so far. Run every command from the repository root.
+Silicon is the main tested platform; Windows x64 builds and runs too. On Windows, Rust also needs the MSVC build tools
+(Visual Studio's "Desktop development with C++" workload, which `rustup-init` offers to install), and
+`cargo xtask package` needs [Git for Windows](https://gitforwindows.org) for its bash. Run every command from the
+repository root.
 
 First, extract the game data from your disc into `extracted/`. This builds `rerac-extract`, checks that your disc is
 supported, and verifies every extracted file:

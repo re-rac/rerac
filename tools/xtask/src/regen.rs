@@ -1,7 +1,7 @@
 //! `cargo xtask regen-data`: rebuild the dev game data folder from the user's disc image with the dev build of
 //! `rerac-extract`, without ever leaving the user without data.
 //!
-//! 1. The disc: `--iso` or `RC_ISO`; when missing, print how to set `RC_ISO` once (fish, bash/zsh).
+//! 1. The disc: `--iso` or `RC_ISO`; when missing, print how to set `RC_ISO` once (fish, bash/zsh, PowerShell).
 //! 2. The folder (`--data-dir`, else `RC_EXTRACTED`, else `<repo>/extracted`) may hold only what the extractor writes
 //!    (the Tier 0 table's files, `extract-info.json`, `cache/`, `exports/`) and the retired C++ extractor's known
 //!    leftovers ([`classify::LEFTOVER_KINDS`], listed with counts and deleted). Anything else stops the run unless
@@ -11,7 +11,7 @@
 //!    leaves the old folder untouched.
 
 use crate::classify::{self, Report, LEFTOVER_KINDS};
-use crate::{cargo, repo_root};
+use crate::{cargo, home_dir, repo_root, strip_verbatim};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -50,8 +50,8 @@ fn env_path(name: &str) -> Option<PathBuf> { std::env::var_os(name).filter(|v| !
 
 fn absolute(p: &Path) -> PathBuf {
     let p = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().unwrap_or_default().join(p) };
-    if let Ok(c) = p.canonicalize() { return c; }
-    match (p.parent().and_then(|d| d.canonicalize().ok()), p.file_name()) {
+    if let Ok(c) = p.canonicalize() { return strip_verbatim(c); }
+    match (p.parent().and_then(|d| d.canonicalize().ok()).map(strip_verbatim), p.file_name()) {
         (Some(d), Some(n)) => d.join(n),
         _ => p,
     }
@@ -113,7 +113,7 @@ fn tally(dir: &Path) -> (u64, u64, u64) {
 
 /// The disc images in `~/PS2/ratchet1/`, to suggest a value for `RC_ISO`.
 fn iso_suggestion() -> String {
-    let found = env_path("HOME").map(|h| h.join("PS2/ratchet1")).and_then(|d| std::fs::read_dir(d).ok()).and_then(|rd| {
+    let found = home_dir().map(|h| h.join("PS2/ratchet1")).and_then(|d| std::fs::read_dir(d).ok()).and_then(|rd| {
         let mut isos: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("iso"))).collect();
         isos.sort();
         (isos.len() == 1).then(|| isos.remove(0))
@@ -128,6 +128,7 @@ fn print_missing_iso() {
          \n  fish (applies at once, to every fish session, and persists):\n      set -Ux RC_ISO \"{iso}\"\n\
          \n  zsh (then open a new terminal):\n      echo 'export RC_ISO=\"{iso}\"' >> ~/.zshrc\n\
          \n  bash (then open a new terminal):\n      echo 'export RC_ISO=\"{iso}\"' >> ~/.bashrc\n\
+         \n  PowerShell on Windows (then open a new terminal):\n      [Environment]::SetEnvironmentVariable('RC_ISO', '{iso}', 'User')\n\
          \nthen run: cargo xtask regen-data"
     );
 }
@@ -171,7 +172,7 @@ pub fn run(argv: &[OsString]) -> ExitCode {
 
     // 2. The data folder and what it holds.
     let d = absolute(&a.data_dir.clone().or_else(|| env_path("RC_EXTRACTED")).unwrap_or_else(|| repo.join("extracted")));
-    if let Some(why) = unsafe_target(&d, &repo, env_path("HOME").map(|h| absolute(&h)).as_deref()) {
+    if let Some(why) = unsafe_target(&d, &repo, home_dir().map(|h| absolute(&h)).as_deref()) {
         eprintln!("error: refusing to replace {}: {why}", d.display());
         return ExitCode::FAILURE;
     }
@@ -328,6 +329,13 @@ mod tests {
         for bad in ["/", "/u", "/u/me", "/u/me/Repos", "/u/me/Repos/checkout", "/u/me/Repos/checkout/docs", "/u/me/Repos/checkout/crates/rc-extract"] {
             assert!(unsafe_target(Path::new(bad), repo, home).is_some(), "{bad}");
         }
+    }
+
+    #[test]
+    fn drops_the_windows_verbatim_prefix() {
+        assert_eq!(strip_verbatim(r"\\?\C:\r\extracted".into()), PathBuf::from(r"C:\r\extracted"));
+        assert_eq!(strip_verbatim(r"\\?\UNC\srv\share\r".into()), PathBuf::from(r"\\?\UNC\srv\share\r"));
+        assert_eq!(strip_verbatim("/r/extracted".into()), PathBuf::from("/r/extracted"));
     }
 
     #[test]

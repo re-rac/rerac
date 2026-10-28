@@ -2,15 +2,18 @@
 //! game without a savestate. Enable it in PCSX2: Settings > Advanced > "Enable PINE" (slot 28011).
 //!
 //! Transport on macOS/Linux: Unix socket `$TMPDIR/pcsx2.sock` (macOS; `$XDG_RUNTIME_DIR` on
-//! Linux, `/tmp` fallback), with `.<slot>` appended when the slot is not 28011.
+//! Linux, `/tmp` fallback), with `.<slot>` appended when the slot is not 28011. On Windows: TCP
+//! `127.0.0.1:<slot>`.
 //! Message: `u32 total_len` then commands back to back (`u8 opcode, args`). Reply: `u32 total_len,
 //! u8 status (0 ok, 0xff fail)`, then each command's result in order. Limits: request < 650000
 //! bytes, reply < 450000 bytes, so reads are batched as up to 50000 `MsgRead64` per message.
 
 use anyhow::{bail, ensure, Context, Result};
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream as Stream;
+#[cfg(windows)]
+use std::net::TcpStream as Stream;
 
 pub const DEFAULT_SLOT: u16 = 28011;
 const MSG_READ64: u8 = 3;
@@ -22,20 +25,33 @@ const MSG_ID: u8 = 0xc;
 const MSG_STATUS: u8 = 0xf;
 const READS_PER_MSG: usize = 50_000;
 
-pub struct Pine { s: UnixStream }
+pub struct Pine { s: Stream }
 
-pub fn socket_path(slot: u16) -> PathBuf {
+#[cfg(unix)]
+pub fn socket_path(slot: u16) -> std::path::PathBuf {
+    use std::path::PathBuf;
     let dir = std::env::var_os(if cfg!(target_os = "macos") { "TMPDIR" } else { "XDG_RUNTIME_DIR" }).map(PathBuf::from).unwrap_or_else(|| "/tmp".into());
     let mut name = "pcsx2.sock".to_string();
     if slot != DEFAULT_SLOT { name += &format!(".{slot}"); }
     dir.join(name)
 }
 
+/// Where PCSX2 serves `slot`: the socket path, or `127.0.0.1:<slot>` on Windows.
+pub fn endpoint(slot: u16) -> String {
+    #[cfg(unix)]
+    { socket_path(slot).display().to_string() }
+    #[cfg(windows)]
+    { format!("127.0.0.1:{slot}") }
+}
+
 impl Pine {
     pub fn connect(slot: u16) -> Result<Pine> {
-        let p = socket_path(slot);
-        let s = UnixStream::connect(&p).with_context(|| {
-            format!("connecting to PINE socket {} (is PCSX2 running with Settings > Advanced > Enable PINE, slot {slot}?)", p.display())
+        #[cfg(unix)]
+        let s = Stream::connect(socket_path(slot));
+        #[cfg(windows)]
+        let s = Stream::connect(("127.0.0.1", slot)).inspect(|s| { let _ = s.set_nodelay(true); });
+        let s = s.with_context(|| {
+            format!("connecting to PINE at {} (is PCSX2 running with Settings > Advanced > Enable PINE, slot {slot}?)", endpoint(slot))
         })?;
         Ok(Pine { s })
     }
@@ -129,16 +145,40 @@ impl Pine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::net::UnixListener;
+    #[cfg(unix)]
+    use std::os::unix::net::UnixListener as Listener;
+    #[cfg(windows)]
+    use std::net::TcpListener as Listener;
+    #[cfg(unix)]
+    type Addr = std::path::PathBuf;
+    #[cfg(windows)]
+    type Addr = std::net::SocketAddr;
+
+    /// A listener for a fake PINE server and the address a client connects to.
+    #[cfg(unix)]
+    fn fake_server(tag: &str) -> (Listener, Addr) {
+        let dir = std::env::temp_dir().join(format!("rc-trace-pine-{tag}{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("pcsx2.sock");
+        let _ = std::fs::remove_file(&path);
+        (Listener::bind(&path).unwrap(), path)
+    }
+    #[cfg(windows)]
+    fn fake_server(_tag: &str) -> (Listener, Addr) {
+        let l = Listener::bind("127.0.0.1:0").unwrap();
+        let a = l.local_addr().unwrap();
+        (l, a)
+    }
+    fn client(a: &Addr) -> Pine { Pine { s: Stream::connect(a).unwrap() } }
+    #[cfg(unix)]
+    fn cleanup(path: &Addr) { std::fs::remove_dir_all(path.parent().unwrap()).ok(); }
+    #[cfg(windows)]
+    fn cleanup(_: &Addr) {}
 
     /// A fake PINE server answering MsgRead64 with the address itself, to check framing and batching.
     #[test]
     fn batched_read_framing() {
-        let dir = std::env::temp_dir().join(format!("rc-trace-pine-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("pcsx2.sock");
-        let _ = std::fs::remove_file(&path);
-        let l = UnixListener::bind(&path).unwrap();
+        let (l, path) = fake_server("");
         let server = std::thread::spawn(move || {
             let (mut s, _) = l.accept().unwrap();
             let mut msgs = 0;
@@ -162,7 +202,7 @@ mod tests {
             }
             msgs
         });
-        let mut c = Pine { s: UnixStream::connect(&path).unwrap() };
+        let mut c = client(&path);
         let n = 120_000 * 8;
         let r = c.read(0x10_0000, n).unwrap();
         drop(c);
@@ -170,17 +210,13 @@ mod tests {
         for (i, w) in r.chunks(8).enumerate() {
             assert_eq!(u64::from_le_bytes(w.try_into().unwrap()), 0x10_0000 + 8 * i as u64);
         }
-        std::fs::remove_dir_all(&dir).ok();
+        cleanup(&path);
     }
 
     /// `read_many`: one message, the replies in request order.
     #[test]
     fn read_many_framing() {
-        let dir = std::env::temp_dir().join(format!("rc-trace-pine-many-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("pcsx2.sock");
-        let _ = std::fs::remove_file(&path);
-        let l = UnixListener::bind(&path).unwrap();
+        let (l, path) = fake_server("many-");
         let server = std::thread::spawn(move || {
             let (mut s, _) = l.accept().unwrap();
             let mut h = [0u8; 4];
@@ -193,12 +229,12 @@ mod tests {
             reply[..4].copy_from_slice(&n.to_le_bytes());
             s.write_all(&reply).unwrap();
         });
-        let mut c = Pine { s: UnixStream::connect(&path).unwrap() };
+        let mut c = client(&path);
         let addrs = [0x15f5c8u32, 0x13f3d0, 0x100];
         let r = c.read_many(&addrs).unwrap();
         server.join().unwrap();
         for (a, w) in addrs.iter().zip(&r) { assert_eq!(u64::from_le_bytes(*w), !(*a as u64)); }
         assert!(c.read_many(&[3]).is_err());
-        std::fs::remove_dir_all(&dir).ok();
+        cleanup(&path);
     }
 }
