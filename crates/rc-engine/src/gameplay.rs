@@ -131,6 +131,7 @@ use rc_game::rng::Rng;
 use rc_game::tick::{ticks_for_frame, Game, GameOptions, TickHooks, FIELD_RCNT1};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use crate::input_map::SdlGamepadInput;
 
 /// Level-table address of the class-27 emitter update (Novalis only), crate::particle_render.
 pub(crate) const EMITTER_UPDATE: u32 = 0x2bd100;
@@ -149,7 +150,11 @@ fn give_items() -> Option<Vec<usize>> {
 
 /// `RC_PLAY` (default on; `0` = fly camera only).
 /// Going Commando has no game tick yet (its logic is rc-game2's, docs/plan/rac2_bringup.md §6.3 F).
-pub fn enabled() -> bool { !std::env::var("RC_PLAY").is_ok_and(|v| v.trim() == "0") && crate::disc_source::current() == crate::disc_source::Game::Rac1 }
+pub fn enabled() -> bool {
+    !std::env::var("RC_PLAY").is_ok_and(|v| v.trim() == "0")
+    && crate::disc_source::current() == crate::disc_source::Game::Rac1
+}
+
 
 /// The boot's game state: a direct boot into level `index` (`load_game_state`) with the debug grants applied. Built
 /// once, before the boot's level load (its spawn bits, [`level_spawn_save`]), and handed to [`GameplayPlugin`].
@@ -243,6 +248,8 @@ pub struct GameplayPlugin {
 
 impl Plugin for GameplayPlugin {
     fn build(&self, app: &mut App) {
+        // Keep your existing boot/resource setup here.
+
         if let Some((gs, sess)) = self.boot.lock().unwrap_or_else(|e| e.into_inner()).take() {
             app.insert_resource(Persistent(gs)).insert_resource(Session(sess));
         }
@@ -250,6 +257,13 @@ impl Plugin for GameplayPlugin {
             println!("gameplay: RC_PLAY=0: fly camera only, no game tick");
             return;
         }
+
+
+        let sdl = SdlGamepadInput::new()
+        .expect("failed to initialize SDL gamepad input");
+        app.world_mut().insert_non_send(sdl);
+        eprintln!("SDL gamepad resource inserted");
+
         let script = std::env::var("RC_PLAY_SCRIPT").ok().filter(|s| !s.trim().is_empty()).map(|s| match Script::parse(&s) {
             Ok(sc) => sc,
             Err(e) => panic!("RC_PLAY_SCRIPT: {e}"),
@@ -276,7 +290,9 @@ impl Plugin for GameplayPlugin {
             .init_resource::<TickBudget>()
             .add_systems(
                 PreUpdate,
-                (setup, input_map::sample_system, set_budget, keys).chain().after(bevy::input::InputSystems),
+                (setup, input_map::sample_system, set_budget, keys)
+                .chain()
+                .after(bevy::input::InputSystems),
             )
             .add_systems(FixedUpdate, tick.in_set(GameTick).before(crate::particle_render::tick))
             .add_systems(FixedUpdate, elapsed_frame.after(GameTick).after(crate::menu_render::MenuFrameSet))

@@ -15,6 +15,7 @@
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use rc_game::pad::{button, PadInput};
+use sdl3::gamepad::{Axis as SdlAxis, Button as SdlButton, Gamepad as SdlGamepad};
 
 pub const CONTROLS: &str = "\
 play controls (PS2 pad):  left stick = WASD / arrow keys (Shift: half stick = walk) | X = Space | [] = J | O = K | /\\ = L
@@ -44,8 +45,24 @@ pub struct PadFrame(pub PadInput);
 /// A Bevy stick value in [−1, 1] (y up) → the raw libpad2 byte (y down).
 fn raw_axis(v: f32) -> u8 { (127.5 + 127.5 * v.clamp(-1.0, 1.0)).round().clamp(0.0, 255.0) as u8 }
 
+///SdlPadState
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SdlPadState {
+    pub left_stick: Vec2,
+    pub right_stick: Vec2,
+    /// Bits use the existing `button::*` constants.
+    pub buttons: u32,
+}
+
+
 /// Keyboard + mouse + the first gamepad → one pad read.
-pub fn sample(keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, motion: &AccumulatedMouseMotion, gamepad: Option<&Gamepad>) -> PadInput {
+pub fn sample(
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    motion: &AccumulatedMouseMotion,
+    gamepad: Option<SdlPadState>,
+) -> PadInput {
     let mut p = PadInput::neutral();
     let mut buttons = 0u32;
 
@@ -89,48 +106,46 @@ pub fn sample(keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, mot
     if mouse.pressed(MouseButton::Middle) { buttons |= button::R3; }
 
     if let Some(g) = gamepad {
-        let (l, r) = (g.left_stick(), g.right_stick());
+        let (l, r) = (g.left_stick, g.right_stick);
+
         if l != Vec2::ZERO {
             p.lx = raw_axis(l.x * STICK_SCALE);
-            p.ly = raw_axis(-l.y * STICK_SCALE);
+            p.ly = raw_axis(l.y * STICK_SCALE);
         }
         if r != Vec2::ZERO {
             p.rx = raw_axis(r.x * STICK_SCALE);
             p.ry = raw_axis(-r.y * STICK_SCALE);
         }
-        for (gb, b) in [
-            (GamepadButton::South, button::CROSS),
-            (GamepadButton::West, button::SQUARE),
-            (GamepadButton::East, button::CIRCLE),
-            (GamepadButton::North, button::TRIANGLE),
-            (GamepadButton::LeftTrigger, button::L1),
-            (GamepadButton::RightTrigger, button::R1),
-            (GamepadButton::LeftTrigger2, button::L2),
-            (GamepadButton::RightTrigger2, button::R2),
-            (GamepadButton::Start, button::START),
-            (GamepadButton::Select, button::SELECT),
-            (GamepadButton::LeftThumb, button::L3),
-            (GamepadButton::RightThumb, button::R3),
-            (GamepadButton::DPadUp, button::UP),
-            (GamepadButton::DPadDown, button::DOWN),
-            (GamepadButton::DPadLeft, button::LEFT),
-            (GamepadButton::DPadRight, button::RIGHT),
-        ] {
-            if g.pressed(gb) { buttons |= b; }
-        }
+
+        buttons |= g.buttons;
     }
     p.press(buttons)
 }
 
+
 /// Samples the devices into [`PadFrame`] (after Bevy's input systems).
 pub fn sample_system(
     keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    motion: Res<AccumulatedMouseMotion>,
-    gamepads: Query<&Gamepad>,
-    mut frame: ResMut<PadFrame>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    mouse_motion: Res<AccumulatedMouseMotion>,
+    mut sdl: Option<NonSendMut<SdlGamepadInput>>,
+    mut pad_frame: ResMut<PadFrame>,
 ) {
-    frame.0 = sample(&keys, &mouse, &motion, gamepads.iter().next());
+    // Temporary diagnostic: press F8 after reconnecting the controller.
+    if keys.just_pressed(KeyCode::F8) {
+        if let Some(backend) = sdl.as_mut() {
+            match backend.recreate() {
+                Ok(()) => eprintln!("SDL backend recreated"),
+                Err(err) => eprintln!("SDL backend recreation failed: {err}"),
+            }
+        }
+    }
+
+    let pad_state = sdl.as_mut().and_then(|backend| backend.poll());
+    // Remove this once input is verified; it prints every frame.
+    eprintln!("SDL poll result: {pad_state:?}");
+
+    pad_frame.0 = sample(&keys, &mouse_buttons, &mouse_motion, pad_state);
 }
 
 /// `RC_PLAY_SCRIPT`: pad input per gameplay tick, `item,item,...` with `item = range:action`.
@@ -157,6 +172,229 @@ enum Action {
     RStick(f32, f32),
     Press(u32),
 }
+
+pub struct SdlGamepadInput {
+    sdl: Option<sdl3::Sdl>,
+    gamepad: Option<sdl3::GamepadSubsystem>,
+    event_pump: Option<sdl3::EventPump>,
+    active: Option<SdlGamepad>,
+    next_recreate_at: std::time::Instant,
+}
+
+pub fn sample_bevy(
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    motion: &AccumulatedMouseMotion,
+    gamepad: Option<&Gamepad>,
+) -> PadInput {
+    let gamepad = gamepad.map(|g| {
+        let axis = |a| g.get(a).unwrap_or(0.0);
+
+
+        let mut buttons = 0u32;
+        for (bevy_button, pad_button) in [
+            (GamepadButton::South, button::CROSS),
+                              (GamepadButton::West, button::SQUARE),
+                              (GamepadButton::East, button::CIRCLE),
+                              (GamepadButton::North, button::TRIANGLE),
+                              (GamepadButton::LeftTrigger, button::L1),
+                              (GamepadButton::RightTrigger, button::R1),
+                              (GamepadButton::Start, button::START),
+                              (GamepadButton::Select, button::SELECT),
+                              (GamepadButton::LeftThumb, button::L3),
+                              (GamepadButton::RightThumb, button::R3),
+                              (GamepadButton::DPadUp, button::UP),
+                              (GamepadButton::DPadDown, button::DOWN),
+                              (GamepadButton::DPadLeft, button::LEFT),
+                              (GamepadButton::DPadRight, button::RIGHT),
+        ] {
+            if g.pressed(bevy_button) {
+                buttons |= pad_button;
+            }
+        }
+
+        if g.get(GamepadButton::LeftTrigger2).unwrap_or(0.0) > 0.5 {
+            buttons |= button::L2;
+        }
+        if g.get(GamepadButton::RightTrigger2).unwrap_or(0.0) > 0.5 {
+            buttons |= button::R2;
+        }
+
+        SdlPadState {
+            left_stick: Vec2::new(
+                axis(GamepadAxis::LeftStickX),
+                                  axis(GamepadAxis::LeftStickY),
+            ),
+            right_stick: Vec2::new(
+                axis(GamepadAxis::RightStickX),
+                                   axis(GamepadAxis::RightStickY),
+            ),
+            buttons,
+        }
+    });
+
+    sample(keys, mouse, motion, gamepad)
+}
+
+
+impl SdlGamepadInput {
+    pub fn new() -> Result<Self, String> {
+        let sdl = sdl3::init().map_err(|e| e.to_string())?;
+        let gamepad = sdl.gamepad().map_err(|e| e.to_string())?;
+        let event_pump = sdl.event_pump().map_err(|e| e.to_string())?;
+
+        let mut input = Self {
+            sdl: Some(sdl),
+            gamepad: Some(gamepad),
+            event_pump: Some(event_pump),
+            active: None,
+            next_recreate_at: std::time::Instant::now(),
+        };
+        input.open_first_gamepad();
+        Ok(input)
+    }
+
+    fn open_first_gamepad(&mut self) {
+        if self.active.is_some() {
+            eprintln!("SDL: active controller already set");
+            return;
+        }
+
+        let Some(gamepad) = self.gamepad.as_ref() else {
+            eprintln!("SDL: gamepad subsystem is unavailable");
+            return;
+        };
+
+        let ids = match gamepad.gamepads() {
+            Ok(ids) => ids,
+            Err(err) => {
+                eprintln!("SDL: gamepads() failed: {err}");
+                return;
+            }
+        };
+
+        eprintln!("SDL: enumerated gamepad IDs: {ids:?}");
+
+        for id in ids {
+            let is_gamepad = gamepad.is_gamepad(id);
+            eprintln!("SDL: id {id}, is_gamepad={is_gamepad}");
+
+            if is_gamepad {
+                match gamepad.open(id) {
+                    Ok(pad) => {
+                        eprintln!("SDL: opened controller {id}");
+                        self.active = Some(pad);
+                        return;
+                    }
+                    Err(err) => eprintln!("SDL: opening {id} failed: {err}"),
+                }
+            }
+        }
+    }
+
+    pub fn recreate(&mut self) -> Result<(), String> {
+        drop(self.active.take());
+        drop(self.event_pump.take());
+        drop(self.gamepad.take());
+        drop(self.sdl.take());
+
+        let sdl = sdl3::init().map_err(|e| e.to_string())?;
+        let gamepad = sdl.gamepad().map_err(|e| e.to_string())?;
+        let event_pump = sdl.event_pump().map_err(|e| e.to_string())?;
+
+        self.sdl = Some(sdl);
+        self.gamepad = Some(gamepad);
+        self.event_pump = Some(event_pump);
+
+        self.open_first_gamepad();
+        Ok(())
+    }
+
+
+    pub fn poll(&mut self) -> Option<SdlPadState> {
+        let mut rescan = false;
+        let mut recreate = false;
+
+        {
+            let event_pump = self.event_pump.as_mut()?;
+
+            for event in event_pump.poll_iter() {
+                eprintln!("SDL event: {event:?}");
+
+                match event {
+                    sdl3::event::Event::GamepadRemoved { .. }
+                    | sdl3::event::Event::JoyDeviceRemoved { .. } => {
+                        self.active = None;
+                        rescan = true;
+                    }
+
+                    sdl3::event::Event::GamepadAdded { .. }
+                    | sdl3::event::Event::JoyDeviceAdded { .. } => {
+                        if self.active.is_none() {
+                            recreate = true;
+                        }
+                        }
+                    _ => {}
+                }
+            }
+        } // The event-pump borrow ends here.
+
+        let now = std::time::Instant::now();
+
+        if self.active.is_none() && now >= self.next_recreate_at {
+            // Throttle retries so SDL isn't rebuilt every frame.
+            self.next_recreate_at = now + std::time::Duration::from_secs(2);
+
+            if let Err(err) = self.recreate() {
+                eprintln!("SDL backend recreation failed: {err}");
+            }
+        }
+
+        self.active.as_ref().map(sdl_pad_state)
+    }
+
+}
+
+fn sdl_pad_state(g: &SdlGamepad) -> SdlPadState {
+    let axis = |a| (g.axis(a) as f32 / 32767.0).clamp(-1.0, 1.0);
+
+    let mut buttons = 0u32;
+    for (sdl_button, pad_button) in [
+        (SdlButton::South, button::CROSS),
+        (SdlButton::West, button::SQUARE),
+        (SdlButton::East, button::CIRCLE),
+        (SdlButton::North, button::TRIANGLE),
+        (SdlButton::LeftShoulder, button::L1),
+        (SdlButton::RightShoulder, button::R1),
+        (SdlButton::Start, button::START),
+        (SdlButton::Back, button::SELECT),
+        (SdlButton::LeftStick, button::L3),
+        (SdlButton::RightStick, button::R3),
+        (SdlButton::DPadUp, button::UP),
+        (SdlButton::DPadDown, button::DOWN),
+        (SdlButton::DPadLeft, button::LEFT),
+        (SdlButton::DPadRight, button::RIGHT),
+    ] {
+        if g.button(sdl_button) {
+            buttons |= pad_button;
+        }
+    }
+
+    // PadInput represents L2/R2 as digital buttons; SDL exposes these as axes.
+    if g.axis(SdlAxis::TriggerLeft) > 16_000 {
+        buttons |= button::L2;
+    }
+    if g.axis(SdlAxis::TriggerRight) > 16_000 {
+        buttons |= button::R2;
+    }
+
+    SdlPadState {
+        left_stick: Vec2::new(axis(SdlAxis::LeftX), axis(SdlAxis::LeftY)),
+        right_stick: Vec2::new(axis(SdlAxis::RightX), axis(SdlAxis::RightY)),
+        buttons,
+    }
+}
+
 
 fn button_named(s: &str) -> Option<u32> {
     Some(match s.to_ascii_uppercase().as_str() {

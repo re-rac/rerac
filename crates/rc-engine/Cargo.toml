@@ -17,6 +17,8 @@ dev = ["bevy/dynamic_linking"]
 
 [dependencies]
 bevy = "0.19"
+#sdl3 = "0.20"
+sdl3 = { version = "0.20", features = ["hidapi"] }
 rc-formats = { path = "../rc-formats" }
 rc-game = { path = "../rc-game" }
 # Going Commando's game logic (crate::rac2).

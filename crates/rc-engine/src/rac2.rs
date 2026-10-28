@@ -265,7 +265,12 @@ fn tick(
     if r.done { return; }
     let held = match &r.script {
         Some(s) => s.at(r.ticks).buttons,
-        None => crate::input_map::sample(&keys, &mouse, &motion, gamepads.iter().next()).buttons,
+        None => crate::input_map::sample_bevy(
+            &keys,
+            &mouse,
+            &motion,
+            gamepads.iter().next(),
+        ).buttons,
     };
     let ended = std::mem::take(&mut r.movie_ended);
     for req in r.front.tick(held, ended, &r.data.assets) {

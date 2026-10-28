@@ -39,6 +39,13 @@ impl Plugin for Rac2PlayPlugin {
         app.insert_resource(if fly { CameraSource::Fly } else { CameraSource::Play })
             .insert_resource(Rac2Script(script))
             .init_resource::<PadFrame>()
+            .add_systems(PreStartup, |world: &mut World| {
+                let input = input_map::SdlGamepadInput::new().unwrap_or_else(|e| {
+                    eprintln!("Failed to initialize SdlGamepadInput: {}", e);
+                    std::process::exit(1);
+                });
+                world.insert_non_send(input);
+            })
             .add_systems(PreUpdate, (input_map::sample_system, switch_camera).chain().after(bevy::input::InputSystems))
             .add_systems(FixedUpdate, tick)
             .add_systems(RunFixedMainLoop, play_camera::apply.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop));

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 # Product crates (ship) under crates/; dev-only tools under tools/ (never shipped; product never depends on them).
-members = ["crates/rc-formats", "crates/rc-engine", "crates/rc-game", "crates/rc-game2", "crates/rc-extract", "crates/rc-data", "crates/rc-video", "tools/trace", "tools/repo-checks", "tools/xtask"]
+members = ["crates/rc-formats", "crates/rc-engine", "crates/rc-game", "crates/rc-extract", "crates/rc-data", "crates/rc-video", "tools/trace", "tools/repo-checks", "tools/xtask"]
 
 [workspace.package]
 # The one ReRAC version (every crate: `version.workspace = true`). Release tags are `v<version>[-pre]`
