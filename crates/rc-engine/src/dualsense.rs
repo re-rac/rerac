@@ -10,7 +10,8 @@
 //! [`DualSense::set_trigger`]): the reader thread sends the pad's output report (USB 0x02, Bluetooth 0x31 with its
 //! CRC-32) whenever they change, through a second handle so a blocked read never holds a write up. The report sets the
 //! two "compatible vibration" motors (valid flags 0x01 | 0x02) and the right trigger's effect (0x04, [`Trigger`]); the
-//! lightbar, LEDs and the left trigger are left alone. Dropping [`RumbleStop`] (the app's end) stops the motors and
+//! lightbar only when the player picks a colour (crate::haptics::Lightbar: valid flag 1 0x04, its setup once), the
+//! LEDs and the left trigger never. Dropping [`RumbleStop`] (the app's end) stops the motors and
 //! frees the trigger.
 //!
 //! A thread per process scans for a pad every second, then reads its reports into [`DualSense`] until it disconnects.
@@ -82,6 +83,8 @@ struct Shared {
     rumble: AtomicU16,
     /// The wanted effect on R2.
     trigger: Mutex<Trigger>,
+    /// The wanted lightbar colour, `None`: the pad's own.
+    lightbar: Mutex<Option<Rgb>>,
     #[cfg(windows)]
     out: Mutex<Option<hid::Output>>,
 }
@@ -98,7 +101,13 @@ impl DualSense {
 
     /// The effect R2 should have.
     pub fn set_trigger(&self, t: Trigger) { *self.0.trigger.lock().unwrap_or_else(|e| e.into_inner()) = t; }
+
+    /// The lightbar's colour, `None` to leave it to the pad (once set, it keeps the last colour until turned off).
+    pub fn set_lightbar(&self, c: Option<Rgb>) { *self.0.lightbar.lock().unwrap_or_else(|e| e.into_inner()) = c; }
 }
+
+/// A lightbar colour.
+pub type Rgb = [u8; 3];
 
 /// Stops the motors and frees R2 when the app ends (its resources drop after `App::run`).
 #[derive(Resource)]
@@ -109,7 +118,7 @@ impl Drop for RumbleStop {
         self.0.set_rumble(0, 0);
         self.0.set_trigger(Trigger::OFF);
         #[cfg(windows)]
-        if let Some(o) = self.0 .0.out.lock().unwrap_or_else(|e| e.into_inner()).as_mut() { o.send(0, 0, Trigger::OFF); }
+        if let Some(o) = self.0 .0.out.lock().unwrap_or_else(|e| e.into_inner()).as_mut() { o.send(0, 0, Trigger::OFF, None); }
     }
 }
 
@@ -199,8 +208,11 @@ pub fn parse(report: &[u8], bluetooth: bool) -> Option<PadDevice> {
 /// length too short for the DualSense's (USB 0x02: 48, Bluetooth 0x31: 78). Windows wants every write as long as the
 /// pad's longest output report (over Bluetooth 547 bytes, report 0x39), so the report is padded with zeros to `len`,
 /// as hidapi does. The common part (hid-playstation.c `dualsense_output_report_common`, SDL's `DS5EffectsState_t`):
-/// valid flags 0 / 1, the right (light) and left (heavy) motors, then at +10 the right trigger's effect.
-pub fn output_report(len: usize, bluetooth: bool, seq: u8, heavy: u8, light: u8, trigger: Trigger) -> Option<Vec<u8>> {
+/// valid flags 0 / 1, the right (light) and left (heavy) motors, then at +10 the right trigger's effect; with a
+/// `lightbar` colour, valid flag 1 0x04 and the colour at +44, and with `setup` also valid flag 2 (+38) 0x02 and the
+/// lightbar setup (+41) 0x02, which ends the pad's own lightbar animation (hid-playstation sends it once).
+#[allow(clippy::too_many_arguments)]
+pub fn output_report(len: usize, bluetooth: bool, seq: u8, heavy: u8, light: u8, trigger: Trigger, lightbar: Option<Rgb>, setup: bool) -> Option<Vec<u8>> {
     let mut r = vec![0u8; len];
     let common = if bluetooth {
         if len < 78 { return None; }
@@ -219,6 +231,14 @@ pub fn output_report(len: usize, bluetooth: bool, seq: u8, heavy: u8, light: u8,
     r[common + 2] = light;
     r[common + 3] = heavy;
     r[common + 10..common + 21].copy_from_slice(&trigger.0);
+    if let Some(c) = lightbar {
+        r[common + 1] |= 0x04;
+        r[common + 44..common + 47].copy_from_slice(&c);
+        if setup {
+            r[common + 38] |= 0x02;
+            r[common + 41] = 0x02;
+        }
+    }
     if bluetooth {
         // CRC-32 over the Bluetooth output header byte 0xa2 and the report, little-endian in the last four bytes.
         let crc = crc32(&[&[0xa2], &r[..74]]);
@@ -250,7 +270,7 @@ mod hid {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    use super::{output_report, parse, Shared, Trigger, PRODUCTS, VENDOR};
+    use super::{output_report, parse, Rgb, Shared, Trigger, PRODUCTS, VENDOR};
 
     #[repr(C)]
     #[derive(Default)]
@@ -330,14 +350,19 @@ mod hid {
         len: usize,
         bluetooth: bool,
         seq: u8,
+        /// The lightbar setup was sent.
+        lit: bool,
     }
 
     impl Output {
-        /// Sends the motor strengths and R2's effect; false when the write fails (the pad is gone).
-        pub fn send(&mut self, heavy: u8, light: u8, trigger: Trigger) -> bool {
-            let Some(r) = output_report(self.len, self.bluetooth, self.seq, heavy, light, trigger) else { return false };
+        /// Sends the motor strengths, R2's effect and the lightbar; false when the write fails (the pad is gone).
+        pub fn send(&mut self, heavy: u8, light: u8, trigger: Trigger, lightbar: Option<Rgb>) -> bool {
+            let setup = lightbar.is_some() && !self.lit;
+            let Some(r) = output_report(self.len, self.bluetooth, self.seq, heavy, light, trigger, lightbar, setup) else { return false };
             self.seq = (self.seq + 1) & 0xf;
-            self.file.write_all(&r).is_ok()
+            let ok = self.file.write_all(&r).is_ok();
+            if ok && setup { self.lit = true; }
+            ok
         }
     }
 
@@ -382,12 +407,12 @@ mod hid {
                 continue;
             };
             println!("dualsense: connected over {}", if pad.bluetooth { "Bluetooth" } else { "USB" });
-            set_out(open_file(&path).map(|file| Output { file, len: pad.output_len, bluetooth: pad.bluetooth, seq: 0 }));
+            set_out(open_file(&path).map(|file| Output { file, len: pad.output_len, bluetooth: pad.bluetooth, seq: 0, lit: false }));
             // The rumble and trigger effect last sent and when: a running motor is sent again every second, in case a write
             // was lost. Nothing is sent before the first rumble or effect: over Bluetooth an output report switches the pad
             // to its extended reports, which other programs reading it through Windows.Gaming.Input then miss until it is
             // turned off and on.
-            let mut sent = (0u16, Trigger::OFF, Instant::now());
+            let mut sent = (0u16, Trigger::OFF, None, Instant::now());
             let mut warned = false;
             let mut buf = vec![0u8; pad.input_len.max(1)];
             let mut reported = false;
@@ -402,14 +427,15 @@ mod hid {
                 set(Some(state));
                 let want = shared.rumble.load(Ordering::Relaxed);
                 let trigger = *shared.trigger.lock().unwrap_or_else(|e| e.into_inner());
-                if want != sent.0 || trigger != sent.1 || (want != 0 && sent.2.elapsed() > Duration::from_secs(1)) {
+                let lightbar = *shared.lightbar.lock().unwrap_or_else(|e| e.into_inner());
+                if want != sent.0 || trigger != sent.1 || lightbar != sent.2 || (want != 0 && sent.3.elapsed() > Duration::from_secs(1)) {
                     let [heavy, light] = want.to_be_bytes();
-                    let ok = shared.out.lock().unwrap_or_else(|e| e.into_inner()).as_mut().is_some_and(|o| o.send(heavy, light, trigger));
+                    let ok = shared.out.lock().unwrap_or_else(|e| e.into_inner()).as_mut().is_some_and(|o| o.send(heavy, light, trigger, lightbar));
                     if !ok && !warned {
                         println!("dualsense: rumble not sent (output report length {})", pad.output_len);
                         warned = true;
                     }
-                    sent = (want, trigger, Instant::now());
+                    sent = (want, trigger, lightbar, Instant::now());
                 }
             }
             set(None);
@@ -449,17 +475,29 @@ mod tests {
     #[test]
     fn rumble_reports() {
         assert_eq!(crc32(&[b"123456789"]), 0xcbf4_3926);
-        let usb = output_report(48, false, 0, 200, 100, Trigger::OFF).unwrap();
+        let usb = output_report(48, false, 0, 200, 100, Trigger::OFF, None, false).unwrap();
         assert_eq!((usb[0], usb[1], usb[3], usb[4], usb[11]), (0x02, 0x07, 100, 200, 0x05));
-        let bt = output_report(78, true, 5, 255, 0, Trigger::weapon(3, 6, 8)).unwrap();
+        let bt = output_report(78, true, 5, 255, 0, Trigger::weapon(3, 6, 8), None, false).unwrap();
         assert_eq!(&bt[..7], &[0x31, 0x50, 0x10, 0x07, 0x00, 0, 255]);
         assert_eq!(&bt[13..17], &[0x25, 0x48, 0x00, 7]);
         assert_eq!(u32::from_le_bytes(bt[74..].try_into().unwrap()), crc32(&[&[0xa2], &bt[..74]]));
         // Padded to the pad's longest output report, the CRC still over the first 74 bytes.
-        let long = output_report(547, true, 5, 255, 0, Trigger::weapon(3, 6, 8)).unwrap();
+        let long = output_report(547, true, 5, 255, 0, Trigger::weapon(3, 6, 8), None, false).unwrap();
         assert_eq!((long.len(), &long[..78], long[78..].iter().all(|&b| b == 0)), (547, &bt[..], true));
-        assert_eq!(output_report(64, true, 0, 1, 1, Trigger::OFF), None);
-        assert_eq!(output_report(40, false, 0, 1, 1, Trigger::OFF), None);
+        assert_eq!(output_report(64, true, 0, 1, 1, Trigger::OFF, None, false), None);
+        assert_eq!(output_report(40, false, 0, 1, 1, Trigger::OFF, None, false), None);
+    }
+
+    #[test]
+    fn lightbar_report() {
+        // Over USB the common part starts at 1: valid flag 1 at 2, the colour at 45..48; the setup at 39 / 42.
+        let usb = output_report(48, false, 0, 0, 0, Trigger::OFF, Some([255, 96, 0]), true).unwrap();
+        assert_eq!((usb[1], usb[2], usb[39], usb[42], &usb[45..48]), (0x07, 0x04, 0x02, 0x02, &[255, 96, 0][..]));
+        let again = output_report(48, false, 0, 0, 0, Trigger::OFF, Some([0, 0, 0]), false).unwrap();
+        assert_eq!((again[2], again[39], again[42]), (0x04, 0, 0));
+        // No colour: the lightbar is left to the pad.
+        let none = output_report(78, true, 0, 0, 0, Trigger::OFF, None, true).unwrap();
+        assert_eq!((none[4], none[41], none[44]), (0, 0, 0));
     }
 
     #[test]

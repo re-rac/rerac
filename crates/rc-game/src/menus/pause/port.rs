@@ -147,13 +147,25 @@ pub mod text {
     pub const AVAILABLE: i32 = -0x1c4;
     pub const LOCKED: i32 = -0x1c5;
     pub const GMS_OFF: i32 = -0x1c6;
+    /// The Gadgetron Movement System's HelpDesk note (rc-engine's gms), also its Help Log entry's text.
+    pub const GMS_HELP: i32 = -0x1c7;
     pub const BUTTON_ICONS: i32 = -0x1d0;
     pub const PS5: i32 = -0x1d1;
     pub const XBOX_ONE: i32 = -0x1d2;
     pub const AUTO: i32 = -0x1d3;
+    pub const LIGHTBAR: i32 = -0x1e0;
+    pub const LIGHTBAR_DEFAULT: i32 = -0x1e1;
+    pub const ORANGE: i32 = -0x1e2;
+    pub const GREEN: i32 = -0x1e3;
+    pub const BLUE: i32 = -0x1e4;
+    pub const HEALTH: i32 = -0x1e5;
     /// The game's own "on" / "off" (20314 / 20315, the Subtitles / HelpDesk toggle values).
     pub const ON: i32 = 20314;
     pub const OFF: i32 = 20315;
+
+    /// The Gadgetron Movement System note (roxas997's words, from the ReRAC Discord).
+    pub const GMS_HELP_TEXT: &[u8] = b"The Gadgetron Movement System is what is used to move Ratchet and Clank on their intergalactic adventure. \
+If you like, you may change your options on the Port Options screen, under Controller.";
 
     pub fn get(id: i32) -> Option<&'static [u8]> {
         Some(match id {
@@ -206,10 +218,17 @@ pub mod text {
             AVAILABLE => b"Available",
             LOCKED => b"Locked",
             GMS_OFF => b"Off",
+            GMS_HELP => GMS_HELP_TEXT,
             BUTTON_ICONS => b"Button icons",
             PS5 => b"PS5",
             XBOX_ONE => b"Xbox One",
             AUTO => b"Auto",
+            LIGHTBAR => b"Lightbar",
+            LIGHTBAR_DEFAULT => b"Default",
+            ORANGE => b"Orange",
+            GREEN => b"Green",
+            BLUE => b"Blue",
+            HEALTH => b"Health",
             _ => return None,
         })
     }
@@ -254,6 +273,9 @@ pub enum Setting {
     /// The button icons in text (the engine's): value 0 Original (the disc's), 1 PS5, 2 Xbox One, 3 Auto (the
     /// controller last used).
     ButtonIcons,
+    /// The DualSense lightbar (the engine's): value 0 Default (the pad's own), 1 off, 2 Orange, 3 Green, 4 Blue, 5
+    /// Health.
+    Lightbar,
 }
 
 /// One row: the setting, its label and the ids of its values (✕ cycles through them).
@@ -282,6 +304,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::FireButton, label: text::FIRE_BUTTON, values: &[text::CIRCLE, text::R2] },
     Entry { setting: Setting::TriggerEffects, label: text::TRIGGER_EFFECTS, values: &[text::ON, text::OFF] },
     Entry { setting: Setting::ButtonIcons, label: text::BUTTON_ICONS, values: &[text::ORIGINAL, text::PS5, text::XBOX_ONE, text::AUTO] },
+    Entry { setting: Setting::Lightbar, label: text::LIGHTBAR, values: &[text::LIGHTBAR_DEFAULT, text::OFF, text::ORANGE, text::GREEN, text::BLUE, text::HEALTH] },
 ];
 
 /// The Port Options page shows [`ENTRIES`]`[..PORT_ROWS]` (the last one the Controller row); the Controller page the
@@ -629,7 +652,7 @@ mod tests {
         // Port Options ends with the Controller row (no value: it opens a page); the controller settings follow.
         assert_eq!((ENTRIES[PORT_ROWS - 1].setting, ENTRIES[PORT_ROWS - 1].values.len()), (Setting::Controller, 0));
         let gms: Vec<Setting> = ENTRIES[PORT_ROWS..].iter().map(|e| e.setting).collect();
-        assert_eq!(gms, vec![Setting::Vibration, Setting::VibrationStrength, Setting::FireButton, Setting::TriggerEffects, Setting::ButtonIcons]);
+        assert_eq!(gms, vec![Setting::Vibration, Setting::VibrationStrength, Setting::FireButton, Setting::TriggerEffects, Setting::ButtonIcons, Setting::Lightbar]);
     }
 
     #[test]

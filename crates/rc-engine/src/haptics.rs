@@ -35,6 +35,46 @@ use bevy::prelude::*;
 use crate::dualsense::{DualSense, Trigger};
 use crate::gameplay::{Persistent, Play};
 
+/// The DualSense lightbar, as the Controller page row's values.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Lightbar {
+    /// Left to the pad (and to Steam or DualSenseX): nothing is sent.
+    #[default]
+    Default,
+    Off,
+    /// Ratchet's orange.
+    Orange,
+    /// Clank's green.
+    Green,
+    Blue,
+    /// Ratchet's health: green when full, through yellow, to red.
+    Health,
+}
+
+impl Lightbar {
+    pub const ALL: [Lightbar; 6] = [Lightbar::Default, Lightbar::Off, Lightbar::Orange, Lightbar::Green, Lightbar::Blue, Lightbar::Health];
+    const KEYS: [&'static str; 6] = ["default", "off", "orange", "green", "blue", "health"];
+
+    pub fn index(self) -> u8 { Self::ALL.iter().position(|&s| s == self).unwrap_or(0) as u8 }
+    pub fn from_index(i: u8) -> Lightbar { Self::ALL.get(i as usize).copied().unwrap_or_default() }
+    fn key(self) -> &'static str { Self::KEYS[self.index() as usize] }
+
+    /// The colour to send: `health` is Ratchet's health over his max (`None` outside a level: full).
+    pub fn colour(self, health: Option<f32>) -> Option<crate::dualsense::Rgb> {
+        Some(match self {
+            Lightbar::Default => return None,
+            Lightbar::Off => [0, 0, 0],
+            Lightbar::Orange => [255, 80, 0],
+            Lightbar::Green => [0, 255, 40],
+            Lightbar::Blue => [0, 60, 255],
+            Lightbar::Health => {
+                let f = health.unwrap_or(1.0).clamp(0.0, 1.0);
+                [((2.0 * (1.0 - f)).min(1.0) * 255.0).round() as u8, ((2.0 * f).min(1.0) * 255.0).round() as u8, 0]
+            }
+        })
+    }
+}
+
 /// How strongly the motors run, as the Port Options row's values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Strength {
@@ -73,6 +113,8 @@ pub struct ControllerSettings {
     pub triggers: bool,
     /// The button icons in text (crate::button_icons).
     pub icons: crate::button_icons::IconStyle,
+    /// The DualSense lightbar.
+    pub lightbar: Lightbar,
 }
 
 impl ControllerSettings {
@@ -88,7 +130,8 @@ impl ControllerSettings {
         let fire_r2 = key("fire_button").is_some_and(|v| v == "r2");
         let triggers = key("trigger_effects").is_none_or(|v| v != "off");
         let icons = key("button_icons").and_then(|v| crate::button_icons::IconStyle::from_key(&v)).unwrap_or_default();
-        ControllerSettings { enabled, strength, fire_r2, triggers, icons }
+        let lightbar = key("lightbar").and_then(|v| Lightbar::KEYS.iter().position(|k| *k == v)).map_or(Lightbar::Default, |i| Lightbar::ALL[i]);
+        ControllerSettings { enabled, strength, fire_r2, triggers, icons, lightbar }
     }
 
     /// Writes the settings into the port settings file.
@@ -99,6 +142,7 @@ impl ControllerSettings {
         crate::render_settings::save_key("fire_button", if self.fire_r2 { "r2" } else { "circle" });
         crate::render_settings::save_key("trigger_effects", on(self.triggers));
         crate::render_settings::save_key("button_icons", self.icons.key());
+        crate::render_settings::save_key("lightbar", self.lightbar.key());
     }
 }
 
@@ -326,8 +370,8 @@ pub fn weapon_feel(item: i32) -> Option<Feel> {
     })
 }
 
-/// Each frame: the new ticks' events, then the motors (off while no tick runs, unless a settings preview plays) and
-/// R2's effect. While the game's window is not focused the motors and R2 are off, as its input is
+/// Each frame: the new ticks' events, then the motors (off while no tick runs, unless a settings preview plays),
+/// R2's effect and the lightbar. While the game's window is not focused the motors and R2 are off, as its input is
 /// (crate::input_map::Pads).
 #[allow(clippy::too_many_arguments)]
 fn haptics_frame(
@@ -429,6 +473,8 @@ fn haptics_frame(
     };
     pad.set_rumble(motor(heavy, scale), motor(light, scale));
     pad.set_trigger(if focused { trigger } else { Trigger::OFF });
+    let health = play.as_ref().zip(gs.as_ref()).map(|(p, g)| p.game.hero.health as f32 / g.0.global.max_hp.max(1) as f32);
+    pad.set_lightbar(settings.lightbar.colour(health));
     if fire.0 != point { fire.0 = point; }
 }
 
@@ -444,6 +490,7 @@ impl Plugin for HapticsPlugin {
             if s.fire_r2 { "R2" } else { "circle" },
             if s.triggers { "on" } else { "off" }
         );
+        println!("haptics: lightbar {:?}", s.lightbar);
         app.insert_resource(s).init_resource::<FirePoint>().init_resource::<R2Raw>().add_systems(PostUpdate, haptics_frame);
     }
 }
@@ -516,6 +563,16 @@ mod tests {
         assert_eq!(p.level(), (0.6, 0.6));
         for _ in 0..PULSE_TICKS { p.step(); }
         assert_eq!(p.level(), (0.0, 0.0));
+    }
+
+    #[test]
+    fn lightbar_colours() {
+        assert_eq!(Lightbar::Default.colour(Some(0.5)), None);
+        assert_eq!(Lightbar::Health.colour(Some(1.0)), Some([0, 255, 0]));
+        assert_eq!(Lightbar::Health.colour(Some(0.5)), Some([255, 255, 0]));
+        assert_eq!(Lightbar::Health.colour(Some(0.0)), Some([255, 0, 0]));
+        assert_eq!(Lightbar::Health.colour(None), Some([0, 255, 0]));
+        for l in Lightbar::ALL { assert_eq!(Lightbar::from_index(l.index()), l); }
     }
 
     #[test]

@@ -566,13 +566,17 @@ fn port_rows_in(
 ) {
     if let Some(s) = shadows { menu.set_port_value(Setting::Shadows, !s.enabled as u8); }
     // The Gadgetron Movement System page's rows: the connected controllers (crate::gms).
-    if let Some(g) = gms { menu.set_gms_rows(g.rows()); }
+    if let Some(g) = gms {
+        menu.set_gms_rows(g.rows());
+        menu.gms_in_log = g.in_log;
+    }
     if let Some(h) = haptics {
         menu.set_port_value(Setting::Vibration, !h.enabled as u8);
         menu.set_port_value(Setting::VibrationStrength, h.strength.index());
         menu.set_port_value(Setting::FireButton, h.fire_r2 as u8);
         menu.set_port_value(Setting::TriggerEffects, !h.triggers as u8);
         menu.set_port_value(Setting::ButtonIcons, h.icons.index());
+        menu.set_port_value(Setting::Lightbar, h.lightbar.index());
     }
     menu.set_port_value(Setting::Resolution, display.resolution.index());
     menu.set_port_value(Setting::Aspect, display.aspect.index());
@@ -602,6 +606,7 @@ fn port_rows_out(
             fire_r2: menu.port_value(Setting::FireButton).map_or(h.fire_r2, |v| v == 1),
             triggers: menu.port_value(Setting::TriggerEffects).map_or(h.triggers, |v| v == 0),
             icons: menu.port_value(Setting::ButtonIcons).map_or(h.icons, crate::button_icons::IconStyle::from_index),
+            lightbar: menu.port_value(Setting::Lightbar).map_or(h.lightbar, crate::haptics::Lightbar::from_index),
         };
         if *h != want {
             *h = want;

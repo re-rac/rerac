@@ -11,25 +11,27 @@
 //! of them. While the locked device is unplugged the lock does not apply, so the game never ends up without input. The
 //! lock lasts for the run (devices are not identified across runs).
 //!
-//! **The HelpDesk note** ([`HELP_TEXT`]): on Veldin (level 0) the help box shows once what the Gadgetron Movement
-//! System is and where its options are, as a text-only message (no voice: the game's lines are recordings) added to the
-//! level text under [`HELP_MESSAGE`] and requested without a help record (`rc_game::help::Help::request_port`). It
-//! counts as shown once the box displays it; the port settings file keeps `gms_help = shown`.
+//! **The HelpDesk note** (`port::text::GMS_HELP_TEXT`): in a new game on Veldin (level 0 loaded with under
+//! [`NEW_GAME_PLAY_TIME`] played) the help box shows what the Gadgetron Movement System is and where its options are,
+//! as a text-only message (no voice: the game's lines are recordings) added to the level text under [`HELP_MESSAGE`]
+//! and requested without a help record (`rc_game::help::Help::request_port`), so nothing of it enters the save; a
+//! reload after a death plays on from the play time it showed at ([`Gms::shown_at`]) and does not show it again. Once
+//! it has shown, the Help Log lists it too (`PageMenu::gms_in_log`, never in the saved log); the port settings file
+//! keeps `gms_help = shown` for that.
 
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use rc_game::menus::pause::port::{gms_status, GmsRow};
 
 use crate::dualsense::DualSense;
-use crate::gameplay::Play;
+use crate::gameplay::{Persistent, Play};
 
 /// The note's id in the level text (positive, as the help box takes only those; past the disc's ids 0..=21500).
 pub const HELP_MESSAGE: i32 = 0x7f00_0001;
-/// The note (roxas997's words, from the ReRAC Discord).
-pub const HELP_TEXT: &[u8] = b"The Gadgetron Movement System is what is used to move Ratchet and Clank on their intergalactic adventure. \
-If you like, you may change your options on the Port Options screen.";
 /// Game ticks into Veldin before the note may show (past the arrival's own help).
 const HELP_AFTER_TICKS: u64 = 600;
+/// A Veldin load with less play time than this (the save's play time, game ticks: 5 minutes) is a new game.
+pub const NEW_GAME_PLAY_TIME: i32 = 5 * 60 * 60;
 /// `RC_GMS_TRACE=1`: the note's conditions every 120 ticks.
 static TRACE: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("RC_GMS_TRACE").is_ok_and(|v| v.trim() == "1"));
 /// The longest device name shown (the row's status needs the rest of the width).
@@ -51,7 +53,17 @@ pub struct Gms {
     pub devices: Vec<(DeviceKey, Vec<u8>)>,
     pub active: Option<DeviceKey>,
     pub lock: Option<DeviceKey>,
-    pub help_shown: bool,
+    /// The note has shown at least once: the Help Log lists it.
+    pub in_log: bool,
+    /// The note waits to show in this level (a new game's Veldin).
+    pub help_due: bool,
+    /// The game tick last seen: a lower one is a new level load.
+    pub seen_counter: Option<u64>,
+    /// The save's play time when the note last showed: a death's reload plays on from it (no note again), a new game
+    /// starts below it.
+    pub shown_at: Option<i32>,
+    /// No note at all (deterministic runs).
+    pub help_off: bool,
 }
 
 impl Gms {
@@ -142,18 +154,32 @@ pub fn keyboard<'a>(
 /// The note in the level text (crate::gameplay's help setup).
 pub fn add_help_message(messages: &mut Vec<rc_formats::strings::Message>) {
     if messages.iter().any(|m| m.id == HELP_MESSAGE) { return; }
-    messages.push(rc_formats::strings::Message { id: HELP_MESSAGE, text: HELP_TEXT.to_vec(), help_audio: -1 });
+    messages.push(rc_formats::strings::Message { id: HELP_MESSAGE, text: rc_game::menus::pause::port::text::GMS_HELP_TEXT.to_vec(), help_audio: -1 });
 }
 
-/// On Veldin, once: request the note while the help box is free and enabled, and mark it shown once the box shows it.
-fn help_note(mut gms: ResMut<Gms>, play: Option<ResMut<Play>>, mode: Option<Res<crate::menu_render::MenuMode>>) {
-    if gms.help_shown { return; }
+/// A new game's Veldin: request the note while the help box is free and enabled; once the box shows it, it is done
+/// for this level and listed in the Help Log from then on.
+fn help_note(mut gms: ResMut<Gms>, play: Option<ResMut<Play>>, gs: Option<Res<Persistent>>, mode: Option<Res<crate::menu_render::MenuMode>>) {
+    if gms.help_off { return; }
     let Some(mut play) = play else { return };
+    // A level load (the tick count starts again): due on a new game's Veldin.
+    let counter = play.game.counter;
+    let play_time = gs.as_ref().map_or(i32::MAX, |g| g.0.global.play_time);
+    if gms.seen_counter.is_none_or(|c| counter < c) {
+        gms.help_due = play.svc.level == 0 && play_time < NEW_GAME_PLAY_TIME && gms.shown_at.is_none_or(|t| play_time < t);
+        if *TRACE { println!("gms: level {} loaded, play time {play_time}: note due {}", play.svc.level, gms.help_due); }
+    }
+    gms.seen_counter = Some(counter);
+    if !gms.help_due { return; }
     let help = &mut play.svc.help;
     let shown = help.bx.state != 0 && help.bx.index.and_then(|i| help.text.messages.get(i)).is_some_and(|m| m.id == HELP_MESSAGE);
     if shown {
-        gms.help_shown = true;
-        crate::render_settings::save_key("gms_help", "shown");
+        gms.help_due = false;
+        gms.shown_at = Some(play_time);
+        if !gms.in_log {
+            gms.in_log = true;
+            crate::render_settings::save_key("gms_help", "shown");
+        }
         println!("gms: the HelpDesk note shown");
         return;
     }
@@ -174,8 +200,8 @@ pub struct GmsPlugin;
 
 impl Plugin for GmsPlugin {
     fn build(&self, app: &mut App) {
-        let help_shown = crate::render_settings::load_key("gms_help").is_some_and(|v| v.trim() == "shown") || crate::determinism::deterministic();
-        app.insert_resource(Gms { help_shown, ..default() })
+        let in_log = crate::render_settings::load_key("gms_help").is_some_and(|v| v.trim() == "shown");
+        app.insert_resource(Gms { in_log, help_off: crate::determinism::deterministic(), ..default() })
             .add_systems(PreUpdate, track.after(bevy::input::InputSystems).before(crate::input_map::sample_system))
             .add_systems(Update, help_note);
     }

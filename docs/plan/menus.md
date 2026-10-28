@@ -578,8 +578,14 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   cycle; ✕ opens its own page (`port::GMS_PAGE`, from the main menu `port::GMS_PAGE_FRONT`; Port Options' frames, parent
   Port Options) titled "Gadgetron Movement System" (regular font: in the large one the title wraps and the label turns
   into a scroller) listing the connected controllers (`port::GmsList`, filled by the engine's `gms::Gms` before each tick):
-  Active (the one last used) / Available, or with one locked by ✕: Locked / Off. On Veldin a text-only HelpDesk note
-  (`gms::HELP_TEXT`, no voice, no help record: `help::Help::request_port`) says what the GMS is, once.
+  Active (the one last used) / Available, or with one locked by ✕: Locked / Off. In a new game's Veldin (level 0
+  loaded with under `gms::NEW_GAME_PLAY_TIME` played) a text-only HelpDesk note (`port::text::GMS_HELP_TEXT`, no voice,
+  no help record: `help::Help::request_port`) says what the GMS is. Once it has shown, the Help Log lists it last
+  (`PageMenu::gms_in_log`; settings key `gms_help`), outside the saved log, so saves stay the game's.
+* **Lightbar** (Controller page, port-only): Default (the pad's own: nothing sent) / Off / Orange / Green / Blue /
+  Health (green to red with Ratchet's health over `max_hp`) → `haptics::ControllerSettings::lightbar` (key
+  `lightbar`), sent by `dualsense` with valid flag 1 0x04 and, once, the lightbar setup that ends the pad's own
+  animation.
 * **Device support**: the row offers only the sample counts the GPU can use for every multisampled world attachment
   (`render_settings::SupportedMsaa`, detected at start from `RenderAdapter::get_texture_format_features` for
   `Rgba8UnormSrgb` and `Depth32Float` — the WebGPU guarantee {1, 4} when the device lacks

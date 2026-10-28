@@ -543,6 +543,9 @@ pub struct PageMenu {
     pub movie_lists: Vec<Vec<Item>>,
     /// The help log's id table 0x1798d0 (`crate::help`), read at load.
     pub log_ids: Vec<(i16, i16)>,
+    /// **Port-only**: the Help Log lists the Gadgetron Movement System note (rc-engine's gms sets it once the note was
+    /// shown). The entry is the list's oldest and never enters the saved log, so a save stays the game's.
+    pub gms_in_log: bool,
     /// 0x15ed88: the language (the Controls page's pictures, the Items page's German hyphen).
     pub lang: u32,
     /// The price records' `{u16 has ammo (+8), u16 max ammo (+0xe)}` by item (0x1c4530 + 0x18·id), from the engine.
@@ -601,6 +604,7 @@ impl PageMenu {
             help_items: pages::HelpItems::read(ov),
             movie_lists: pages::read_movie_lists(ov),
             log_ids: crate::help::read_log_ids(ov),
+            gms_in_log: false,
             lang: 0,
             ammo_records: Vec::new(),
             gold_spin: None,
@@ -1309,7 +1313,11 @@ impl PageMenu {
             Some(Data::List(l)) => Some((l.cursor, l.items.get(l.cursor.max(0) as usize).map_or(0, |it| it.label))),
             _ => None,
         };
-        let log_msg = focus_log.and_then(|(_, t)| self.log_ids.iter().find(|e| e.1 == t).map(|e| e.0 as u16 as u32));
+        let log_msg = focus_log.and_then(|(_, t)| {
+            // The port's entry: its note, a port text id ([`port::text::GMS_HELP`]).
+            if t == port::text::GMS_TITLE as i16 { return Some(port::text::GMS_HELP as u32); }
+            self.log_ids.iter().find(|e| e.1 == t).map(|e| e.0 as u16 as u32)
+        });
         let tables = self.label_tables.clone();
         let Some(wd) = self.wm(w) else { return 1 };
         let [_, _, ww, wh] = wd.rect;

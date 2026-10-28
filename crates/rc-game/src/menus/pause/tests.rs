@@ -65,6 +65,7 @@ fn menu() -> PageMenu {
         help_items: Default::default(),
         movie_lists: Vec::new(),
         log_ids: Vec::new(),
+        gms_in_log: false,
         lang: 0,
         ammo_records: Vec::new(),
         gold_spin: None,
@@ -553,4 +554,17 @@ fn port_page_from_the_disc() {
     assert_eq!(m.target, port::OPTIONS);
 }
 
-
+#[test]
+fn help_log_lists_the_gms_note_outside_the_save() {
+    let mut m = menu();
+    let w = 0x5f00_0000;
+    m.widgets.insert(w, list(w, 0, Vec::new(), 0, 0, 0, 0));
+    let g = gs();
+    super::pages::log_list_enter(&mut m, w, &g, &[]);
+    assert!(list_of(&m, w).items.is_empty());
+    // Once the note has shown: listed last (the oldest), the saved log untouched.
+    m.gms_in_log = true;
+    super::pages::log_list_enter(&mut m, w, &g, &[]);
+    assert_eq!(list_of(&m, w).items.iter().map(|i| (i.label, i.action)).collect::<Vec<_>>(), vec![(super::port::text::GMS_TITLE as i16, 1)]);
+    assert_eq!((g.global.help_log_pos, g.global.help_log[0]), (0, 0));
+}
