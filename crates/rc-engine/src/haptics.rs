@@ -237,6 +237,11 @@ fn motor(v: f32, scale: f32) -> u8 { (v.clamp(0.0, 1.0) * scale * 255.0).round()
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
 pub struct FirePoint(pub f32);
 
+/// R2 stays R2 even with "Fire button: R2" (crate::input_map::Pads): on the hoverboard (hero movement group 0x16,
+/// states 0x6b..0x6f) R2 is the fourth trick (`hero::hoverboard` `tricks`), not a weapon's fire.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct R2Raw(pub bool);
+
 /// The fire point of an effect: past a weapon effect's snap, a little into a resistance, well after a vibration starts
 /// ([`VIBRATION_LEAD`]: the trigger's motor needs a moment to build up, and a shot right at its start came first).
 pub fn fire_point(t: Trigger) -> f32 {
@@ -329,6 +334,7 @@ fn haptics_frame(
     gs: Option<Res<Persistent>>,
     mode: Option<Res<crate::menu_render::MenuMode>>,
     mut fire: ResMut<FirePoint>,
+    mut raw: ResMut<R2Raw>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
     let Some(pad) = pad else { return };
@@ -372,7 +378,10 @@ fn haptics_frame(
         (h.counter, h.last) = (Some(game.counter), now);
         long_shake = game.camera.shake.iter().map(long_shake_level).fold(0.0, f32::max);
         // R2's feel: the weapon in hand (not the wrench), while it has ammo (or uses none).
-        let feel = global.filter(|_| settings.fire_r2 && settings.triggers).and_then(|g| {
+        // On the hoverboard R2 is a trick: no weapon feel (and R2 is not read as fire, [`R2Raw`]).
+        let board = game.hero.group == rc_game::hero::hoverboard::GROUP;
+        if raw.0 != board { raw.0 = board; }
+        let feel = global.filter(|_| settings.fire_r2 && settings.triggers && !board).and_then(|g| {
             let ammo = usize::try_from(item).ok().and_then(|i| g.ammo.get(i)).copied().unwrap_or(0);
             (ammo > 0 || NO_AMMO.contains(&item)).then(|| weapon_feel(item)).flatten()
         });
@@ -431,7 +440,7 @@ impl Plugin for HapticsPlugin {
             if s.fire_r2 { "R2" } else { "circle" },
             if s.triggers { "on" } else { "off" }
         );
-        app.insert_resource(s).init_resource::<FirePoint>().add_systems(PostUpdate, haptics_frame);
+        app.insert_resource(s).init_resource::<FirePoint>().init_resource::<R2Raw>().add_systems(PostUpdate, haptics_frame);
     }
 }
 

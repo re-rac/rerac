@@ -100,6 +100,12 @@ impl PadDevice {
         PadDevice { left: g.left_stick(), right: g.right_stick(), buttons, r2 }
     }
 
+    /// The fire button setting applied: with `fire_r2` R2 fires ([`PadDevice::fire_on_r2`]), unless `r2_raw` (the
+    /// hoverboard, where R2 is a trick: crate::haptics::R2Raw).
+    pub fn fire_button(self, fire_r2: bool, r2_raw: bool, point: f32) -> PadDevice {
+        if fire_r2 && !r2_raw { self.fire_on_r2(point) } else { self }
+    }
+
     /// R2 as the fire button: R2 reads as ○ (the game's fire), so it no longer crouches; R1 still does (the game reads
     /// R1 and R2 as one crouch button, `held & (R1 | R2)`). It fires once R2 is pulled to `point` (0..1: where the held
     /// weapon's trigger effect clicks or resists, crate::haptics::FirePoint), so the shot follows the feel; a pad
@@ -129,6 +135,8 @@ pub struct Pads<'w, 's> {
     dualsense: Option<Res<'w, crate::dualsense::DualSense>>,
     controller: Option<Res<'w, crate::haptics::ControllerSettings>>,
     fire_point: Option<Res<'w, crate::haptics::FirePoint>>,
+    /// R2 kept as R2 (the hoverboard's trick), whatever the fire button.
+    r2_raw: Option<Res<'w, crate::haptics::R2Raw>>,
     /// The game's window: pads are read only while it has the focus (the DualSense's own reports arrive regardless,
     /// unlike Windows.Gaming.Input's).
     windows: Query<'w, 's, &'static Window, With<bevy::window::PrimaryWindow>>,
@@ -140,7 +148,8 @@ impl Pads<'_, '_> {
         if !self.focused() { return None; }
         let pad = self.merged()?;
         let point = self.fire_point.as_ref().map_or(0.0, |p| p.0);
-        Some(if self.controller.as_ref().is_some_and(|c| c.fire_r2) { pad.fire_on_r2(point) } else { pad })
+        let fire_r2 = self.controller.as_ref().is_some_and(|c| c.fire_r2);
+        Some(pad.fire_button(fire_r2, self.r2_raw.as_ref().is_some_and(|r| r.0), point))
     }
 
     /// The game's window has the focus (or there is none).
@@ -351,6 +360,10 @@ mod tests {
         assert_eq!(pad(button::R2, 0.85).fire_on_r2(0.8).buttons, button::CIRCLE);
         assert_eq!(pad(button::R2, 0.1).fire_on_r2(0.0).buttons, 0);
         assert_eq!(pad(button::R2, 0.2).fire_on_r2(0.0).buttons, button::CIRCLE);
+        // On the hoverboard R2 stays R2 (a trick), with R2 as fire or not.
+        assert_eq!(pad(button::R2, 1.0).fire_button(true, true, 0.0).buttons, button::R2);
+        assert_eq!(pad(button::R2, 1.0).fire_button(true, false, 0.0).buttons, button::CIRCLE);
+        assert_eq!(pad(button::R2, 1.0).fire_button(false, false, 0.0).buttons, button::R2);
     }
 
     #[test]

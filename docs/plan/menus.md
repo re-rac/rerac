@@ -552,6 +552,8 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   game events), Fire button: Circle / R2 (R2 read as ○, at the held weapon's fire point; R1 still crouches) and Trigger
   effects: on / off (R2's per-weapon DualSense feel); keys `vibration` / `vibration_strength` / `fire_button` /
   `trigger_effects` in the settings file. A change of the vibration rows plays a short pulse at the new strength.
+  On the hoverboard (`hoverboard::GROUP`) R2 stays R2, the board's fourth trick, without a weapon feel
+  (`haptics::R2Raw`). Pads are read, and rumble and R2's effect sent, only while the game's window has the focus.
 * **Device support**: the row offers only the sample counts the GPU can use for every multisampled world attachment
   (`render_settings::SupportedMsaa`, detected at start from `RenderAdapter::get_texture_format_features` for
   `Rgba8UnormSrgb` and `Depth32Float` — the WebGPU guarantee {1, 4} when the device lacks
