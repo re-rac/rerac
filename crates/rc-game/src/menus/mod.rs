@@ -265,6 +265,7 @@ impl MenuAssets {
     pub fn new(hud: HudAssets, overlay: Overlay) -> MenuAssets { MenuAssets { hud, overlay, all_text: Vec::new() } }
     /// `msg_string__Fi(id)` with the message table swapped to `all_text` (`MenuTextLoad`) when `swapped`.
     pub fn msg_in(&self, id: i32, swapped: bool) -> &[u8] {
+        if let Some(t) = pause::port::text::get(id) { return t; }
         if swapped && !self.all_text.is_empty() { strings::lookup(&self.all_text, id) } else { self.msg(id) }
     }
     /// `msg_string__Fi(id)`; the port's own text ids ([`pause::port::text`], negative, never on the disc)

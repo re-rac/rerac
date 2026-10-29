@@ -65,6 +65,7 @@ fn menu() -> PageMenu {
         help_items: Default::default(),
         movie_lists: Vec::new(),
         log_ids: Vec::new(),
+        gms_in_log: false,
         lang: 0,
         ammo_records: Vec::new(),
         gold_spin: None,
@@ -506,16 +507,16 @@ fn port_page_from_the_disc() {
     // Down moves through the rows and stops at the last one (port::ENTRIES); back up to the shadows row (default on =
     // value 0), ✕ toggles it off and back on.
     assert_eq!(m.port_value(Setting::Shadows), Some(0));
-    for _ in aa + 1..port::ENTRIES.len() {
+    for _ in aa + 1..port::PORT_ROWS {
         let o = m.tick(&press(button::DOWN), &mut g, &env);
         assert_eq!(o.sounds, vec![MenuSound::Cursor]);
     }
     let o = m.tick(&press(button::DOWN), &mut g, &env);
-    assert!(o.sounds.is_empty(), "last row: no cursor move");
+    assert!(o.sounds.is_empty(), "last row (Controller): no cursor move");
     // The list scrolls: the last rows are the ones shown.
     let Data::Port(pl) = &m.widgets[&port::LIST_W].data else { panic!() };
-    assert_eq!(pl.top as usize, port::ENTRIES.len() - port::VISIBLE);
-    for _ in port::row_of(Setting::Shadows).unwrap() + 1..port::ENTRIES.len() { m.tick(&press(button::UP), &mut g, &env); }
+    assert_eq!(pl.top as usize, port::PORT_ROWS - port::VISIBLE);
+    for _ in port::row_of(Setting::Shadows).unwrap() + 1..port::PORT_ROWS { m.tick(&press(button::UP), &mut g, &env); }
     m.tick(&press(button::CROSS), &mut g, &env);
     assert_eq!((m.port_value(Setting::Shadows), m.port_value(Setting::AntiAliasing)), (Some(1), Some(0)));
     m.tick(&press(button::CROSS), &mut g, &env);
@@ -523,8 +524,47 @@ fn port_page_from_the_disc() {
     // Its values are the game's own on / off strings (the Subtitles toggle's).
     let Data::Toggle(sub_t) = &m.widgets[&0x1b5160].data else { panic!() };
     assert_eq!((sub_t.entries[0].on, sub_t.entries[0].off), (port::text::ON as u32, port::text::OFF as u32));
+    // The Controller row does not cycle: ✕ opens the Gadgetron Movement System page, a page of the same frames under
+    // Port Options; its rows are the controller settings (✕ cycles their values in the Port Options list) and then the
+    // engine's controllers (✕ reports the row); △ goes back to Port Options.
+    for _ in port::row_of(Setting::Shadows).unwrap()..port::row_of(Setting::Controller).unwrap() { m.tick(&press(button::DOWN), &mut g, &env); }
+    m.tick(&press(button::CROSS), &mut g, &env);
+    assert_eq!(m.target, port::GMS_PAGE);
+    for _ in 0..13 { m.tick(&NONE, &mut g, &env); }
+    assert_eq!(m.current, port::GMS_PAGE);
+    let gp = &m.pages[&port::GMS_PAGE];
+    assert_eq!((gp.seqs, gp.parent, gp.focus, gp.widgets[3]), (sub.seqs, port::PAGE, port::GMS_LIST_W, port::GMS_LIST_W));
+    assert!(matches!(&m.widgets[&port::GMS_TITLE_W].data, Data::Label(t) if t.id == port::text::GMS_TITLE as u32));
+    let row = |name: &[u8], status| port::GmsRow { name: name.to_vec(), status };
+    m.set_gms_rows(vec![row(b"Keyboard", port::gms_status::AVAILABLE), row(b"DualSense", port::gms_status::ACTIVE)]);
+    // The first row is Vibration (on): ✕ turns it off.
+    assert_eq!(m.port_value(Setting::Vibration), Some(0));
+    m.tick(&press(button::CROSS), &mut g, &env);
+    assert_eq!((m.port_value(Setting::Vibration), m.take_gms_pick()), (Some(1), None));
+    // Past the four settings, the second controller.
+    for _ in 0..port::ENTRIES.len() - port::PORT_ROWS + 1 { m.tick(&press(button::DOWN), &mut g, &env); }
+    let o = m.tick(&press(button::CROSS), &mut g, &env);
+    assert_eq!((o.sounds, m.take_gms_pick(), m.take_gms_pick()), (vec![MenuSound::Confirm], Some(1), None));
+    let o = m.tick(&press(button::DOWN), &mut g, &env);
+    assert!(o.sounds.is_empty(), "last controller: no cursor move");
+    m.tick(&press(button::TRIANGLE), &mut g, &env);
+    assert_eq!(m.target, port::PAGE);
+    for _ in 0..13 { m.tick(&NONE, &mut g, &env); }
     m.tick(&press(button::TRIANGLE), &mut g, &env);
     assert_eq!(m.target, port::OPTIONS);
 }
 
-
+#[test]
+fn help_log_lists_the_gms_note_outside_the_save() {
+    let mut m = menu();
+    let w = 0x5f00_0000;
+    m.widgets.insert(w, list(w, 0, Vec::new(), 0, 0, 0, 0));
+    let g = gs();
+    super::pages::log_list_enter(&mut m, w, &g, &[]);
+    assert!(list_of(&m, w).items.is_empty());
+    // Once the note has shown: listed last (the oldest), the saved log untouched.
+    m.gms_in_log = true;
+    super::pages::log_list_enter(&mut m, w, &g, &[]);
+    assert_eq!(list_of(&m, w).items.iter().map(|i| (i.label, i.action)).collect::<Vec<_>>(), vec![(super::port::text::GMS_TITLE as i16, 1)]);
+    assert_eq!((g.global.help_log_pos, g.global.help_log[0]), (0, 0));
+}

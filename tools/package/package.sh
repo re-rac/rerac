@@ -87,6 +87,11 @@ Files: rerac (the game), rerac-extract (the extractor), assets/ (shaders, must s
 to rerac), rerac-manifest.json (the launcher's version manifest).
 Exit codes of rerac: 2 bad arguments, 3 data folder missing or incomplete, 4 data made for
 another version (re-extract).
+
+Credits: the PS5 and Xbox button icons (Port Options > Controller > Button icons) are
+"PS5 Button Icons and Controls" and "Xbox Series Button Icons and Controls" by Zacksly
+(https://zacksly.itch.io), licensed under CC BY 3.0
+(https://creativecommons.org/licenses/by/3.0/). They were resized and tinted for the game.
 EOF
 if [ "$os" = windows ]; then  # UNTESTED
   sed -i 's#\./rerac#rerac#g; s/$/\r/' "$out/README.txt"

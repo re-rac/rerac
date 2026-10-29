@@ -850,6 +850,7 @@ fn hud_layer(
     hook.freeze = true;
     if !t.blank && t.card.is_none() { return; }
     let mut h = Hud2d::default();
+    h.sharp_icons = true;
     // The black frame the transition draws on (the flight shows through: its actors are on the travel layer).
     if t.card.is_some() || (t.blank && t.lump.is_none()) { h.rect(0, crate::hud_render::H, 0, crate::hud_render::W, 0x8000_0000); }
     if let (Some(card), Some(img)) = (t.card.as_ref(), images.as_deref_mut()) {
@@ -886,6 +887,8 @@ fn hud_layer(
         let busy = crate::saves::with_card(|c| c.state > 2 || c.req_state >= 0).unwrap_or(false);
         crate::flight_render::hud_prims(&mut flight, &mut h, img, &mut assets, crate::hud_render::language(), busy);
     }
+    let base = hook.prims.len();
+    hook.icons.extend(h.icons.into_iter().map(|m| crate::hud_render::IconMark { at: m.at + base, ..m }));
     hook.prims.extend(h.prims);
 }
 
