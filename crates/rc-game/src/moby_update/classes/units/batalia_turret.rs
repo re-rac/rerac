@@ -5,7 +5,7 @@
 //! waves; each missile that reaches it costs 60 of its 200 health. The waves speed up as the gunships fall (the
 //! missiles' speed +0x98: 10, 12.5, 15, 17.5; the wave timer 285 / 240 / 195 / 150 ticks). All four down: the mission's
 //! end with the host NPC (#820, `batalia_story`'s 1283: its talk node 3); the health gone: Ratchet put by the host,
-//! node 4. △ leaves the seat while the mission is open. The HUD (draw callback `0x2deee0`) shows the radar (missiles,
+//! node 4. Once the mission is done the turret is free: Ratchet walks into its seat again and △ leaves it (during the battle Quit is the death sequence). The HUD (draw callback `0x2deee0`) shows the radar (missiles,
 //! blinking while they dive, and the gunships), the health ring and the lock-on reticle. Read from the level08
 //! decomp; the level data from the overlay (gp 0x166c00). Native `f32`.
 //!
@@ -18,9 +18,9 @@
 //!
 //! | address | what | port |
 //! |---|---|---|
-//! | top | the seat (position + 0.4 up); `FastDecTimer(+0x42)`: running, or not manned → the mount test: just left and Ratchet beyond 1 (xy) → free, +0x42 = `ticks(60)`; free, the mission open, Ratchet within 1 (xy), less than 7 above, +0x42 = 0, health left → manned, `SetState(0x32, 1)` | [`update`] (`cinematic::hero_state`) |
-//! | manned | Ratchet in the seat (0.7 behind it, the turret's Euler), his motion cleared; health 0 → put by the host, node 4 (`0x306b30(host, 0)`), `CameraScript2(0)`, → 4; the mission done and Quit (0x14095f & 1) → the death sequence (`0x2319b0`); no △ / Quit, or the mission done → (first tick: +0x52 = 2, `CameraScript(position, Euler, 1, 0, 0)`) → 5, the gunships waiting (2) → 3; else the leave: Quit cleared, `SetState(0, 1)`, pitch 0, → just left, `HeroTeleport(rows·(−2.5, 0, 5.9) + position, yaw)` facing back, `CameraScript2(0)`, → 4 | [`manned`] |
-//! | 0 | → 4; health 200, missile speed 10; `CreateMoby(0x710)` (none); pitch 0; +0x40 = `ticks(30)`, the speeds and slots cleared, the wave `ticks(180)`; +0xa8 = π/2 while the mission is open | [`update`] |
+//! | top | the seat (position + 0.4 up); `FastDecTimer(+0x42)`: running, or not manned → the mount test: just left and Ratchet beyond 1 (xy) → free, +0x42 = `ticks(60)`; free, the mission done, Ratchet within 1 (xy), less than 7 above, +0x42 = 0, health left → manned, `SetState(0x32, 1)` | [`update`] (`cinematic::hero_state`) |
+//! | manned | Ratchet in the seat (0.7 behind it, the turret's Euler), his motion cleared; health 0 → put by the host, node 4 (`0x306b30(host, 0)`), `CameraScript2(0)`, → 4; the mission open and Quit (0x14095f & 1) → the death sequence (`0x2319b0`); no △ / Quit, or the mission open → (first tick: +0x52 = 2, `CameraScript(position, Euler, 1, 0, 0)`) → 5, the gunships waiting (2) → 3; else the leave: Quit cleared, `SetState(0, 1)`, pitch 0, → just left, `HeroTeleport(rows·(−2.5, 0, 5.9) + position, yaw)` facing back, `CameraScript2(0)`, → 4 | [`manned`] |
+//! | 0 | → 4; health 200, missile speed 10; `CreateMoby(0x710)` (none); pitch 0; +0x40 = `ticks(30)`, the speeds and slots cleared, the wave `ticks(180)`; +0xa8 = 0 while the mission is open, π/2 once done | [`update`] |
 //! | 5 | the stick (y negated unless 0x15eddc): yaw speed `Approach`es −180°·dt·x (45° / 360° dt²), pitch speed −22.5°·dt·y (180° / 720°); Euler y clamped to [−45°, 20°]; the lock (`0x2e0228`: a registered missile within 4° of the aim from the camera) counts +0xa0 up to `ticks(30)` or down; ○ held (0x13cae0 & 0x20), +0x40 out: the shot (module doc of [`fire`]); +0x52 out → the camera's mode 1 (`0x313ba8`), targets rows·(4.07, 0, 6.5) + position and the Euler; the HUD; the wave (below) | [`fly_turret`] |
 //! | wave | +0x5c out, no registered missile alive and not diving (2): the gunships down → speed / timer (0 → 10 / 285, 1 → 12.5 / 240, 2 → 15 / 195, 3 → 17.5 / 150); 4 and the mission open → the end (host node 3, +0xa8 = π/2); the chosen gunship kept while alive and +0x5f runs, else the live one nearest Ratchet's facing; it fires (its +0xbc = 1) | [`wave`] |
 //! | tail | the barrels (`CreateMoby(0x236)`, 0xff / 0x7e, the turret's light) at rows·(3.035, ∓1.533, 5.262) + position with its Euler; one's recoil (sequence 1) over → sequence 0 | [`barrels`] |
@@ -172,7 +172,7 @@ fn init(w: &mut World, id: MobyId) {
     c::set_pi16(w, id, pvo::WAVE_T, t180);
     c::set_pu8(w, id, pvo::CHOSEN, 0);
     c::set_pu8(w, id, pvo::CHOSEN_T, 0);
-    let dish = if mission_open(w, id) { HALF_PI } else { 0.0 };
+    let dish = if mission_open(w, id) { 0.0 } else { HALF_PI };
     c::set_pf(w, id, pvo::DISH_YAW, dish);
 }
 
@@ -188,7 +188,7 @@ fn mount_test(w: &mut World, id: MobyId, seat: V) {
         }
         return;
     }
-    if !mission_open(w, id) { return; }
+    if mission_open(w, id) { return; }
     let feet = super::hero_pos(w);
     if dist2(seat, hp) < 1.0 && feet[2] - w.m(id).position[2] < 7.0 && c::pi16(w, id, pvo::MOUNT_T) == 0 && 0 < c::pi32(w, id, pvo::HEALTH) {
         w.mm(id).cmd = 1;
@@ -226,9 +226,11 @@ fn manned(w: &mut World, id: MobyId, seat: V) -> bool {
         return true;
     }
     let open = mission_open(w, id);
-    if !open && w.svc.vehicle.quit & 1 != 0 { w.hero_fields_mut().call(HeroCall::Death); }
+    // Quit during the battle (the Water Worker's mission still open) is the death sequence; once it is done the seat
+    // is free: Ratchet walks in again (the mount test) and △ / Quit put him back down.
+    if open && w.svc.vehicle.quit & 1 != 0 { w.hero_fields_mut().call(HeroCall::Death); }
     let leave = w.hero.loop_in.pad.pressed & crate::pad::button::TRIANGLE != 0 || w.svc.vehicle.quit & 1 != 0;
-    if !leave || !open {
+    if !leave || open {
         if w.m(id).state != 5 {
             c::set_pi16(w, id, pvo::CAM_T, 2);
             let p = c::pos(w, id);
