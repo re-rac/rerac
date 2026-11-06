@@ -1929,6 +1929,11 @@ fn death_reload(p: &mut Play, lv: &crate::level_load::LoadedLevel, state: Option
     p.svc.draw_callbacks.list2.clear();
     p.svc.draw_callbacks.ties.clear();
     p.svc.draw_callbacks.matrices.clear();
+    // `load_level_gameplay` (L00, Lombyte) zeroes the eight point lights and their attachment records: the lights the
+    // old table's classes held are gone (kept, they leaked; once all eight were taken every allocation failed, and
+    // Gaspar's turrets, which retry theirs every tick, played their light-on sound every tick). The slots
+    // keep their generation: the next allocation of each bumps it, so the lighting sees fresh lights.
+    for i in 0..p.svc.point_lights.slots.len() { p.svc.point_lights.free(i); }
     // The "use" system's talk slots and save values by the new instance → moby map (before the load pass, as the load).
     crate::interact_render::install(&mut p.svc, lv, &statics.instance_to_moby, state);
     if let Some(id) = ship_id.filter(|_| !p.svc.travel.adopted) { p.svc.interact.register_talk_mobys([(id, 0)]); }
