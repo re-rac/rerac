@@ -351,12 +351,13 @@ mod tests {
         let held = sys.spu.voices.iter().map(|v| v.stream_remaining()).collect::<Vec<_>>();
         frame(&mut sys, false, Some(SceneAudioCmd::Speech { vag: speech }), &mut rng, &mut counter);
         assert!(sys.speech_playing());
-        // Scene ticks: music_Update takes the start callback and queues the loop behind the held voice.
+        // Scene ticks: the scene start's `music_Pause(0)` (Lombyte `update_cutscene_playback`) holds the main player at
+        // its pause bit: `music_UpdateStream` stops there and `music_Update` queues nothing until the resume.
         for _ in 0..600 {
             frame(&mut sys, true, None, &mut rng, &mut counter);
             assert_eq!(sys.music_voices(), (0, 1));
         }
-        assert!(sys.music.main.state == 4 && sys.music.main.handle != 0, "{:?}", sys.music.main);
+        assert!(sys.music.main.state & 0x8000 != 0 && sys.music.main.handle != 0, "{:?}", sys.music.main);
         assert!(sys.speech_playing());
         // The held voice did not advance.
         let music_voice = (0..sys.spu.voices.len()).find(|&i| sys.snd.vm.voices[i].group == MUSIC_GROUP && sys.spu.voices[i].active()).unwrap();

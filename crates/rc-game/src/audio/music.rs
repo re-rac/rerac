@@ -122,6 +122,9 @@ pub struct Music {
     pub fade_quarter: i32,
     /// 0x1516fc: request debounce (420 ticks after a change).
     pub timer: i32,
+    /// The players' fade word +0x0c bit 15 (`music_Pause` sets it, `music_Unpause` clears it): each live stream is
+    /// paused once by its `music_UpdateStream` (state bit 15) and its update stops there until the unpause.
+    pub paused: bool,
     /// Commands a callback issued (the preseek retry); they go out with the next batch.
     deferred: Vec<StreamCommand>,
 }
@@ -258,8 +261,11 @@ impl Music {
         }
     }
 
-    /// `music_UpdateStream` (0x27a4a0) for one player (pause handling not ported: never paused).
+    /// `music_UpdateStream` (0x27a4a0, Lombyte `music_update_stream`) for one player. Paused ([`Music::paused`]): the
+    /// stream is paused once (state bit 15; the voices themselves are held by the audio layer's music pause) and the
+    /// update ends there, so no fade, stop, continue or query runs under the pause; unpaused, the bit is cleared.
     fn update_stream(&mut self, id: PlayerId, cmds: &mut Vec<StreamCommand>) {
+        let paused = self.paused;
         let p = self.player(id);
         let s = p.state;
         if s == 9 || p.handle == 0 || p.handle == -1 {
@@ -270,6 +276,12 @@ impl Music {
             cmds.push(StreamCommand::Stop { handle: p.handle });
             p.state = 6;
         }
+        if paused {
+            p.state |= 0x8000;
+        } else if p.state & 0x8000 != 0 {
+            p.state ^= 0x8000;
+        }
+        if p.state & 0x8000 != 0 { return; }
         let s = p.state;
         if matches!(s, 1 | 8 | 9) { return; }
         if s == 2 || s == 3 {
