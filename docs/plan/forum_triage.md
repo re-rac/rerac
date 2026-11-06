@@ -1,5 +1,22 @@
 # Forum triage (bugs-and-qa)
 
+## 2026-11-06: R&C1 pass against Lombyte / OpenRAC (open posts, runtime 0.3.7 / 0.3.8)
+
+Fixed on main (retest after the next release): the Oltanis crash after dying (255705f: stale draw callbacks across
+the death reload); the gold Bomb Glove's first-person range (a2a7721); the FOV after crashing the Pokitaru jet while
+boosting (7d63c30: the on-foot hero frame resets it); Batalia's turret, re-enterable after the battle and △ leaves
+it (f5e133a: three mission tests were inverted against UpdateMoby_440); the mirror cheat's black flashes (5876aa5);
+Gaspar's turret sounds every tick (cfda52d: the death reload now frees the point lights). PR #50 merged.
+
+Looked at, the code matches Lombyte but the PS2 differs or needs data: the glove throw on ice (the user's PCSX2 test:
+no stop; Hoven's 0x23 brakes, so the live stick / state / speed differ: PINE trace pending); the Hologuise collision
+on ice (not reproduced headless: entered standing and sliding, left with □, walked back through the spot); the
+Aridia counters after death (#62: the race watch is Lombyte's line for line); the Hoven crate z-fight (placements 1
+apart, stacking at run time); the wrench reticle's last bit of opacity (the GS blends in gamma space, the port in
+linear light). No usable data: the Veldin Orbit crashes on Linux (the logs end without a panic), #63 (every buffer
+invalid at once: a lost device), the Novalis slab panic. Not changed: the original's death reload also calls
+srand(1234) (the port's RNG continues; invisible).
+
 ## 2026-10-23: every open post (92, read in full)
 
 Players: launcher 0.3.0 / 0.3.1, R&C1 runtime 0.3.6, R&C2 runtime 0.1.1. "main" = fixed after 0.3.6, ships with 0.3.7.
