@@ -352,6 +352,13 @@ impl Game {
             let moby = &mut self.mobys.mobys[self.hero.hero_moby(self.hero_moby)];
             hero_update_with_sounds(&mut self.hero, moby, &env, anim, &mut self.rng, hero_sounds)
         };
+        // The hero update on foot (`update_hero_frame` L01 0x228870, Ratchet's body) calls `begin_draw_frame` 0x1f7978 every
+        // frame: `InitViewContext` puts the view's tan(hfov/2) back to 0.63. Not while he rides a vehicle (state 0x32: the
+        // jets write their boost FOV every frame) nor outside gameplay (a scene's camera keeps its own). Without it the
+        // Pokitaru jet's boost FOV stayed after crashing it while boosting, until the next level.
+        if self.hero.mode == 0 && self.hero.state != 0x32 && self.hero.gadgets.game_mode == 0 {
+            if let Some(w) = hooks.world.as_deref_mut() { w.set_view_tan(crate::scene_player::GAMEPLAY_TAN_HALF_FOV.to_f32()); }
+        }
         let hm = self.hero.hero_moby(self.hero_moby);
         let hero_moby = Some(hm);
         // The walk's footprints query the scene as the moby loop left it (the hero update does not move other mobys).
