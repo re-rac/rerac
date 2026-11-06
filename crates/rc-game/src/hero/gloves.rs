@@ -412,7 +412,8 @@ fn create_bomb(hero: &mut Hero, table: &mut MobyTable, env: &ItemEnv, hits: &mut
 
 /// `0x2c27a8`: the bomb released at the launch point (plus Ratchet's displacement 0x13f450 while grinding or standing
 /// on a carrier, `FUN_00275290(0x13f64c)`: the Metropolis train); a wall between Ratchet (at the launch height) and the
-/// launch point explodes it there.
+/// launch point explodes it there. Last, the gold glove (0x13e52a) thrown in the look state 1 (first person) reaches
+/// further: the velocity ×1.5 in x / y, its z ÷1.5.
 fn release_bomb(hero: &mut Hero, table: &mut MobyTable, env: &ItemEnv, _hits: &mut dyn HitSink, _rng: &mut Rng, b: MobyId, t: Throw) {
     let disp = throw_disp(hero, table);
     bomb::release(&mut table.mobys[b], t.launch, disp);
@@ -420,6 +421,11 @@ fn release_bomb(hero: &mut Hero, table: &mut MobyTable, env: &ItemEnv, _hits: &m
     let from = [r.position[0], r.position[1], t.launch[2]];
     if let Some(o) = env.coll.and_then(|c| line_world(c, from_f32x3(from), from_f32x3(t.launch), 0)) {
         bomb::release_hit(&mut table.mobys[b], o.point);
+    }
+    if hero.weapons.gold.get(10).is_some_and(|&g| g != 0) && hero.state == 1 {
+        let pv = &mut table.mobys[b].pvars;
+        let v = crate::moby_update::services::pvar::v4f(pv, bomb::pv::VEL);
+        crate::moby_update::services::pvar::set_v4f(pv, bomb::pv::VEL, [v[0] * 1.5, v[1] * 1.5, v[2] / 1.5, v[3]]);
     }
 }
 
