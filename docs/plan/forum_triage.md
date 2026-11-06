@@ -8,13 +8,15 @@ boosting (7d63c30: the on-foot hero frame resets it); Batalia's turret, re-enter
 it (f5e133a: three mission tests were inverted against UpdateMoby_440); the mirror cheat's black flashes (5876aa5);
 Gaspar's turret sounds every tick (cfda52d: the death reload now frees the point lights). PR #50 merged.
 
-Looked at, the code matches Lombyte but the PS2 differs or needs data: the glove throw on ice (the user's PCSX2 test:
-no stop; Hoven's 0x23 brakes, so the live stick / state / speed differ: PINE trace pending); the Hologuise collision
+Looked at, the code matches Lombyte but the PS2 differs or needs data: the Hologuise collision
 on ice (not reproduced headless: entered standing and sliding, left with □, walked back through the spot); the
 Aridia counters after death (#62: the race watch is Lombyte's line for line); the Hoven crate z-fight (placements 1
 apart, stacking at run time); the wrench reticle's last bit of opacity (the GS blends in gamma space, the port in
 linear light). No usable data: the Veldin Orbit crashes on Linux (the logs end without a panic), #63 (every buffer
-invalid at once: a lost device), the Novalis slab panic. Not changed: the original's death reload also calls
+invalid at once: a lost device), the Novalis slab panic. Settled by a PINE trace on Hoven (work/trace/glove_ice*.tsv): the glove throw on ice is the original's. A direction
+held (stick or d-pad: magnitude 1) throws with the arm and the slide goes on; nothing held → state 0x23, which brakes
+from the stored speed 0x13f4e4 at 35·dt² a tick (0 when the slide began from standing: an instant stop). The port
+does the same. Not changed: the original's death reload also calls
 srand(1234) (the port's RNG continues; invisible).
 
 ## 2026-10-23: every open post (92, read in full)
