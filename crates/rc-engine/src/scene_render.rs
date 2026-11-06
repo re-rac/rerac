@@ -458,7 +458,7 @@ fn scene_frame(
     mut play: Option<ResMut<Play>>,
     mut state: Option<ResMut<Persistent>>,
     mut menu: Option<ResMut<crate::menu_render::MenuMode>>,
-    pad: Option<Res<PadFrame>>,
+    (pad, script): (Option<Res<PadFrame>>, Option<Res<crate::gameplay::PlayScript>>),
     frame: Res<crate::determinism::FrameNumber>,
     hero: HeroEntities,
     items: Query<(Entity, &AttachedTo)>,
@@ -497,10 +497,11 @@ fn scene_frame(
                 p.svc.interact.talker = Some(npc);
                 p.svc.interact.scene_ended = true;
             }
-            // A scene already queued behind this one starts next frame and keeps him in the scene body (no tick of play
-            // in between: the game's DialogStreamStart froze him when it was asked for).
-            if rt.pending.is_empty() { f.call(rc_game::moby_update::services::HeroCall::SetState { id: 0, play: true }); }
             p.svc.hero_writes = Some((counter, f));
+            // `finish_cutscene`'s `hero_set_state(0, 1)` is direct: the next tick's classes already see it (before its
+            // moby loop, `Game::pre_states`). A scene already queued behind this one starts next frame and keeps him in
+            // the scene body (no tick of play in between: the game's DialogStreamStart froze him when it was asked for).
+            if rt.pending.is_empty() { p.game.pre_states.push((0, true)); }
         }
         println!("scene: control returns to gameplay at frame {} (hero SetState(0, 1) on the next tick)", rt.frames);
         return;
@@ -593,7 +594,9 @@ fn scene_frame(
     }
 
     // One frame of the player.
-    if let Some(p) = &pad { rt.pad.update(Some(&p.0.bytes()), false); }
+    // `RC_PLAY_SCRIPT` drives the scene's pad as it drives the tick's (indexed by the main-loop frame).
+    let scripted = script.as_ref().and_then(|s| s.at(menu.as_ref().map_or(0, |m| m.loop_frame)));
+    if let Some(p) = scripted.or(pad.as_ref().map(|p| p.0)) { rt.pad.update(Some(&p.bytes()), false); }
     let Some(mut player) = rt.player.take() else { return };
     // What this frame's moby loop reads (it runs before the scene advances): the scene id, tick and actors as the
     // last frame left them, and the scene camera 0x167240 / rows of the last scene tick.
@@ -1129,7 +1132,7 @@ fn fade_pass(mut commands: Commands, active: Res<ActiveScene>, hold: Res<FadeHol
     // game's (it draws its first frame after that tick), so they leave the load's black in place.
     if active.running || play.as_ref().is_some_and(|p| ticks_since_load(p.game.counter) > 0) { rt.last_black = black; }
     let alpha = (black.clamp(0.0, 1.0) * 128.0) as u32;
-    let mut want = ((active.running || hold.frames > 0 || gameplay > 0.0) && alpha > 0).then(|| SceneFade { rgba: UVec4::new(0, 0, 0, alpha) });
+    let mut want = ((active.running || hold.frames > 0 || gameplay > 0.0 || black > 0.0) && alpha > 0).then(|| SceneFade { rgba: UVec4::new(0, 0, 0, alpha) });
     // The white quad 0x15f400 (mode 6, crate::travel_render) when no black one is drawn [L: the game draws both, black
     // first; they never overlap in the take-off].
     // In gameplay also the classes' white (`rc_game::cinematic::set_white`, Blarg's escape 1108).

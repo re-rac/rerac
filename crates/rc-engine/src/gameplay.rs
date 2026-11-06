@@ -303,7 +303,13 @@ impl Plugin for GameplayPlugin {
 }
 
 #[derive(Resource)]
-struct PlayScript(Option<Script>);
+pub(crate) struct PlayScript(Option<Script>);
+
+impl PlayScript {
+    /// `RC_PLAY_SCRIPT`'s pad of main-loop frame `t` (None: no script). The scene player reads it too (a scripted
+    /// scene skip: all four shoulders and START).
+    pub(crate) fn at(&self, t: u64) -> Option<PadInput> { self.0.as_ref().map(|s| s.at(t)) }
+}
 
 /// The parent of one of Ratchet's LOD sets (`Play::ratchet_lods`; no mesh, so despawned here at a level change).
 #[derive(Component)]
