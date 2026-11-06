@@ -24,7 +24,7 @@
 //! | 0x240ed8 case 0x1f | the gate, ○ (the slot's fire mask) pressed within `ticks(7)`, the saved hand item 0x141660 = 0x1f, the hand moby of class 0x1e3, the timer 0 → voice 0x18, squash 1, timer 0x12; then the epilogue | ported ([`fire`]) |
 //! | 0x2307e0 request 0x1f | the gate: the timer 0 → voice 0x18, timer 0x12, squash 1; target = 0x1f, 0x15ed8c = the saved item, saved = 0x1f, a swap; the request cleared either way | ported (`items::update_hand_selected` → [`request`]) |
 //! | 0x23c710 | the timer running and reaching 0 (`FastDecTimer_s16`), health ≠ 0, game mode 0: body 3 → `0x231450` (leave) and □ pressed within `ticks(18)` → 0x1413f6 = 1; else `CreateMoby(0x27a)` at the hero (+0x10 = 0x13f3d0, +0x40 = 0x13f3e0), +0x32 = 0x40, +0x31 = 1, +0x90 = 0, +0x38 = the hero moby's, `MobyBuildMatrix`, `SwitchCharacter(3, 0x53, moby)` | ported ([`Disguise::due`]: the leave right after the move in the body's update, `bodies::body_update`; the moby by `fx::MobySpawn::Disguise` and the switch through `Bodies::restore` at the start of the next tick [L: one tick later than the game's call inside the move]) |
-//! | 0x229158 | squash ≠ 0: +1; the table 0x179c58 at the new index; −1 → 0; else the hero moby's rows +0xc0 / +0xd0 scaled; body 0: every item slot's mobys (0x1403e0 / 0x1403e4, the first one twice) scaled likewise (the hand's factor capped at 1) and pulled toward the body point 0x13f420 in x / y | ported ([`squash`], [`squash_hand`]: the hero moby and the hand item; the other slots' mobys are drawn by `rc-engine` moby_attach from the hero moby's rows, which carry the squash, without the pull toward the body point [L]) |
+//! | 0x229158 | squash ≠ 0: +1; the table 0x179c58 at the new index; −1 → 0; else the hero moby's rows +0xc0 / +0xd0 scaled; body 0: every item slot's mobys (0x1403e0 / 0x1403e4, the first one twice) scaled likewise (the hand's factor capped at 1) and pulled toward the body point 0x13f420 in x / y | ported ([`squash`], [`squash_hand`]: the hero moby and the hand item; the other slots' mobys are the items `rc-engine` moby_attach places, which get [`Disguise::factor`] after its attach matrices) |
 //! | HeroUpdateAlt body 3 | cheat 0x15edb1: record 30's scale (0x17c04c) = 1.9; the pulse (period `ticks(170)`, 90 with alert 1, 50 with alert 2): s = sin(2π·t − π), colour (r, g, b) = (50 + 20s, 180 + 70s, 20 + 10s) (alert 2: (180 + 70s, (50 + 20s)/2, 20 + 10s)), alpha 0x80; +0x90 = `FastTweenColor(0.1, +0x90, colour)`, mode \|= 0x10; joint lists 0..2's points → 0x1410a0..; 0x141634 = alpha (0x30, or timer/18·48 while it runs) \| the glow's rgb; `0x229400` (the hero's draw callback, once a frame); 0x141630 = 0; the request 0 or 0x1f: cleared, and on a magnetic floor (0x140637) grounded with the Magneboots owned and the timer 0: voice 0x19, squash, timer; another request with the timer 0: the same | ported ([`body_update`]) |
 //! | 0x229440 body 3 | three glow quads `0x2781d0(0.2, 0.08, 0x1410a0 + 16k, 0x141634)` | ported ([`Disguise::glow_points`], `Callback::DisguiseGlow`, drawn by `rc-engine` fx_draw) |
 //! | SetState prologue | body 3 and the new state outside 0x53..0x59, 0x65..0x67, 0, 1: `0x22cd18` → leave the body; body 0: 0x141630 = 0 | ported (`states::set_state`) |
@@ -81,7 +81,8 @@ pub struct Disguise {
     pub glow_points: [[f32; 3]; 3],
     /// The disguise moby's glow word +0x90 as the tween last left it.
     pub glow: u32,
-    /// The squash factor of this tick (None: no squash), for the tick's item pass ([`squash_hand`]).
+    /// The squash factor of this tick (None: no squash), for the tick's item pass ([`squash_hand`]) and for the
+    /// items `rc-engine` places and draws (the back, feet, head and extra slots, kept until the next tick's [`squash`]).
     pub factor: Option<f32>,
 }
 
@@ -192,7 +193,7 @@ pub fn leave(h: &mut Hero, c: &mut Ctx) {
 }
 
 /// `0x229158`: the squash's step, its factor on the hero moby's rows +0xc0 / +0xd0 (`moby`), and the factor kept for the
-/// hand item ([`squash_hand`]).
+/// hand item ([`squash_hand`]) and the items `rc-engine` places from the hero moby's joints.
 pub fn squash(h: &mut Hero, moby: &mut crate::moby_runtime::Moby) {
     h.gadgets.disguise.factor = None;
     let d = &mut h.gadgets.disguise;
@@ -208,9 +209,10 @@ pub fn squash(h: &mut Hero, moby: &mut crate::moby_runtime::Moby) {
 }
 
 /// `0x229158`'s item part in body 0 for the hand item (slot 0's moby, scaled twice by the loop: its factor capped at 1;
-/// rows +0xc0 / +0xd0 scaled and its position pulled toward the body point 0x13f420 in x / y).
+/// rows +0xc0 / +0xd0 scaled and its position pulled toward the body point 0x13f420 in x / y). The factor stays in
+/// [`Disguise::factor`] for the other item slots, which `rc-engine` places after the tick.
 pub fn squash_hand(h: &mut Hero) {
-    let Some(f) = h.gadgets.disguise.factor.take() else { return };
+    let Some(f) = h.gadgets.disguise.factor else { return };
     let k = f.min(1.0);
     let bp = super::physics::to_f32x3(h.body_point);
     let Some(it) = h.items.slot.item.as_mut() else { return };
