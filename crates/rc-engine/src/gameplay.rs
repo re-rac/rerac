@@ -1922,6 +1922,13 @@ fn death_reload(p: &mut Play, lv: &crate::level_load::LoadedLevel, state: Option
     // The services that hold the old table's ids or per-visit moby state.
     p.svc.groups = statics.groups(&lv.gameplay);
     p.svc.hits = Default::default();
+    // The frame's draw callbacks (`0x2ab920` empties the lists after every frame's draw, so none outlives the reload's
+    // frame): the port runs them at the next tick's start, by the old table's ids (kept, a callback of Oltanis's arc
+    // keeper 1331 ran on whichever moby took its id and read pvars it did not have).
+    p.svc.draw_callbacks.list1.clear();
+    p.svc.draw_callbacks.list2.clear();
+    p.svc.draw_callbacks.ties.clear();
+    p.svc.draw_callbacks.matrices.clear();
     // The "use" system's talk slots and save values by the new instance → moby map (before the load pass, as the load).
     crate::interact_render::install(&mut p.svc, lv, &statics.instance_to_moby, state);
     if let Some(id) = ship_id.filter(|_| !p.svc.travel.adopted) { p.svc.interact.register_talk_mobys([(id, 0)]); }
