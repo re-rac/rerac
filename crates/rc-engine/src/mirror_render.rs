@@ -29,9 +29,14 @@ pub struct MirrorFlip {
 impl FullscreenMaterial for MirrorFlip {
     fn fragment_shader() -> ShaderRef { "shaders/mirror.wgsl".into() }
 
-    /// After the 3D passes, before the UI pass (the HUD and the menus stay as they are).
+    /// After the 3D passes and the screen tint, before the UI pass (the HUD and the menus stay as they are). Both full-
+    /// screen passes swap the post-process target: left unordered (the tint's pass is always on the camera), the two
+    /// could reach the GPU in the other order than their swaps and the frame came out black now and then.
     fn schedule_configs(system: ScheduleConfigs<BoxedSystem>) -> ScheduleConfigs<BoxedSystem> {
-        system.after(bevy::core_pipeline::Core3dSystems::PostProcess).before(bevy::ui_render::ui_pass)
+        system
+            .after(bevy::core_pipeline::Core3dSystems::PostProcess)
+            .after(crate::gs_post::pass::<crate::screen_tint::ScreenTint>)
+            .before(bevy::ui_render::ui_pass)
     }
 }
 
