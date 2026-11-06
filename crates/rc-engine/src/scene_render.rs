@@ -215,9 +215,13 @@ pub(crate) struct SceneRuntime {
     letterbox: i32,
     /// The mobys the scene hid (the talker 0x179588: mode |= 1; classes 74 / 203: mode |= 0x80) and the bit.
     hid: Vec<(MobyId, u16)>,
-    /// A scene ended at this frame's start (its clean-up frame: the game's `finish_cutscene` skips this frame's draw,
-    /// 0x15f5d8 = 1).
-    ended_frame: bool,
+    /// The hand-over latch: a scene ended or a movie exited (the game's `finish_cutscene` / `MovieExitToGameplay` skip
+    /// that frame's draw, 0x15f5d8 = 1) and no gameplay tick has run since without asking for the next scene or movie.
+    /// Every frame drawn meanwhile stays black ([`fade_pass`]): the port draws frames the game's loop never shows (the
+    /// clean-up frame, frames with no tick), and they showed a sliver of gameplay between the two black screens.
+    pub(crate) handover: bool,
+    /// The game counter the hand-over check last saw ([`handover_after_tick`]).
+    handover_counter: u64,
     /// The scene's hides wait for the start fade's black ([`scene_hides`]).
     hides_pending: bool,
     /// The black coverage the fade pass drew last frame: the image the next scene's start fade draws over is black when
@@ -255,7 +259,8 @@ impl Plugin for SceneRenderPlugin {
                 talker: None,
                 letterbox: 0,
                 hid: Vec::new(),
-                ended_frame: false,
+                handover: false,
+                handover_counter: 0,
                 hides_pending: false,
                 last_black: 1.0,
             })
@@ -265,7 +270,7 @@ impl Plugin for SceneRenderPlugin {
             // A class's FadeToBlack(n) holds the next n frames (fade_take / fade_step).
             .init_resource::<FadeHold>()
             .configure_sets(FixedUpdate, GameTick.run_if(|h: Res<FadeHold>| h.frames == 0))
-            .add_systems(FixedUpdate, (fade_step.before(GameTick), fade_take.after(GameTick)))
+            .add_systems(FixedUpdate, (fade_step.before(GameTick), fade_take.after(GameTick), handover_after_tick.after(GameTick)))
             .add_systems(RunFixedMainLoop, hold_camera.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop).after(crate::play_camera::apply))
             .add_systems(FixedUpdate, (scene_frame.before(GameTick).in_set(SceneFrameSet), actor_mobys.after(GameTick)))
             .add_systems(RunFixedMainLoop, apply_camera.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop).after(crate::play_camera::apply))
@@ -281,6 +286,14 @@ impl Plugin for SceneRenderPlugin {
 }
 
 /// The per-level part of [`SceneRuntime`] dropped at a runtime level change (its actors' entities are gone).
+impl SceneRuntime {
+    /// A movie exited to gameplay (crate::movie_render): the hand-over latch ([`SceneRuntime::handover`]).
+    pub(crate) fn begin_handover(&mut self, counter: u64) {
+        self.handover = true;
+        self.handover_counter = counter;
+    }
+}
+
 fn level_reset(mut rt: ResMut<SceneRuntime>) {
     let rt = &mut *rt;
     rt.player = None;
@@ -297,6 +310,7 @@ fn level_reset(mut rt: ResMut<SceneRuntime>) {
     rt.letterbox = 0;
     rt.hid.clear();
     rt.hides_pending = false;
+    rt.handover = false;
     // The level load ends on black (the loading screen, the load's fade): a scene its first tick asks for (an arrival)
     // fades over that, not over a level never shown.
     rt.last_black = 1.0;
@@ -455,11 +469,11 @@ fn scene_frame(
     mut buffers: ResMut<Assets<ShaderBuffer>>,
 ) {
     let rt = &mut *rt;
-    rt.ended_frame = false;
     // Clean-up on the frame after the last scene frame: gameplay resumes this very frame.
     if rt.player.as_ref().is_some_and(|p| p.done()) {
         rt.player = None;
-        rt.ended_frame = true;
+        rt.handover = true;
+        rt.handover_counter = play.as_ref().map_or(0, |p| p.game.counter);
         for a in rt.actors.drain(..) { for e in a.entities { commands.entity(e).despawn(); } }
         // Ratchet's own meshes go back to crate::gameplay's visibility sync (his moby's hidden bit: a body may be in);
         // the rest (his items) are shown again.
@@ -560,6 +574,7 @@ fn scene_frame(
             warn!("scene: actors not drawn: {e:#}");
         }
         rt.glyphs = level.0.hud.as_ref().map(|h| h.glyphs);
+        rt.handover = false;
         let mut player = ScenePlayer::start(scene, ctx);
         // The game's start fade (`fade_to_black(6)`) draws over the last image shown; the asking frame is not drawn
         // (0x15f5d8). Over a black image it stays black: the level load's, a scene that just ended.
@@ -1093,17 +1108,7 @@ fn hold_camera(hold: Res<FadeHold>, source: Option<Res<CameraSource>>, mut cams:
 }
 
 /// The fade quad component on the main camera.
-#[allow(clippy::too_many_arguments)]
-fn fade_pass(
-    mut commands: Commands,
-    active: Res<ActiveScene>,
-    hold: Res<FadeHold>,
-    mut rt: ResMut<SceneRuntime>,
-    play: Option<Res<Play>>,
-    movies: Option<Res<crate::movie_render::MovieState>>,
-    frame: Res<crate::determinism::FrameNumber>,
-    cams: Query<(Entity, Option<&SceneFade>), With<FlyCam>>,
-) {
+fn fade_pass(mut commands: Commands, active: Res<ActiveScene>, hold: Res<FadeHold>, mut rt: ResMut<SceneRuntime>, play: Option<Res<Play>>, cams: Query<(Entity, Option<&SceneFade>), With<FlyCam>>) {
     // In gameplay without a hold: the classes' 0x15f3fc (`DrawWorld` 0x21a1b8: black at `trunc(min(f, 1)·128)` when
     // f > 0; `rc_game::cinematic::set_fade`).
     let gameplay = play.as_ref().map_or(0.0, |p| p.svc.cinematic.fade);
@@ -1112,9 +1117,7 @@ fn fade_pass(
     // `start_scene` set 0x15f5d8, the main loop skips the draw), so the screen stays on the last scene's black end and
     // the next scene's start fade runs over it. Drawn, this frame was a sliver of gameplay (the HUD, the follow camera)
     // between two black scenes.
-    // The same for a movie's exit frame (`MovieExitToGameplay` skips its draw too): the movie ended on its black fade.
-    let movie_exit = movies.as_ref().is_some_and(|m| m.exited_frame == Some(frame.0));
-    if (rt.ended_frame || movie_exit) && (!rt.pending.is_empty() || play.as_ref().is_some_and(|p| next_scene_asked(p))) {
+    if rt.handover && !active.running {
         black = 1.0;
     }
     // A tick that asked for a scene is not drawn either (`start_scene` sets 0x15f5d8): the screen keeps the last image.
@@ -1141,6 +1144,20 @@ fn fade_pass(
             (None, None) => {}
         }
     }
+}
+
+/// After each tick: the hand-over latch ([`SceneRuntime::handover`]) ends once a tick ran without asking for the next
+/// scene or movie (gameplay really resumes), or when a movie starts (it draws itself).
+fn handover_after_tick(mut rt: ResMut<SceneRuntime>, play: Option<Res<Play>>, movies: Option<Res<crate::movie_render::MovieState>>) {
+    if !rt.handover { return; }
+    if movies.as_ref().is_some_and(|m| m.busy()) {
+        rt.handover = false;
+        return;
+    }
+    let Some(p) = play else { return };
+    if p.game.counter == rt.handover_counter { return; }
+    rt.handover_counter = p.game.counter;
+    if rt.pending.is_empty() && !next_scene_asked(&p) && p.svc.game_mode == 0 { rt.handover = false; }
 }
 
 /// This tick asked for a scene or a movie (a class's `DialogStreamStart` / `DialogStreamUpdate`, a talker's hand-off); the
