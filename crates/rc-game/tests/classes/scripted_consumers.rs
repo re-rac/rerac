@@ -139,7 +139,12 @@ impl Lv {
         self.sched = sched;
     }
     fn of_class(&self, oc: i16) -> Vec<MobyId> { self.table.mobys.iter().enumerate().filter(|(_, m)| m.o_class == oc && m.state < 0x80).map(|(i, _)| i).collect() }
-    fn calls(&self) -> Vec<HeroCall> { self.svc.hero_writes.as_ref().map(|(_, f)| f.calls.iter().flatten().copied().collect()).unwrap_or_default() }
+    /// The tick's hero calls, without a scene start's freeze (`cinematic::scene_hero`: a class of the level starting its
+    /// scene in the same tick).
+    fn calls(&self) -> Vec<HeroCall> {
+        let scene = HeroCall::SetState { id: rc_game::scene_player::HERO_SCENE_STATE, play: true };
+        self.svc.hero_writes.as_ref().map(|(_, f)| f.calls.iter().flatten().copied().filter(|c| *c != scene).collect()).unwrap_or_default()
+    }
     fn cuboid_centre(&self, i: i32) -> Option<[f32; 3]> { self.svc.volumes.shape(rc_formats::volumes::ShapeKind::Cuboid, i).map(|s| s.centre()) }
 }
 

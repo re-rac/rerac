@@ -352,6 +352,17 @@ pub fn start_scene(w: &mut World, scene: usize, arrival: bool) {
     // DialogStreamStart stores game mode 2 (0x15f5c4) at once: the rest of this moby loop reads it (Umbris' director
     // 436 falls from state 10 into 0xb in the same tick and waits there on it).
     w.svc.game_mode = 2;
+    scene_hero(w);
+}
+
+/// `DialogStreamStart`'s `hero_set_state(100, 2)` inside the asking tick: queued on the hero-call channel, which runs
+/// after the moby loop and before the hero update, so the hero update of this tick is already the scene body's and
+/// reads no pad (the port used to freeze him on the next frame only: one tick of play under the scene's start, a jump or
+/// a swing that carried into the scene). His hiding (0x1413f5, the held objects) waits for the start fade's black: the
+/// game's asking frame is not drawn and its fade runs over the last image shown, with him in it (`rc-engine`
+/// scene_render).
+pub fn scene_hero(w: &mut World) {
+    w.hero_fields_mut().call(HeroCall::SetState { id: crate::scene_player::HERO_SCENE_STATE, play: true });
 }
 
 /// `DialogStreamUpdate(n)`.

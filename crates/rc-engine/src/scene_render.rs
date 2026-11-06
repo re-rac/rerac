@@ -168,6 +168,8 @@ pub struct ActiveScene {
     /// Black coverage to draw over this frame (0..1).
     pub black: f32,
     pub running: bool,
+    /// The start fade over the last gameplay image (the HUD and the hidden mobys stay as they were until it is black).
+    pub fading_in: bool,
     /// This frame runs the world update of `CutsceneModeUpdate` (the moby loop, the hero, the particles, the sound
     /// step, the counter): the gameplay tick runs in its scene form (`rc_game::tick::Game::camera_paused`).
     pub world_runs: bool,
@@ -213,6 +215,14 @@ pub(crate) struct SceneRuntime {
     letterbox: i32,
     /// The mobys the scene hid (the talker 0x179588: mode |= 1; classes 74 / 203: mode |= 0x80) and the bit.
     hid: Vec<(MobyId, u16)>,
+    /// A scene ended at this frame's start (its clean-up frame: the game's `finish_cutscene` skips this frame's draw,
+    /// 0x15f5d8 = 1).
+    ended_frame: bool,
+    /// The scene's hides wait for the start fade's black ([`scene_hides`]).
+    hides_pending: bool,
+    /// The black coverage the fade pass drew last frame: the image the next scene's start fade draws over is black when
+    /// it was (the level load's black, the last scene's end): [`ScenePlayer::start_from_black`].
+    last_black: f32,
 }
 
 pub struct SceneRenderPlugin;
@@ -245,6 +255,9 @@ impl Plugin for SceneRenderPlugin {
                 talker: None,
                 letterbox: 0,
                 hid: Vec::new(),
+                ended_frame: false,
+                hides_pending: false,
+                last_black: 1.0,
             })
             // While a scene runs the gameplay tick runs only on the frames whose CutsceneModeUpdate updates the world
             // (not during the blocking fades and waits), in its mode-2 form (enter_mode2).
@@ -283,6 +296,10 @@ fn level_reset(mut rt: ResMut<SceneRuntime>) {
     rt.talker = None;
     rt.letterbox = 0;
     rt.hid.clear();
+    rt.hides_pending = false;
+    // The level load ends on black (the loading screen, the load's fade): a scene its first tick asks for (an arrival)
+    // fades over that, not over a level never shown.
+    rt.last_black = 1.0;
 }
 
 /// The scene k of the current level, from `level_header.bin` and `scene/KK_ntsc.bin`.
@@ -438,9 +455,11 @@ fn scene_frame(
     mut buffers: ResMut<Assets<ShaderBuffer>>,
 ) {
     let rt = &mut *rt;
+    rt.ended_frame = false;
     // Clean-up on the frame after the last scene frame: gameplay resumes this very frame.
     if rt.player.as_ref().is_some_and(|p| p.done()) {
         rt.player = None;
+        rt.ended_frame = true;
         for a in rt.actors.drain(..) { for e in a.entities { commands.entity(e).despawn(); } }
         // Ratchet's own meshes go back to crate::gameplay's visibility sync (his moby's hidden bit: a body may be in);
         // the rest (his items) are shown again.
@@ -464,7 +483,9 @@ fn scene_frame(
                 p.svc.interact.talker = Some(npc);
                 p.svc.interact.scene_ended = true;
             }
-            f.call(rc_game::moby_update::services::HeroCall::SetState { id: 0, play: true });
+            // A scene already queued behind this one starts next frame and keeps him in the scene body (no tick of play
+            // in between: the game's DialogStreamStart froze him when it was asked for).
+            if rt.pending.is_empty() { f.call(rc_game::moby_update::services::HeroCall::SetState { id: 0, play: true }); }
             p.svc.hero_writes = Some((counter, f));
         }
         println!("scene: control returns to gameplay at frame {} (hero SetState(0, 1) on the next tick)", rt.frames);
@@ -482,8 +503,13 @@ fn scene_frame(
             r
         } else {
             // `cinematic::start_scene` stores game mode 2 in the tick (DialogStreamStart's 0x15f5c4 = 2); a request
-            // the engine dropped (RC_SCENE's arrival) leaves no scene behind it: back to mode 0.
-            if let Some(p) = play.as_mut() { if p.svc.game_mode == 2 { p.svc.game_mode = 0; } }
+            // the engine dropped (RC_SCENE's arrival) leaves no scene behind it: back to mode 0, Ratchet released.
+            if let Some(p) = play.as_mut() {
+                if p.svc.game_mode == 2 {
+                    p.svc.game_mode = 0;
+                    release_hero(p);
+                }
+            }
             return;
         };
         rt.triggered = true;
@@ -497,7 +523,12 @@ fn scene_frame(
             Ok(s) => Arc::new(s),
             Err(e) => {
                 warn!("scene: scene {k} not loaded: {e:#}");
-                if let Some(p) = play.as_mut() { if p.svc.game_mode == 2 && rt.pending.is_empty() { p.svc.game_mode = 0; } }
+                if let Some(p) = play.as_mut() {
+                    if p.svc.game_mode == 2 && rt.pending.is_empty() {
+                        p.svc.game_mode = 0;
+                        release_hero(p);
+                    }
+                }
                 // Reported as ended (a skipped scene) so a talker's dialogue goes on.
                 if let (Some(npc), Some(p)) = (rt.talker.take(), play.as_mut()) {
                     p.svc.interact.talker = Some(npc);
@@ -529,22 +560,21 @@ fn scene_frame(
             warn!("scene: actors not drawn: {e:#}");
         }
         rt.glyphs = level.0.hud.as_ref().map(|h| h.glyphs);
-        let player = ScenePlayer::start(scene, ctx);
+        let mut player = ScenePlayer::start(scene, ctx);
+        // The game's start fade (`fade_to_black(6)`) draws over the last image shown; the asking frame is not drawn
+        // (0x15f5d8). Over a black image it stays black: the level load's, a scene that just ended.
+        if rt.last_black >= 0.99 { player.start_from_black(); }
         post_audio(rt, &player, &player.start_audio());
         rt.player = Some(player);
         rt.frames = 0;
         if let Some(m) = menu.as_mut() { m.state.set(Mode::Cutscene); }
-        // FUN_002486c0: the hero and his items are hidden. The always-on extras stay drawn on the scene's Ratchet
-        // actor (`FUN_0024a0e8` → `HeroItemsAttach`, which attaches only item slots 4 / 5 in mode 2): crate::moby_attach
-        // places them on the actor, and the game clears their hidden bit every tick.
-        for (e, name) in &hero {
-            if name.as_str().starts_with("Ratchet (play)") { commands.entity(e).insert((SceneHidden, Visibility::Hidden)); }
-        }
-        for (e, at) in &items {
-            if at.slot != Slot::Extra { commands.entity(e).insert((SceneHidden, Visibility::Hidden)); }
-        }
         active.running = true;
         if let Some(p) = play.as_mut() { enter_mode2(rt, p); }
+        // What the scene hides (Ratchet, his items, the talker, classes 74 / 203, the HUD) goes once the start fade is
+        // black: the game's fade runs over the last image shown (its asking frame is not drawn, 0x15f5d8), so nothing
+        // vanishes on screen. The port's fade runs over the live view, which no tick changes meanwhile (the fade frames
+        // run no world update); hidden at once, the talker and Ratchet blinked out under the fade's first frames.
+        rt.hides_pending = true;
     }
 
     // One frame of the player.
@@ -555,6 +585,20 @@ fn scene_frame(
     if let Some(p) = play.as_mut() { publish_scene(rt, &player, active.camera, p); }
     let out = player.tick(&rt.pad);
     rt.frames += 1;
+    active.fading_in = matches!(out.frame, Frame::FadeIn(_)) && out.black < 0.99;
+    if rt.hides_pending && !active.fading_in {
+        rt.hides_pending = false;
+        // FUN_002486c0: the hero and his items are hidden. The always-on extras stay drawn on the scene's Ratchet
+        // actor (`FUN_0024a0e8` → `HeroItemsAttach`, which attaches only item slots 4 / 5 in mode 2): crate::moby_attach
+        // places them on the actor, and the game clears their hidden bit every tick.
+        for (e, name) in &hero {
+            if name.as_str().starts_with("Ratchet (play)") { commands.entity(e).insert((SceneHidden, Visibility::Hidden)); }
+        }
+        for (e, at) in &items {
+            if at.slot != Slot::Extra { commands.entity(e).insert((SceneHidden, Visibility::Hidden)); }
+        }
+        if let Some(p) = play.as_mut() { scene_hides(rt, p); }
+    }
     post_audio(rt, &player, &out.audio);
     if out.frame == Frame::Playing && (out.scene_tick == 1 || out.camera.is_some_and(|c| c.cut)) {
         println!("scene: app frame {} (scene frame {}) = scene tick {}{}", frame.0, rt.frames, out.scene_tick, if out.scene_tick > 1 { " (camera cut)" } else { "" });
@@ -693,27 +737,25 @@ fn actor_joint_lists(level: &crate::level_load::LoadedLevel, classes: &[i32]) ->
 /// `DialogStreamStart`'s state changes for the world that keeps running in mode 2 (docs/plan/cutscenes.md §6): game
 /// mode 2 for the classes (0x15f5c4), the tick in its mode-2 form (no follow camera, no free-slot pass: `CutsceneModeUpdate`
 /// 0x2aca80), Ratchet `SetState(100, 2)` and then `0x1413f5 = 1` (his held objects hide: the Bomb Glove's bomb; both
-/// applied by the next tick), the talker hidden (0x179588 mode |= 1) and every
-/// live moby of class 74 / 203 hidden (mode |= 0x80).
+/// applied by the next tick); the hides wait for the start fade's black ([`scene_hides`]).
 fn enter_mode2(rt: &mut SceneRuntime, p: &mut Play) {
     use rc_game::moby_update::services::{HeroCall, HeroFields};
-    use rc_game::scene_player::{SCENE_HIDDEN_BIT, SCENE_HIDDEN_CLASSES};
     p.svc.game_mode = 2;
     // DialogStreamStart 0x2ac330: the scene records 0x17c8c0, 0x17c7c0, 0x17c800, 0x17c880 and 0x17c840 cleared.
     p.svc.scene_head = None;
     p.svc.actor_records.clear();
     p.game.camera_paused = true;
     let counter = p.game.counter;
+    // The asking tick already put Ratchet in the scene body (`rc_game::cinematic::scene_hero`, as DialogStreamStart
+    // does inside its tick); the scenes the engine starts by itself (`RC_SCENE`) get it here.
+    let frozen = p.game.hero.state == rc_game::scene_player::HERO_SCENE_STATE;
     let call = HeroCall::SetState { id: rc_game::scene_player::HERO_SCENE_STATE, play: true };
     match p.svc.hero_writes.as_mut() {
-        Some((_, f)) => {
-            f.call(call);
-            f.hero_hidden = Some(1);
-        }
+        _ if frozen => {}
+        Some((_, f)) => f.call(call),
         None => {
             let mut f = HeroFields::of(&p.game.hero);
             f.call(call);
-            f.hero_hidden = Some(1);
             p.svc.hero_writes = Some((counter, f));
         }
     }
@@ -738,6 +780,22 @@ fn enter_mode2(rt: &mut SceneRuntime, p: &mut Play) {
             } else {
                 warn!("scene: no free moby slot for actor class {oc}");
             }
+        }
+    }
+}
+
+/// `DialogStreamStart`'s hides, applied once the start fade is black (see the trigger): Ratchet's 0x1413f5 (his held
+/// objects: the Bomb Glove's bomb), the talker 0x179588 (mode |= 1), the In-Level Movies' level moby, Clank's antenna
+/// glow, every live moby of class 74 / 203 (mode |= 0x80).
+fn scene_hides(rt: &mut SceneRuntime, p: &mut Play) {
+    use rc_game::moby_update::services::HeroFields;
+    use rc_game::scene_player::{SCENE_HIDDEN_BIT, SCENE_HIDDEN_CLASSES};
+    match p.svc.hero_writes.as_mut() {
+        Some((_, f)) => f.hero_hidden = Some(1),
+        None => {
+            let mut f = HeroFields::of(&p.game.hero);
+            f.hero_hidden = Some(1);
+            p.svc.hero_writes = Some((p.game.counter, f));
         }
     }
     rt.hid.clear();
@@ -765,6 +823,23 @@ fn enter_mode2(rt: &mut SceneRuntime, p: &mut Play) {
         if m.state < 0x80 && SCENE_HIDDEN_CLASSES.contains(&m.o_class) && m.mode & SCENE_HIDDEN_BIT == 0 {
             m.mode |= SCENE_HIDDEN_BIT;
             rt.hid.push((id, SCENE_HIDDEN_BIT));
+        }
+    }
+}
+
+/// A scene the asking tick froze Ratchet for ([`rc_game::cinematic::scene_hero`]) that will not play (the arrival
+/// dropped by `RC_SCENE`, a scene that cannot be loaded): `SetState(0, 1)` on the next tick, as a scene's end does.
+fn release_hero(p: &mut Play) {
+    use rc_game::moby_update::services::{HeroCall, HeroFields};
+    if p.game.hero.state != rc_game::scene_player::HERO_SCENE_STATE { return; }
+    let counter = p.game.counter;
+    let call = HeroCall::SetState { id: 0, play: true };
+    match p.svc.hero_writes.as_mut() {
+        Some((_, f)) => f.call(call),
+        None => {
+            let mut f = HeroFields::of(&p.game.hero);
+            f.call(call);
+            p.svc.hero_writes = Some((counter, f));
         }
     }
 }
@@ -1018,11 +1093,38 @@ fn hold_camera(hold: Res<FadeHold>, source: Option<Res<CameraSource>>, mut cams:
 }
 
 /// The fade quad component on the main camera.
-fn fade_pass(mut commands: Commands, active: Res<ActiveScene>, hold: Res<FadeHold>, play: Option<Res<Play>>, cams: Query<(Entity, Option<&SceneFade>), With<FlyCam>>) {
+#[allow(clippy::too_many_arguments)]
+fn fade_pass(
+    mut commands: Commands,
+    active: Res<ActiveScene>,
+    hold: Res<FadeHold>,
+    mut rt: ResMut<SceneRuntime>,
+    play: Option<Res<Play>>,
+    movies: Option<Res<crate::movie_render::MovieState>>,
+    frame: Res<crate::determinism::FrameNumber>,
+    cams: Query<(Entity, Option<&SceneFade>), With<FlyCam>>,
+) {
     // In gameplay without a hold: the classes' 0x15f3fc (`DrawWorld` 0x21a1b8: black at `trunc(min(f, 1)·128)` when
     // f > 0; `rc_game::cinematic::set_fade`).
     let gameplay = play.as_ref().map_or(0.0, |p| p.svc.cinematic.fade);
-    let black = if active.running { active.black } else if hold.frames > 0 { hold.coverage() } else { gameplay };
+    let mut black = if active.running { active.black } else if hold.frames > 0 { hold.coverage() } else { gameplay };
+    // A scene's clean-up frame whose tick asked for the next scene: the game draws neither (`finish_cutscene` and
+    // `start_scene` set 0x15f5d8, the main loop skips the draw), so the screen stays on the last scene's black end and
+    // the next scene's start fade runs over it. Drawn, this frame was a sliver of gameplay (the HUD, the follow camera)
+    // between two black scenes.
+    // The same for a movie's exit frame (`MovieExitToGameplay` skips its draw too): the movie ended on its black fade.
+    let movie_exit = movies.as_ref().is_some_and(|m| m.exited_frame == Some(frame.0));
+    if (rt.ended_frame || movie_exit) && (!rt.pending.is_empty() || play.as_ref().is_some_and(|p| next_scene_asked(p))) {
+        black = 1.0;
+    }
+    // A tick that asked for a scene is not drawn either (`start_scene` sets 0x15f5d8): the screen keeps the last image.
+    // Over a black one (the level load's fade) that frame stays black.
+    if !active.running && rt.last_black >= 0.99 && play.as_ref().is_some_and(|p| next_scene_asked(p)) {
+        black = 1.0;
+    }
+    // The image left on screen for the next scene's start fade; the frames before the level's first tick are not the
+    // game's (it draws its first frame after that tick), so they leave the load's black in place.
+    if active.running || play.as_ref().is_some_and(|p| ticks_since_load(p.game.counter) > 0) { rt.last_black = black; }
     let alpha = (black.clamp(0.0, 1.0) * 128.0) as u32;
     let mut want = ((active.running || hold.frames > 0 || gameplay > 0.0) && alpha > 0).then(|| SceneFade { rgba: UVec4::new(0, 0, 0, alpha) });
     // The white quad 0x15f400 (mode 6, crate::travel_render) when no black one is drawn [L: the game draws both, black
@@ -1039,6 +1141,15 @@ fn fade_pass(mut commands: Commands, active: Res<ActiveScene>, hold: Res<FadeHol
             (None, None) => {}
         }
     }
+}
+
+/// This tick asked for a scene or a movie (a class's `DialogStreamStart` / `DialogStreamUpdate`, a talker's hand-off); the
+/// engine takes it next frame. Both skip their asking frame's draw in the game (0x15f5d8).
+fn next_scene_asked(p: &Play) -> bool {
+    use rc_game::cinematic::EngineRequest as R;
+    use rc_game::moby_update::interact::Handoff;
+    p.svc.cinematic.requests.iter().any(|r| matches!(r, R::StartScene { .. } | R::StartMovie { .. }))
+        || p.svc.interact.handoffs.iter().any(|h| matches!(h, Handoff::Scene { .. } | Handoff::Movie { .. }))
 }
 
 /// HUD hidden and the subtitle box (module docs) into the 2D pass; in gameplay, the letterbox of `0x15f404`.
@@ -1058,7 +1169,7 @@ fn subtitle_layer(mut rt: ResMut<SceneRuntime>, active: Res<ActiveScene>, hold: 
         }
     }
     // HudDraw 0x24fb50 draws no slot while 0x15f404 is set.
-    layer.hide_hud = active.running || flag;
+    layer.hide_hud = (active.running && !active.fading_in) || flag;
     layer.prims.clear();
     if !active.running && rt.letterbox > 0 { layer.prims = letterbox_prims(rt.letterbox); }
     // The census units' 2-D draw callbacks (Veldin's countdown 586, `0x2d8098`: `DrawUIFrame` and

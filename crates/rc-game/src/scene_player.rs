@@ -234,6 +234,8 @@ pub struct ScenePlayer {
     skipped: bool,
     /// Black coverage accumulated by the running `FadeToBlack`.
     black: f32,
+    /// The image under the start fade is already black ([`ScenePlayer::start_from_black`]).
+    from_black: bool,
     last_camera: Option<SceneCamera>,
     last_actors: Vec<ActorPose>,
     last_subtitle: Option<SubtitleLine>,
@@ -323,11 +325,17 @@ impl ScenePlayer {
             fade: Pf::ONE,
             skipped: false,
             black: 0.0,
+            from_black: false,
             last_camera: None,
             last_actors: Vec::new(),
             last_subtitle: None,
         }
     }
+
+    /// The scene follows one that just ended: the game's start fade (`fade_to_black(6)`) draws over the last image
+    /// shown, and the frames in between were never shown (`0x15f5d8`: `finish_cutscene` and `start_scene` both skip
+    /// their frame's draw), so that image is the last scene's black end: the start fade stays black.
+    pub fn start_from_black(&mut self) { self.from_black = true; }
 
     /// The trigger frame's requests (`music_Pause(0)`).
     pub fn start_audio(&self) -> Vec<AudioRequest> { vec![AudioRequest::PauseMusic] }
@@ -364,7 +372,7 @@ impl ScenePlayer {
     pub fn tick(&mut self, pad: &PadState) -> SceneTick {
         match self.phase {
             Phase::FadeIn(k) => {
-                self.black = fade_to_black_coverage(START_FADE_FRAMES, k);
+                self.black = if self.from_black { 1.0 } else { fade_to_black_coverage(START_FADE_FRAMES, k) };
                 self.phase = if k + 1 < START_FADE_FRAMES { Phase::FadeIn(k + 1) } else { Phase::Black(0) };
                 // The fade draws over the last gameplay image: no camera change, no actors yet.
                 self.out(Frame::FadeIn(k), false, self.black)

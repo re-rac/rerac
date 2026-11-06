@@ -764,6 +764,8 @@ fn start_scene(w: &mut World, id: MobyId, scene: i16) {
     if scene as u16 & 0x4000 == 0 {
         w.mm(id).mode |= 1;
         w.svc.interact.handoffs.push(Handoff::Scene { scene: scene as i32, npc: Some(id) });
+        // DialogStreamStart's hero freeze in this tick (`cinematic::scene_hero`).
+        crate::cinematic::scene_hero(w);
     } else {
         w.svc.interact.handoffs.push(Handoff::Movie { movie: (scene as u16 ^ 0x4000) as i32, npc: Some(id) });
         // StartPssMovie's game mode 1 at once (`cinematic::start_movie`): without it the talker's own update in the
