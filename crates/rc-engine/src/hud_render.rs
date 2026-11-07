@@ -1042,17 +1042,18 @@ fn tick_and_build(
     mut feed: ResMut<HudFeed>,
     (mut play, mut audio): (Option<ResMut<crate::gameplay::Play>>, Option<ResMut<crate::audio_out::AudioOut>>),
     dyn_images: Option<Res<crate::hud_images::HudImages>>,
-    frame: Res<crate::display::GameFrame>,
+    (frame, display, cutscene): (Res<crate::display::GameFrame>, Option<Res<crate::display::DisplaySettings>>, Option<Res<crate::display::CutsceneView>>),
     mut images: ResMut<Assets<Image>>,
     (mut composites, mut static_composites, mut over_composites, mut targets): (ResMut<Assets<HudComposite>>, ResMut<Assets<HudStaticComposite>>, ResMut<Assets<HudCompositeOver>>, Query<&mut RenderTarget>),
 ) {
     let Some(mut rt) = rt else { return };
     let rt = &mut *rt;
-    // The side margin of the frame's aspect (crate::display): the layer's targets and the HUD's left / right slots.
+    // The side margin of the frame's aspect (crate::display) sizes the layer's targets; the gameplay aspect's moves the
+    // HUD's left / right slots.
     let extra = crate::display::side_extra(frame.ratio());
+    rt.state.side_extra = display.as_ref().map_or(extra, |d| crate::display::side_extra(frame.ratio_of(d.gameplay)));
     if extra != rt.extra {
         rt.extra = extra;
-        rt.state.side_extra = extra;
         // Fresh targets of the new width (crate::display::fresh_target); the two cameras and composites move to them.
         let size = UVec2::new((W + 2 * extra) as u32, H as u32);
         for old in [rt.target.clone(), rt.static_target.clone()] {
@@ -1172,6 +1173,14 @@ fn tick_and_build(
     if !hook.replace_hud && !scene.hide_hud && !hud_off { crate::text_render::execute(&mut rt.hud2d, &mut st, &rt.glyphs, &rt.draws); }
     rt.hud2d.prims.extend(hook.prims.iter().copied());
     rt.hud2d.prims.extend(scene.prims.iter().copied());
+    // The view shown now narrower than the frame (crate::display): black over the margin it does not show.
+    if let Some(d) = display.as_deref() {
+        let shown = frame.ratio_of(d.shown(cutscene.is_some_and(|c| c.0)));
+        for [l, r] in crate::display::pillar_bars(frame.ratio(), shown).into_iter().flatten() {
+            let pos = [[l, 0], [r, 0], [l, H], [r, H]];
+            rt.hud2d.prims.push(Prim { tex: Tex::None, pos, uv: [[0, 0]; 4], rgba: 0x8000_0000, scissor: FULL_SCISSOR, repeat: false, nearest: false, boxed: false, uv16: false });
+        }
+    }
     // The inspect overlay (crate::debug_hud, `RC_DEBUG_HUD=1`; F3 on / off, F4 the page, F8 the repro line): small font
     // with a shadow, a column from the top left, the mobys page's labels at their screen points.
     if let (Some(p), Some(d)) = (play.as_deref(), dbg.as_deref().filter(|d| d.on)) {

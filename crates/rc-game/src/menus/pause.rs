@@ -708,7 +708,11 @@ impl PageMenu {
         if let Some(p) = self.page(self.current) {
             let seqs = p.seqs;
             for (m, s) in self.mobys.iter_mut().zip(seqs) { *m = (s, false); }
-            if let Some(f) = self.frames.as_mut() { f.spawn(&seqs); }
+            let stretch = port::panel_stretch(self.current);
+            if let Some(f) = self.frames.as_mut() {
+                f.spawn(&seqs);
+                f.stretch = stretch;
+            }
         }
     }
 
@@ -778,6 +782,9 @@ impl PageMenu {
                 };
                 if let Some(f) = self.frames.as_mut() { f.start(i, self.mobys[i].0, back); }
             }
+            // Port-only: the seqs played are the port page's (into it, or back out of it): its stretched list panel.
+            let stretch = port::panel_stretch(if back { self.current } else { self.target });
+            if let Some(f) = self.frames.as_mut() { f.stretch = stretch; }
             out.transition = Some((self.current, self.target));
             self.kind = 1;
             self.trans = 0xc;

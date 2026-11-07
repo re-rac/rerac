@@ -565,7 +565,8 @@ fn port_rows_in(
 ) {
     if let Some(s) = shadows { menu.set_port_value(Setting::Shadows, !s.enabled as u8); }
     menu.set_port_value(Setting::Resolution, display.resolution.index());
-    menu.set_port_value(Setting::Aspect, display.aspect.index());
+    menu.set_port_value(Setting::Aspect, display.gameplay.index());
+    menu.set_port_value(Setting::CutsceneAspect, display.cutscenes.index());
     menu.set_port_value(Setting::Fullscreen, display.fullscreen as u8);
     sync_graphics_rows(menu, gfx, &supported.cloned().unwrap_or_default());
 }
@@ -590,13 +591,15 @@ fn port_rows_out(
     // The display (crate::display): the game frame's resolution and the window mode.
     let want = (
         menu.port_value(Setting::Aspect).map(crate::display::Aspect::from_index),
+        menu.port_value(Setting::CutsceneAspect).map(crate::display::Aspect::from_index),
         menu.port_value(Setting::Resolution).map(crate::display::Resolution::from_index),
         menu.port_value(Setting::Fullscreen).map(|v| v == 1),
     );
-    if let (Some(aspect), Some(res), Some(full)) = want {
-        if display.aspect != aspect || display.resolution != res || display.fullscreen != full {
-            (display.aspect, display.resolution, display.fullscreen) = (aspect, res, full);
-            println!("menus: frame {frame}: Port Options: aspect {aspect:?}, resolution {res:?}, fullscreen {full}");
+    if let (Some(gameplay), Some(cutscenes), Some(res), Some(full)) = want {
+        let new = crate::display::DisplaySettings { gameplay, cutscenes, resolution: res, fullscreen: full };
+        if *display != new {
+            *display = new;
+            println!("menus: frame {frame}: Port Options: gameplay aspect {gameplay:?}, cutscene aspect {cutscenes:?}, resolution {res:?}, fullscreen {full}");
             display.save();
         }
     }
@@ -1643,7 +1646,7 @@ fn menu_layer(
                 commands
                     .spawn((
                         Camera3d::default(),
-                        Camera { order: -2, clear_color: ClearColorConfig::None, ..default() },
+                        Camera { order: -2, clear_color: ClearColorConfig::None, viewport: crate::display::box_viewport(frame.size), ..default() },
                         RenderTarget::Image(layer.image.clone().into()),
                         crate::game_camera::game_projection(),
                         Msaa::Off,
@@ -1692,7 +1695,13 @@ fn menu_layer(
         let pal = palette.get_or_insert_with(|| buffers.get(&fr.extra.palette).and_then(|b| b.data.clone()).unwrap_or_default());
         let rec = records.get_or_insert_with(|| buffers.get(&fr.extra.instances).and_then(|b| b.data.clone()).unwrap_or_default());
         // MobyAnimEval of the slot's state (the frame mobys have no pose layers and no blends).
-        let m = rc_formats::moby_anim::evaluate_with_snapshot(&f.class.anim, &slots[i].state, None);
+        let mut m = rc_formats::moby_anim::evaluate_with_snapshot(&f.class.anim, &slots[i].state, None);
+        // Port-only: the corners the menu moved (`frame::FrameMoby::lift`, world z) move their joints with them
+        // (packed model units: world × 1024 / class scale).
+        for (chain, &lift) in f.class.chains.iter().zip(&slots[i].lift) {
+            if lift == 0.0 { continue; }
+            if let Some(r) = chain.last().and_then(|&j| m.get_mut(j as usize)) { r[3][2] += lift * 1024.0 / f.class.scale; }
+        }
         let base = i * fr.slots as usize;
         let bytes: Vec<u8> = m.iter().take(fr.slots as usize).flat_map(|r| r.iter().flatten().flat_map(|v| v.to_le_bytes())).collect();
         if let Some(dst) = pal.get_mut(base * 64..base * 64 + bytes.len()) { dst.copy_from_slice(&bytes); }
