@@ -319,6 +319,7 @@ impl Plugin for AudioOutPlugin {
             .add_systems(FixedUpdate, scene_sound.after(crate::gameplay::GameTick))
             .add_systems(FixedUpdate, sync_underwater.before(crate::gameplay::GameTick))
             .add_systems(FixedUpdate, sync_options.before(crate::gameplay::GameTick))
+            .add_systems(FixedUpdate, sync_game_mode.before(crate::gameplay::GameTick))
             .add_systems(PostUpdate, run_audio);
     }
 }
@@ -327,6 +328,13 @@ impl Plugin for AudioOutPlugin {
 fn sync_underwater(mut out: ResMut<AudioOut>, fog: Option<Res<crate::fog_state::FogState>>) {
     let flag = fog.is_some_and(|f| f.underwater_flag());
     if out.system.underwater != flag { out.system.underwater = flag; }
+}
+
+/// The game mode 0x15f5c4 into the audio system: `sound_update` only polls the running sounds outside modes 0, 2 and 6
+/// and tests the occlusion in 0 and 2 only. The vendor and page-menu frames copy it again before their `sound_update`.
+fn sync_game_mode(mut out: ResMut<AudioOut>, play: Option<Res<crate::gameplay::Play>>) {
+    let mode = play.map_or(0, |p| p.svc.game_mode);
+    if out.system.game_mode != mode { out.system.game_mode = mode; }
 }
 
 /// The saved game's sound options into the mixer every frame, as the game's `sound_update` resends the master volumes

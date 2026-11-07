@@ -307,8 +307,8 @@ loop cut below 0x20, pan (`fwd·p`, `left·p`: the send loop transposes the came
 `fun_001fa2d8`, so v is camera-space), doppler `(trunc(dot·300)·0x5f4)/0x2e5`, the occlusion ring (six origins
 per frame for new sounds, one re-test per 2nd/4th frame, `36 − n` law), and the command batch. Disassembled for
 this: the play callback 0x2a1bc8 (`handle = h`; 0 frees the slot; state 1 → **2**) and the liveness callback
-0x2a1c10 (`handle = h`; 0 frees). Two quirks kept: a slot without an owner uses the stack variable of the last
-listener step as its velocity, minus the listener velocity once per such slot; and the EE pan of −1 / −2 degrees
+0x2a1c10 (`handle = h`; 0 frees). A slot without an owner (or with flag 8) has velocity 0 (`sq zero` at 0x2a0b5c,
+which the Ghidra export drops), so its doppler is the listener's alone. One quirk kept: the EE pan of −1 / −2 degrees
 reaches 989snd as `PAN_RESET` / `PAN_DONT_CHANGE`. The camera ring is zeroed at level init; the port starts at
 the first gameplay frame and primes it with that camera position (M: the game keeps running `sound_update`
 through the load and intro frames, otherwise the first frame would read 0 → camera as one huge step and every

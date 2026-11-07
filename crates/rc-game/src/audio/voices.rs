@@ -168,6 +168,9 @@ pub struct UpdateCtx<'a> {
     pub sound_page: bool,
     /// 0x15f5c4 == 2.
     pub cutscene: bool,
+    /// The game mode 0x15f5c4: outside 0 (play), 2 (scene) and 6 (space) the running sounds are only polled; the
+    /// occlusion runs in 0 and 2 only.
+    pub game_mode: i32,
 }
 
 type V3 = [f32; 3];
@@ -357,8 +360,9 @@ impl SoundSlots {
     pub fn update(&mut self, ctx: &mut UpdateCtx) -> Vec<SndCommand> {
         let l = ctx.listener;
         let mut cmds = Vec::new();
-        // The origin of this frame's single occlusion re-test (game state 0/2, not paused).
-        let origin = occlusion_origin(l, ctx.collision, ctx.rng);
+        // The origin of this frame's single occlusion re-test (game mode 0/2).
+        let occlusion = matches!(ctx.game_mode, 0 | 2);
+        let origin = if occlusion { occlusion_origin(l, ctx.collision, ctx.rng) } else { l.pos };
 
         // Listener velocity from the 4-entry camera ring: average of the last ≤3 steps shorter than
         // 60·(1/60) = 1 unit. The game zeroes the ring at level init and keeps updating it through the load
@@ -371,15 +375,13 @@ impl SoundSlots {
         self.ring_idx = (self.ring_idx + 1) % 4;
         self.cam_ring[self.ring_idx] = l.pos;
         let (mut vel, mut n) = ([0f32; 3], 0);
-        // auStack_2e0: the last step computed. Slots without an owner read it as their own velocity (a stack
-        // leftover in the game), each one subtracting the listener velocity from it again.
-        let mut scratch;
+        let mut step;
         let (mut newer, mut older) = (self.ring_idx, (self.ring_idx + 3) % 4);
         loop {
-            scratch = vsub(self.cam_ring[newer], self.cam_ring[older]);
-            if length(scratch) >= 60.0 * (1.0 / 60.0) { break; }
+            step = vsub(self.cam_ring[newer], self.cam_ring[older]);
+            if length(step) >= 60.0 * (1.0 / 60.0) { break; }
             n += 1;
-            vel = vadd(vel, scratch);
+            vel = vadd(vel, step);
             newer = older;
             older = (older + 3) % 4;
             if older == self.ring_idx { break; }
@@ -408,18 +410,24 @@ impl SoundSlots {
                 mask[i] = 0x20;
                 continue;
             }
-            // Game state 0 (playing): always computed.
+            if !matches!(ctx.game_mode, 0 | 2 | 6) && s.state != state::START_PENDING {
+                mask[i] = 0x10;
+                continue;
+            }
+            // Game state 0 (playing): always computed. The source velocity is the owner's step, or zero without
+            // an owner or with flag 8 (`sq zero` at 0x2a0b5c).
+            let mut rel = [0f32; 3];
             if let (Some(Some(p)), true) = (owner_now, s.flags & flags::NO_FOLLOW == 0) {
                 // Flag 0x40 (rotated local offset) needs the moby matrix; not ported: plain follow.
                 let old = [s.pos[0], s.pos[1], s.pos[2] - 1.0];
-                scratch = vsub(p, old);
+                rel = vsub(p, old);
                 s.pos = [p[0], p[1], p[2] + 1.0];
             }
-            scratch = vsub(scratch, vel);
+            let rel = vsub(rel, vel);
             let to_cam = vsub(l.pos, s.pos);
             let len = length(to_cam);
             let dir = if len > 0.0 { vscale(to_cam, 1.0 / len) } else { [0.0; 3] };
-            dops[i] = dot(dir, scratch);
+            dops[i] = dot(dir, rel);
             let dist_vol;
             if s.flags & flags::FIXED_VOLUME == 0 {
                 dist_vol = distance_volume(length(vsub(s.pos, l.pos)), &s.def);
@@ -447,6 +455,7 @@ impl SoundSlots {
             if mask[i] & 8 == 0 { continue; }
             let s = &mut self.slots[i];
             let count = if s.state == state::START_PENDING {
+                if !occlusion { continue; }
                 if self.origins_frame != Some(ctx.frame) {
                     for o in &mut self.origins { *o = occlusion_origin(l, ctx.collision, ctx.rng); }
                     self.origins_frame = Some(ctx.frame);
@@ -459,10 +468,12 @@ impl SoundSlots {
                 }
                 c
             } else {
-                let idx = (s.occl_index + 1) % RING;
-                s.occl_index = idx;
-                let test = if s.flags & flags::LOOP != 0 { (i as u32 ^ ctx.frame) & 1 != 0 } else { (ctx.frame ^ i as u32) & 3 == 0 };
-                s.occl[idx] = if test { occluded(origin, s.pos, l, ctx.collision) } else { s.occl[(idx + RING - 1) % RING] };
+                if occlusion {
+                    let idx = (s.occl_index + 1) % RING;
+                    s.occl_index = idx;
+                    let test = if s.flags & flags::LOOP != 0 { (i as u32 ^ ctx.frame) & 1 != 0 } else { (ctx.frame ^ i as u32) & 3 == 0 };
+                    s.occl[idx] = if test { occluded(origin, s.pos, l, ctx.collision) } else { s.occl[(idx + RING - 1) % RING] };
+                }
                 s.occl.iter().filter(|&&b| b != 0).count() as i32
             };
             if count >= RING as i32 {

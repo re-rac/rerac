@@ -321,6 +321,8 @@ pub fn after_tick(
                 // `snd_PauseAllSoundsInGroup(0x1d)`, `music_Pause(0)` (before the open sound, as `OpenVendorMenu`); the
                 // world ticks of mode 5 are the scene form (no camera update).
                 if let Some(a) = audio.as_deref_mut() { a.system().menu_open(); }
+                // `OpenVendorMenu`: 0x15f5c4 = 5 (`VendorExit` sets 0).
+                play.svc.game_mode = 5;
                 let listener = rc_game::audio::class_sounds::listener_of(&play.game.camera.out);
                 play_sounds(play, audio.as_deref_mut(), vendor, &out.sounds, &listener);
                 play.game.camera_paused = true;
@@ -470,6 +472,7 @@ fn arms(play: &mut Play, vendor_id: rc_game::moby_runtime::MobyId, entries: Opti
 
 /// One EE audio frame of mode 5 (`sound_update` at the end of `VendorModeUpdate`) when no world tick ran it.
 fn sound_frame(play: &mut Play, audio: &mut crate::audio_out::AudioOut, listener: rc_game::audio::voices::Listener) {
+    audio.system().game_mode = play.svc.game_mode;
     let game = &mut play.game;
     let h = game.hero.pos;
     let input = rc_game::audio::FrameInput { listener, hero_pos: [h[0].to_f32(), h[1].to_f32(), h[2].to_f32()] };
@@ -708,7 +711,8 @@ pub fn vendor_frame(
             }
             if let Some(a) = audio.as_deref_mut() { a.system().hero_teleported(pos); }
         }
-        // `VendorExit`: `snd_ContinueAllSoundsInGroup(0x1d)` (0x2ae7c0), `music_Unpause`.
+        // `VendorExit`: mode 0, `snd_ContinueAllSoundsInGroup(0x1d)` (0x2ae7c0), `music_Unpause`.
+        play.svc.game_mode = 0;
         if let Some(a) = audio { a.system().menu_close(true); }
         play.game.camera_paused = false;
         println!("interact: frame {frame}: VendorExit: mode 0 (bolts {}, ammo {:?})", gs.global.bolts, &gs.global.ammo[10..20]);
