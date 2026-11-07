@@ -657,8 +657,8 @@ fn update(
     // body (`0x22a110` → `0x2486c0`, rc_game::hero::bodies: Clank or Giant Clank is the hero, Ratchet and his items hidden).
     let fp = play.as_ref().is_some_and(|p| p.game.hero.f13f5 != 0 || p.game.hero.mode != 0);
     // `FUN_002487a8` hides the hand item: the wrench in the water or on a ledge (0x1413fe), any item at the gold bolt's
-    // pickup (0x1413ff).
-    let hand_off = play.as_ref().is_some_and(|p| p.game.hero.hand_hidden());
+    // pickup (0x1413ff); decided in the write-back, a tick behind 0x1413fe (`Hero::hand_off`).
+    let hand_off = play.as_ref().is_some_and(|p| p.game.hero.hand_off);
     // The Swingshot's hook (a moby of its own in the game: advanced every tick, placed by the item's update).
     let hook = play.as_ref().and_then(|p| p.game.hero.swing.item.hook.clone().filter(|_| p.game.hero.swing.item.alive));
     // The back mobys' animation state and pose snapshot as the hero update left them (item slot 3: pack

@@ -461,6 +461,9 @@ pub struct Hero {
     /// 0x1413ff: the hand item hidden (`FUN_002487a8` hides the hand moby while it is set: the gold bolt 1134's
     /// pickup); cleared by `SetState` on foot.
     pub f13ff: u8,
+    /// The hand moby's hide bit as the write-back `HeroSyncMoby` 0x229f20 last set it (`FUN_002487a8`, the rule
+    /// [`Hero::hand_hidden`] read there: 0x1413fe as the previous tick's `HeroItemsUpdate` left it, the item in hand then).
+    pub hand_off: bool,
     /// The weapons: the ammo mirror, the weapon-out arm (0x1413f8), the bomb glove's pvars ([`weapons`]).
     pub weapons: weapons::Weapons,
     /// The Comet-Strike's catch request ([`comet`]).
@@ -558,7 +561,7 @@ impl Hero {
             carry: platform::Carry::default(), surf: surface::Surf::default(),
             owned: Owned::default(), back_slot: idle::BackSlot::default(), feet_slot: idle::ItemSlot::default(), head_slot: idle::ItemSlot::default(), worn: worn::Worn::default(), packs: packs::Packs::default(), wall_ahead: [0.0; 2], edge: (false, 0.0, 0.0), boots: boots::Boots::default(),
             gadgets: gadgets::Gadgets::default(), swing: swingshot::Swing::default(), fx: fx::HeroFx::default(),
-            f13f5: 0, f13ff: 0, weapons: weapons::Weapons::default(), comet: comet::Comet::default(), loop_in: Default::default(),
+            f13f5: 0, f13ff: 0, hand_off: false, weapons: weapons::Weapons::default(), comet: comet::Comet::default(), loop_in: Default::default(),
             joint_targets: Default::default(), help: Default::default(), walloper: Default::default(), bodies: bodies::Bodies::default(), glow: glow::HeroGlow::default(), env_base: None,
             cheats: Default::default(), cheat_moves: Default::default(), board: hoverboard::Board::default(),
         }
@@ -727,6 +730,8 @@ impl Hero {
         self.moby_rot = self.rot;
         // 0x1413f5 (first person): `0x2486c0` hides Ratchet (and his items: the engine), else `0x2487a8` shows him.
         if self.f13f5 != 0 { moby.mode |= crate::moby_runtime::mode::HIDDEN; } else { moby.mode &= !crate::moby_runtime::mode::HIDDEN; }
+        // `0x2487a8`'s hand rule, here, before this tick's `HeroItemsUpdate` (it recomputes 0x1413fe after the write-back).
+        self.hand_off = self.hand_hidden();
         // His joint-modifier list (moby +0x64: the idle / lean joint records and the eyelids, idle::Manip).
         if !self.joint_targets.is_empty() { moby.joint_mods = self.idle.modifiers(&self.joint_targets); }
     }
