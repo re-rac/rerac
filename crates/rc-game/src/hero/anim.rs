@@ -108,9 +108,10 @@ pub trait AnimCtl {
     /// the moby's +0x60 list): the hand under the arm. Without layer joints the same as `eval_chains`.
     /// `mods` = the moby's joint-modifier list (+0x64, the chain evaluator applies it after the layers).
     fn eval_chains_with(&self, chains: &[&[u8]], _layers: &PoseNodes, _mods: &[rc_formats::moby_anim::JointModifier]) -> Vec<rc_formats::moby_anim::Rows> { self.eval_chains(chains) }
-    /// Ratchet's current local pose as one keyframe (the decode `MobyAnimDecodeLocalPose` 0x269938 does, in
-    /// the frame encoding of the pose snapshot, `rc_formats::moby_anim::snapshot`). None without class data.
-    fn pose_frame(&self) -> Option<rc_formats::moby_anim::MobyFrame> { None }
+    /// Ratchet's current local pose as one keyframe (the decode `MobyAnimDecodeLocalPose` 0x269938 does, with his
+    /// weapon-arm pose layers and the moby's joint-modifier list `mods` over it, in the frame encoding of the pose
+    /// snapshot, `rc_formats::moby_anim::snapshot_posed`). None without class data.
+    fn pose_frame(&self, _layers: &PoseNodes, _mods: &[rc_formats::moby_anim::JointModifier]) -> Option<rc_formats::moby_anim::MobyFrame> { None }
     /// The rate word of key `frame` of sequence `seq` (`*(seq +0x1c)[frame]`, frame header +0; what a key step of
     /// an advance continues with). 1 without class data.
     fn key_rate(&self, _seq: u8, _frame: u8) -> f32 { 1.0 }
@@ -463,7 +464,10 @@ impl RatchetAnimRef<'_> {
         rc_formats::moby_anim::evaluate_chains_posed(self.class, &self.a.state, self.a.snapshot.as_ref(), chains, &pl, mods)
     }
 
-    pub fn pose_frame(&self) -> Option<rc_formats::moby_anim::MobyFrame> { snapshot(self.class, &self.a.state, self.a.snapshot.as_ref()) }
+    pub fn pose_frame(&self, layers: &PoseNodes, mods: &[rc_formats::moby_anim::JointModifier]) -> Option<rc_formats::moby_anim::MobyFrame> {
+        let pl = pose_layers_with(layers, &self.a.layer_joints, &self.a.hold);
+        rc_formats::moby_anim::snapshot_posed(self.class, &self.a.state, self.a.snapshot.as_ref(), &pl, mods)
+    }
 
     pub fn key_rate(&self, seq: u8, frame: u8) -> f32 { self.class.frame(seq, frame).map_or(1.0, |f| f.header.rate) }
 
@@ -529,7 +533,10 @@ impl AnimCtl for HeroAnimCtl<'_> {
         if self.body_class().is_some() { return self.r().eval_chains_with(chains, &[None; 5], mods); }
         self.r().eval_chains_with(chains, layers, mods)
     }
-    fn pose_frame(&self) -> Option<rc_formats::moby_anim::MobyFrame> { self.r().pose_frame() }
+    fn pose_frame(&self, layers: &PoseNodes, mods: &[rc_formats::moby_anim::JointModifier]) -> Option<rc_formats::moby_anim::MobyFrame> {
+        if self.body_class().is_some() { return self.r().pose_frame(&[None; 5], mods); }
+        self.r().pose_frame(layers, mods)
+    }
     fn key_rate(&self, seq: u8, frame: u8) -> f32 { self.r().key_rate(seq, frame) }
 
     /// `SwitchCharacter`'s rebinding: the body's animation starts from the moby's own fields (what its placed
@@ -733,7 +740,7 @@ impl AnimCtl for RatchetAnimCtl<'_> {
         self.r().eval_chains_with(chains, layers, mods)
     }
 
-    fn pose_frame(&self) -> Option<rc_formats::moby_anim::MobyFrame> { self.r().pose_frame() }
+    fn pose_frame(&self, layers: &PoseNodes, mods: &[rc_formats::moby_anim::JointModifier]) -> Option<rc_formats::moby_anim::MobyFrame> { self.r().pose_frame(layers, mods) }
 
     fn key_rate(&self, seq: u8, frame: u8) -> f32 { self.r().key_rate(seq, frame) }
 }

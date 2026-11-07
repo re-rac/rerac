@@ -210,13 +210,24 @@ pub const RIGHT_BOOT_ATTACH: usize = 3;
 pub const HEAD_ATTACH: usize = 4;
 
 /// `HeroItemPoseFromRatchet(table, dst, item class, extra, 0)`: a keyframe for the item whose joint 0 is the identity
-/// and whose joints 1.. take Ratchet's current local pose (`MobyAnimDecodeLocalPose`, here
-/// `rc_formats::moby_anim::snapshot` of his state) of the listed joints, then `extra` identity joints; a joint's scale
-/// is written (inherited, flag 0x80) when it is not 1, its translation when it differs from the item's rest. The item
-/// is evaluated with it as key A (t = 0), placed on its attach matrix without column normalisation.
-pub fn pose_from_host(host: &MobyAnimClass, host_state: &AnimState, host_snap: Option<&MobyFrame>, item: &MobyAnimClass, joints: &[u8], extra: usize) -> Option<MobyFrame> {
+/// and whose joints 1.. take Ratchet's current local pose (`MobyAnimDecodeLocalPose` 0x269938 with his pose layers
+/// `layers` and joint modifiers `mods`: `rc_formats::moby_anim::snapshot_posed`) of the listed joints, then `extra`
+/// identity joints; a joint's scale is written (inherited, flag 0x80) when it is not 1, its translation when it differs
+/// from the item's rest. The item is evaluated with it as key A (t = 0), placed on its attach matrix without column
+/// normalisation.
+#[allow(clippy::too_many_arguments)]
+pub fn pose_from_host(
+    host: &MobyAnimClass,
+    host_state: &AnimState,
+    host_snap: Option<&MobyFrame>,
+    layers: &[moby_anim::PoseLayer],
+    mods: &[moby_anim::JointModifier],
+    item: &MobyAnimClass,
+    joints: &[u8],
+    extra: usize,
+) -> Option<MobyFrame> {
     use rc_formats::moby_anim::{MobyFrameHeader, ScaleRec, TransRec};
-    let local = moby_anim::snapshot(host, host_state, host_snap)?;
+    let local = moby_anim::snapshot_posed(host, host_state, host_snap, layers, mods)?;
     let mut quats: Vec<[i16; 4]> = vec![[0, 0, 0, 0x7fff]];
     let (mut scales, mut trans) = (Vec::new(), Vec::new());
     for (k, &j) in joints.iter().enumerate() {

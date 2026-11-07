@@ -603,7 +603,13 @@ fn ftoi(x: u32, n: i32) -> i32 {
 /// The frame's rate and time are 0 (never read: a snapshot is always key A of a transition). Scale flags:
 /// 0x80 = inherited, 0 = post-scale, as on the disc. `snap` is the current snapshot when key A is one.
 /// None when a key the state needs is missing (the game would read garbage).
-pub fn snapshot(class: &MobyAnimClass, s: &AnimState, snap: Option<&MobyFrame>) -> Option<MobyFrame> {
+pub fn snapshot(class: &MobyAnimClass, s: &AnimState, snap: Option<&MobyFrame>) -> Option<MobyFrame> { snapshot_posed(class, s, snap, &[], &[]) }
+
+/// [`snapshot`] of the moby's whole local pose: the decode `MobyAnimDecodeLocalPose` (level00 `0x254b58`, level01
+/// `0x269938`; what `HeroItemPoseFromRatchet` 0x22a9c8 packs the worn and held items' keyframes from) walks the
+/// moby's +0x60 pose layers and then its +0x64 joint-modifier list (every node) over the interpolated records before
+/// the encode.
+pub fn snapshot_posed(class: &MobyAnimClass, s: &AnimState, snap: Option<&MobyFrame>, layers: &[PoseLayer], mods: &[JointModifier]) -> Option<MobyFrame> {
     use ps2::{add, mul, sub};
     let jc = class.joint_count;
     let fa = if s.seq_a == SNAPSHOT_SEQ { snap? } else { class.frame(s.seq_a, s.frame_a)? };
@@ -697,6 +703,8 @@ pub fn snapshot(class: &MobyAnimClass, s: &AnimState, snap: Option<&MobyFrame>) 
             }
         }
     }
+    apply_layers(class, layers, &mut rec[..jc.min(N)]);
+    apply_modifiers(mods, &mut rec[..jc.min(N)], jc.min(N), false);
     // Encode (0x20f468..0x20f610).
     let mut payload = Vec::new();
     let (mut scales, mut trans) = (Vec::new(), Vec::new());

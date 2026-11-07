@@ -885,7 +885,7 @@ impl ShipMode {
         let Some((anim, slot)) = self.actor_anim_for(w, k, class, Some(seq)) else { return };
         let am = w.m(actor);
         let host = rc_formats::moby_anim::AnimState { seq_a: slot, frame_a: am.anim.frame_a, seq_b: slot, frame_b: am.anim.frame_b, t: am.anim.t, speed: 1.0, rate: 1.0, flags: 0, trigger_count: 0, skip_advance: true };
-        let frame = w.classes.anim(HELMET_CLASS).and_then(|item| crate::hero::worn::pose_from_host(&anim, &host, None, item, &crate::hero::worn::HEAD_JOINTS, 0));
+        let frame = w.classes.anim(HELMET_CLASS).and_then(|item| crate::hero::worn::pose_from_host(&anim, &host, None, &[], &[], item, &crate::hero::worn::HEAD_JOINTS, 0));
         if w.svc.snapshots.len() <= h { w.svc.snapshots.resize(h + 1, None); }
         w.svc.snapshots[h] = frame;
         // moby_anim_sphere_lerp (the bounding sphere of the placed helmet, its +0x52 / +0x53 0), then +0x50..+0x54 = 0 and

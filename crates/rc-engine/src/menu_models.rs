@@ -626,7 +626,7 @@ fn update(
                         _ => (&worn::HEAD_JOINTS, 0, worn::HEAD_ATTACH),
                     };
                     let Some((r, at)) = w_of(list, false) else { continue };
-                    let Some(f) = worn::pose_from_host(&ranim, &rstate, rsnap.as_ref(), &p.anim, joints, extra) else { continue };
+                    let Some(f) = worn::pose_from_host(&ranim, &rstate, rsnap.as_ref(), &[], &mods, &p.anim, joints, extra) else { continue };
                     placed[k] = Some(Placed { rows: r, pos: at, pose: moby_anim::evaluate_with_snapshot(&p.anim, &worn::posed_state(), Some(&f)) });
                 }
                 _ => {}

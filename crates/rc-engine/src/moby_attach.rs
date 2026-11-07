@@ -469,7 +469,7 @@ fn build(
     };
     // Placement before the first tick (the game creates the items in the first hero update).
     let host = &anim.instances[host_k];
-    place(&mut a, &level.mobys.anim[placed.class], &host.state, anim.snapshots[host_k].as_ref(), false, false, &[], None);
+    place(&mut a, &level.mobys.anim[placed.class], &host.state, anim.snapshots[host_k].as_ref(), false, false, &[], &[], None);
     for (slot, (item, class)) in a.items.iter_mut().zip(&geometry).enumerate() {
         let t = Transform::from_matrix(model_of(item));
         item.entities = a.extra.spawn(commands, level, class, slot as u32, t, item.name, meshes, images, materials);
@@ -600,9 +600,9 @@ fn is_second_moby(item: &Item) -> bool {
 /// [`squash_items`], so the attach matrices and [`place_antenna`] see the hero's rows before the tick's squash.
 /// `mods`: the host's joint-modifier list (moby +0x64; Ratchet's head look / lean when the game ticks).
 #[allow(clippy::too_many_arguments)]
-fn place(a: &mut MobyAttach, host_class: &MobyAnimClass, host: &AnimState, snap: Option<&MobyFrame>, advance_back: bool, advance_hand: bool, mods: &[moby_anim::JointModifier], squash: Option<Squash>) {
+fn place(a: &mut MobyAttach, host_class: &MobyAnimClass, host: &AnimState, snap: Option<&MobyFrame>, advance_back: bool, advance_hand: bool, layers: &[moby_anim::PoseLayer], mods: &[moby_anim::JointModifier], squash: Option<Squash>) {
     let chains: Vec<&[u8]> = a.chains.iter().map(|c| c.1.as_slice()).collect();
-    let ps = moby_anim::evaluate_chains_posed(host_class, host, snap, &chains, &[], mods);
+    let ps = moby_anim::evaluate_chains_posed(host_class, host, snap, &chains, layers, mods);
     let host_rows = squash.map_or(a.host_rows, |s| unsquash_rows(&a.host_rows, s.factor));
     let ws: Vec<(usize, Rows)> = a.chains.iter().zip(&ps).map(|(c, p)| (c.0, moby_anim::attach_matrix(p, &host_rows, a.host_pos, a.host_scale))).collect();
     for item in &mut a.items {
@@ -698,13 +698,16 @@ fn update(
     }
     let (k, class) = (a.host_k, &level.0.mobys.anim[a.host_class]);
     let mods = play.as_ref().map(|p| p.game.mobys.mobys[p.game.hero_moby].joint_mods.clone()).unwrap_or_default();
+    // His pose layers (the moby +0x60 list: the weapon arms, the face) as his draw has them (crate::gameplay): the
+    // attach matrices (`MobyAnimEvalChain`) and the worn items' local pose (`MobyAnimDecodeLocalPose`) walk them too.
+    let layers = play.as_ref().map(|p| rc_game::hero::anim::pose_layers_with(&p.game.hero.weapons.layers, &p.ratchet.layer_joints, &p.ratchet.hold)).unwrap_or_default();
     // The Hologuise's squash as the tick left it (the factor only exists in body 0): the attach matrices come from
     // the hero moby's rows before it, then the item loop scales and pulls the items with Ratchet (module docs step 4).
     let squash = play.as_ref().and_then(|p| {
         let h = &p.game.hero;
         Some(Squash { factor: h.gadgets.disguise.factor?, body: rc_game::hero::physics::to_f32x3(h.body_point) })
     });
-    place(a, class, &anim.instances[k].state, anim.snapshots[k].as_ref(), back.is_none(), hand.is_none(), &mods, squash);
+    place(a, class, &anim.instances[k].state, anim.snapshots[k].as_ref(), back.is_none(), hand.is_none(), &layers, &mods, squash);
     place_antenna(a, play.as_ref().map(|p| p.game.hero.idle.counter));
     // The item loop runs last, after `HeroItemsAttach` (and so after the antenna): the items shrink and grow with
     // Ratchet, while the glow keeps the place and size the attach gave it.
@@ -779,7 +782,7 @@ fn update(
                 _ if item.o_class == SONIC_SUMMONER_O_CLASS => (&worn::SONIC_SUMMONER_JOINTS, 6),
                 _ => (&worn::HEAD_JOINTS, 0),
             };
-            item.snapshot = worn::pose_from_host(class, &host_state, host_snap.as_ref(), &item.anim, joints, extra);
+            item.snapshot = worn::pose_from_host(class, &host_state, host_snap.as_ref(), &layers, &mods, &item.anim, joints, extra);
             item.state = worn::posed_state();
         }
     }

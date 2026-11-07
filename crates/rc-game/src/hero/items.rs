@@ -406,7 +406,7 @@ pub const GLOVE_JOINTS: [u8; 16] = [55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 
 /// joint 0 the identity quaternion, joint k+1 Ratchet's local quaternion of `table[k]`; an inherited scale
 /// record (flag 0x80) for each of those joints whose scale is not (1, 1, 1); a translation record where
 /// Ratchet's local translation differs from the item's rest translation of joint k+1. Ratchet's local pose
-/// comes from [`AnimCtl::pose_frame`] (the snapshot encoding: quaternions ×32768, scales ×4096, integer
+/// comes from [`AnimCtl::pose_frame`] (with his pose layers and joint modifiers; the snapshot encoding: quaternions ×32768, scales ×4096, integer
 /// translations, the same conversions `FUN_00221678` makes; inferred to round alike).
 pub fn glove_frame(hero: &MobyFrame, class: &MobyAnimClass, table: &[u8]) -> MobyFrame {
     use rc_formats::moby_anim::{MobyFrameHeader, ScaleRec, TransRec};
@@ -527,7 +527,7 @@ fn attach_hand(hero: &mut Hero, table: &MobyTable, anim: &dyn AnimCtl, env: &Ite
     if !glove { moby_anim::normalise_columns(&mut rows); }
     it.rows = rows;
     if glove {
-        if let (Some(f), Some(c)) = (anim.pose_frame(), env.data.class(it.o_class)) {
+        if let (Some(f), Some(c)) = (anim.pose_frame(&hero.weapons.layers, mods), env.data.class(it.o_class)) {
             it.snapshot = Some(glove_frame(&f, &c.anim, &GLOVE_JOINTS));
             it.anim.seq_a = moby_anim::SNAPSHOT_SEQ;
             it.anim.frame_a = 0;
