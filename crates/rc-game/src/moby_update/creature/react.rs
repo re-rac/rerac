@@ -734,8 +734,9 @@ pub fn fire_out(w: &mut World, id: MobyId, height: f32, vel: V, target: Option<M
         p[2] += height;
         set_rv(w, r, id, rec::TARGET_AT, p);
     }
+    // Within 1 of Ratchet's feet 0x13f3d0 in xy (`VecDistance2` fun_001f9b80): one step out at once.
     let hp = w.hero.pos.map(|x| f32::from_bits(x.0));
-    if super::dist3(super::pos(w, id), [hp[0], hp[1], hp[2], 0.0]) < 1.0 {
+    if super::dist2(super::pos(w, id), [hp[0], hp[1], hp[2], 0.0]) < 1.0 {
         let p = super::add(super::pos(w, id), [vel[0], vel[1], vel[2], 0.0]);
         super::set_pos(w, id, p);
     }
