@@ -1,5 +1,6 @@
 //! **Port-only** (not in the game): the "Port Options" page, for settings the PS2 never had (the graphics options and
-//! their preset, anti-aliasing, switching the moby shadows off, the aspect, the render resolution and fullscreen).
+//! their preset, anti-aliasing, switching the moby shadows off, the aspect, the render resolution, fullscreen, and the
+//! controller's vibration, its strength, R2 as the fire button and the trigger effects).
 //! Spec: docs/plan/menus.md "Port-only settings"; the graphics rows: docs/plan/graphics_options.md (every row's first
 //! value is the game's own look).
 //!
@@ -103,6 +104,15 @@ pub mod text {
     pub const FAR: i32 = -0x191;
     pub const FARTHER: i32 = -0x192;
     pub const MAXIMUM: i32 = -0x193;
+    pub const VIBRATION: i32 = -0x1a0;
+    pub const VIBRATION_STRENGTH: i32 = -0x1a1;
+    pub const LOW: i32 = -0x1a2;
+    pub const MEDIUM: i32 = -0x1a3;
+    pub const HIGH: i32 = -0x1a4;
+    pub const FIRE_BUTTON: i32 = -0x1b0;
+    pub const CIRCLE: i32 = -0x1b1;
+    pub const R2: i32 = -0x1b2;
+    pub const TRIGGER_EFFECTS: i32 = -0x1b3;
     /// The game's own "on" / "off" (20314 / 20315, the Subtitles / HelpDesk toggle values).
     pub const ON: i32 = 20314;
     pub const OFF: i32 = 20315;
@@ -142,6 +152,15 @@ pub mod text {
             FAR => b"Far",
             FARTHER => b"Farther",
             MAXIMUM => b"Maximum",
+            VIBRATION => b"Vibration",
+            VIBRATION_STRENGTH => b"Vibration strength",
+            LOW => b"Low",
+            MEDIUM => b"Medium",
+            HIGH => b"High",
+            FIRE_BUTTON => b"Fire button",
+            CIRCLE => b"Circle",
+            R2 => b"R2",
+            TRIGGER_EFFECTS => b"Trigger effects",
             _ => return None,
         })
     }
@@ -173,6 +192,14 @@ pub enum Setting {
     /// How far away models keep their full detail: value 0 Original (the game's distances), 1 Far (×2), 2 Farther (×4),
     /// 3 Maximum (always).
     Detail,
+    /// Controller rumble (the engine's haptics; the game has none): value 0 on, 1 off.
+    Vibration,
+    /// The rumble's strength: value 0 Low, 1 Medium, 2 High.
+    VibrationStrength,
+    /// The pad's fire button: value 0 ○ (the game's), 1 R2 (read as ○; R1 still crouches).
+    FireButton,
+    /// R2's adaptive-trigger feel per weapon (DualSense, with R2 as the fire button): value 0 on, 1 off.
+    TriggerEffects,
 }
 
 /// One row: the setting, its label and the ids of its values (✕ cycles through them).
@@ -194,6 +221,10 @@ pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::Aspect, label: text::ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9, text::ASPECT_FILL] },
     Entry { setting: Setting::Resolution, label: text::RESOLUTION, values: &[text::RES_WINDOW, text::RES_416, text::RES_720, text::RES_1080, text::RES_1440, text::RES_2160] },
     Entry { setting: Setting::Fullscreen, label: text::FULLSCREEN, values: &[text::OFF, text::ON] },
+    Entry { setting: Setting::Vibration, label: text::VIBRATION, values: &[text::ON, text::OFF] },
+    Entry { setting: Setting::VibrationStrength, label: text::VIBRATION_STRENGTH, values: &[text::LOW, text::MEDIUM, text::HIGH] },
+    Entry { setting: Setting::FireButton, label: text::FIRE_BUTTON, values: &[text::CIRCLE, text::R2] },
+    Entry { setting: Setting::TriggerEffects, label: text::TRIGGER_EFFECTS, values: &[text::ON, text::OFF] },
 ];
 
 /// The list's run-time state: cursor, each row's value index and each row's selectable values (bit k = value k;
