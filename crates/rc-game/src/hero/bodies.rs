@@ -446,10 +446,14 @@ pub fn restore_from_checkpoint(h: &mut Hero, table: &crate::moby_runtime::MobyTa
     h.bodies.restore = Some((body, state, BodyMoby { id, o_class: m.o_class, anim: m.anim }));
 }
 
-/// A class's call of its level's leave-the-body copy (as a hero call, [`queue_switch`]).
+/// A class's call of its level's leave-the-body copy (as a hero call, [`queue_switch`]). The copy's `body +0x34 &= ~6`
+/// is made here, at the call: the classes hide the body moby right after it (+0x34 |= 3: Blarg's Clank station, Orxon's
+/// Clank section), which must keep it out of the moby loop (no advance, so no trigger or loop sound).
 pub fn queue_leave(w: &mut crate::moby_update::services::World) {
     let game_mode = w.svc.game_mode;
-    w.hero_fields_mut().call(crate::moby_update::services::HeroCall::LeaveBody { game_mode });
+    let moby = w.hero.bodies.moby.filter(|&id| w.hero.mode != body::RATCHET && id < w.table.mobys.len());
+    if let Some(id) = moby { w.mm(id).mode &= !6; }
+    w.hero_fields_mut().call(crate::moby_update::services::HeroCall::LeaveBody { game_mode, moby_done: moby.is_some() });
 }
 
 /// The commands to the moby table, in order (`ratchet` = Ratchet's moby 0x13fdd8).

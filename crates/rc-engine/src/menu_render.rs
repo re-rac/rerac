@@ -1130,6 +1130,7 @@ fn load_all_text(root: &std::path::Path, lang: u32) -> Vec<rc_formats::strings::
 /// One page-menu frame's audio: `sound_update` (`SceneController` 0x28c990 runs it after `MobyUpdateLoop`; the level's
 /// sound instances are not updated), then the frame's samples.
 fn menu_sound_frame(play: &mut Play, audio: &mut crate::audio_out::AudioOut) {
+    audio.system().game_mode = play.svc.game_mode;
     let game = &mut play.game;
     let h = game.hero.pos;
     let listener = rc_game::audio::class_sounds::listener_of(&game.camera.out);
@@ -1332,7 +1333,7 @@ fn freeze_effects(play: &mut Play, out: &rc_game::menus::freeze::FreezeOut, fram
             }
         }
         let mut f = HeroFields::of(&play.game.hero);
-        f.call(HeroCall::LeaveBody { game_mode: rc_game::menus::mode::Mode::Freeze.raw() });
+        f.call(HeroCall::LeaveBody { game_mode: rc_game::menus::mode::Mode::Freeze.raw(), moby_done: false });
         teleport_entry(play, &mut f);
         play.svc.hero_writes = Some((play.game.counter, f));
         println!("menus: frame {frame}: Giant Clank's Quit? yes: the body left, HeroTeleport(entry pose)");

@@ -1340,8 +1340,9 @@ pub enum HeroCall {
     /// `SwitchCharacter(mode, state, moby)` (0x231348 and its level copies, `crate::hero::bodies::switch_character`): the
     /// body moby `moby` (class `o_class`, its animation fields `anim` when the class asked) becomes the hero.
     SwitchCharacter { mode: u8, state: i32, moby: MobyId, o_class: i16, anim: rc_formats::moby_anim::AnimState },
-    /// The level's leave-the-body copy (0x231450 and its copies, `crate::hero::bodies::leave_body`); `game_mode` = 0x15f5c4.
-    LeaveBody { game_mode: i32 },
+    /// The level's leave-the-body copy (0x231450 and its copies, `crate::hero::bodies::leave_body`); `game_mode` = 0x15f5c4;
+    /// `moby_done`: the body moby's `+0x34 &= ~6` was made at the call (`crate::hero::bodies::queue_leave`).
+    LeaveBody { game_mode: i32, moby_done: bool },
     /// The per-body idle `0x227638` (`crate::hero::bodies::body_idle`).
     BodyIdle,
     /// A class's store `0x141401 = 1` without the death sequence (the reload of the level, `Hero::fell_out`; no death
@@ -1513,7 +1514,10 @@ impl HeroFields {
                         None => crate::hero::bodies::switch_character_with(h, c, mode, state, b, None),
                     }
                 }
-                HeroCall::LeaveBody { game_mode } => crate::hero::bodies::leave_body(h, c, game_mode),
+                HeroCall::LeaveBody { game_mode, moby_done } => {
+                    if moby_done { h.bodies.moby = None; }
+                    crate::hero::bodies::leave_body(h, c, game_mode)
+                }
                 HeroCall::BodyIdle => crate::hero::bodies::body_idle(h, c),
                 HeroCall::Reload => h.fell_out = 1,
                 HeroCall::RaceScore(n) => h.board.score += n,
