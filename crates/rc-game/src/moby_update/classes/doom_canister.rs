@@ -323,8 +323,9 @@ fn ride(w: &mut World, id: MobyId) {
     }
 }
 
-/// `0x2de0a8(pvars, canister, 1)`: the landing preview (`super::decoy::short_glove_preview`): held, for 300 ticks from
-/// the launch point; flying, for the +0x38 ticks (0: no landing) after marking a new canister in the glove (+0x3a).
+/// `0x2de0a8(pvars, canister, mode)`: the landing preview (`super::decoy::short_glove_preview_on`: modes 1 / 0 / 2):
+/// held, for 300 ticks from the launch point; flying, for the +0x38 ticks (0: no landing) after marking a new canister in
+/// the glove (+0x3a).
 fn preview(w: &mut World, id: MobyId) -> bool {
     if w.hero.state == 0x72 || w.svc.game_mode != 0 { return false; }
     let held = w.m(id).state == HELD;
@@ -335,7 +336,7 @@ fn preview(w: &mut World, id: MobyId) -> bool {
         if w.hero.weapons.glove.held.is_some() { c::set_pi16(w, id, pv::NEW_HELD, 1); }
         c::pi16(w, id, pv::COUNT) as i32
     };
-    let Some((point, normal)) = super::decoy::short_glove_preview(w, id, held, [v[0], v[1], v[2]], budget) else { return false };
+    let Some((point, normal)) = super::decoy::short_glove_preview_on(w, id, held, [v[0], v[1], v[2]], budget) else { return false };
     c::set_pv4(w, id, pv::POINT, [point[0], point[1], point[2], 0.0]);
     c::set_pv4(w, id, pv::NORMAL, [normal[0], normal[1], normal[2], 0.0]);
     true

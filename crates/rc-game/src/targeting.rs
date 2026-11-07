@@ -13,7 +13,7 @@
 //!
 //! | reader | what it picks | rules |
 //! |---|---|---|
-//! | `0x2d8330` Bomb Glove (class 192, item 10) | the throw's aim point ([`aim_search`], [`BOMB_GLOVE`]) | range 15 (2D, from the launch point), within 45° of the reference yaw (first the launch point's: the facing − 20.7°) or 90° within 4, elevation < 55°, at most 2 above the launch point, a clear world line from the camera (flags 6); greedy: each accepted target becomes the reference (its yaw, its distance) for the rest of the list |
+//! | `0x2d8330` Bomb Glove (class 192, item 10) | the throw's aim point ([`aim_search`], [`BOMB_GLOVE`]) | range 15 (2D, from the launch point), within 45° of the reference yaw (first the facing's) or 90° within 4, elevation < 55°, at most 2 above the launch point, a clear line from the camera (flags 6: the world and the mobys' meshes); greedy: each accepted target becomes the reference (its yaw, its distance) for the rest of the list |
 //! | `0x2351d0` → `0x22e238` / `0x22dff0` melee aim assist (wrench swings, the Comet-Strike, the glove throw 0x23 without a glove target) | the swing's facing | range 11, cone 50° (`0x2351d0(11, 50°, −1)`), score `d + diff·d` (+7 for a record flag), health ≠ 0 |
 //! | `0x22c080` `HeroScanTargets` | the head-look target | every 7th tick; range = record `+0x38`, 110° cone, 60° pitch, score `d + diff·d` (−1.5 for the current one), record `+0x39` priority, a clear line from the head |
 //! | `0x2c7d68` (the Devastator 11, class 157; `crate::hero::devastator::search`) | the missile's aim and lock | creatures (class type 5); within 2.5 a hard lock (60° / 45°), else the cone 10° (+40° gold) narrowed by the record's radius byte `+0x0a` ([`cone_miss`]), a clear camera line; a creature no missile holds becomes the lock |
@@ -118,7 +118,7 @@ pub struct AimHit {
 }
 
 /// The aim search of `rules` over the target list `list`, from `from` (the launch point) with the reference yaw
-/// `yaw` (the Bomb Glove's: the launch point's yaw, the facing − 20.7°): per target (live: state < 0x80, targetable, with a record) the aim point `position + (0, 0,
+/// `yaw` (the Bomb Glove's: the facing): per target (live: state < 0x80, targetable, with a record) the aim point `position + (0, 0,
 /// record +0x10)`; accepted when inside the cones and the range, low enough, and `clear(point)` (the line of sight);
 /// the accepted target's yaw and distance become the reference for the targets after it (greedy, as the game).
 pub fn aim_search(rules: &AimRules, table: &MobyTable, list: &[MobyId], from: [f32; 3], yaw: f32, mut clear: impl FnMut([f32; 3]) -> bool) -> Option<AimHit> {
@@ -295,6 +295,10 @@ pub struct Landing {
     pub normal: [f32; 3],
     /// The moby it snapped to (a collision-primitive hit).
     pub snapped: Option<MobyId>,
+    /// The moby the collision output names once the search ends (`coll_hit.moby`): a face's moby; for a snap the ground
+    /// line's (None on the world), or the snapped one when that line met nothing. The Decoy / Doom previews' modes test
+    /// it.
+    pub hit: Option<MobyId>,
 }
 
 /// The preview's inputs.
@@ -335,8 +339,8 @@ pub enum Prims {
 }
 
 /// `0x2c2be0`'s search: the first test from Ratchet to the start, then the stepped arc (module doc). `line(a, b,
-/// ignore)` is `CollLine_Fix(a, b, 0x10, ignore, 0)`; `position(id)` a moby's position; `ground(a, b)` the normal of
-/// the world face `CollLine_Fix(a, b, 2, 0, 0)` hits. A snap calls `GroundHeight(0.5, position + (0, 0, 0.5))`,
+/// ignore)` is `CollLine_Fix(a, b, 0x10, ignore, 0)`; `position(id)` a moby's position; `ground(a, b)` the normal and
+/// the moby (a moby mesh's; None for the world) of the face `CollLine_Fix(a, b, 2, 0, 0)` hits. A snap calls `GroundHeight(0.5, position + (0, 0, 0.5))`,
 /// whose height the preview drops but whose line (from 1 above the moby down to z = 0.01) leaves its face's normal
 /// in the collision output the preview then stores: a snapped reticle lies on the ground under the moby (the
 /// primitive's `hit − centre` when that line meets nothing). None: the budget ran out (no reticle). Pure: the caller
@@ -345,12 +349,14 @@ pub fn arc_landing(
     s: &ArcStart,
     mut line: impl FnMut([f32; 3], [f32; 3], Option<MobyId>) -> Option<LineHit>,
     position: impl Fn(MobyId) -> [f32; 3],
-    mut ground: impl FnMut([f32; 3], [f32; 3]) -> Option<[f32; 3]>,
+    mut ground: impl FnMut([f32; 3], [f32; 3]) -> Option<([f32; 3], Option<MobyId>)>,
 ) -> Option<Landing> {
     let mut snap = |m: MobyId, h: &LineHit| {
         let p = position(m);
-        let normal = ground([p[0], p[1], p[2] + 1.0], [p[0], p[1], 0.01]).unwrap_or(h.normal);
-        Landing { point: p, normal, snapped: Some(m) }
+        match ground([p[0], p[1], p[2] + 1.0], [p[0], p[1], 0.01]) {
+            Some((normal, under)) => Landing { point: p, normal, snapped: Some(m), hit: under },
+            None => Landing { point: p, normal: h.normal, snapped: Some(m), hit: Some(m) },
+        }
     };
     let own = |m: MobyId| s.own.contains(&Some(m));
     let ticks_300 = 300;
@@ -362,7 +368,7 @@ pub fn arc_landing(
     if let Some(h) = first {
         if h.surface != 0 || 0.0 < v[2] {
             let found = match h.moby {
-                _ if h.kind > 0 => Some(Landing { point: h.point, normal: h.normal, snapped: None }),
+                _ if h.kind > 0 => Some(Landing { point: h.point, normal: h.normal, snapped: None, hit: h.moby }),
                 None => None,
                 Some(m) if !own(m) || n < ticks_300 - ticks_10 => Some(snap(m, &h)),
                 Some(_) => None,
@@ -385,7 +391,7 @@ pub fn arc_landing(
         }
         let Some(h) = line(prev, p, s.ignore) else { continue };
         if h.surface == 0 && 0.0 < v[2] { continue; }
-        if h.kind > 0 { return Some(Landing { point: h.point, normal: h.normal, snapped: None }); }
+        if h.kind > 0 { return Some(Landing { point: h.point, normal: h.normal, snapped: None, hit: h.moby }); }
         let Some(m) = h.moby else { continue };
         let Prims::Snap { max_rise } = s.prims else { continue };
         if max_rise.is_some_and(|r| r <= p[2] - start_z) { continue; }
@@ -596,7 +602,7 @@ mod tests {
         assert_eq!((l.snapped, l.point, l.normal), (Some(5), [5.0, 1.0, 2.0], [0.0; 3]));
         // The ground line under the snapped moby (from 1 above it down to 0.01) gives the normal.
         let mut asked = None;
-        let l = arc_landing(&s, prim(5, 3.0), pos, |a, b| { asked = Some((a, b)); Some([0.0, 0.1, 1.0]) }).unwrap();
+        let l = arc_landing(&s, prim(5, 3.0), pos, |a, b| { asked = Some((a, b)); Some(([0.0, 0.1, 1.0], None)) }).unwrap();
         assert_eq!((l.normal, asked), ([0.0, 0.1, 1.0], Some(([5.0, 1.0, 3.0], [5.0, 1.0, 0.01]))));
         // Ratchet's primitive in the first 10 ticks' step: ignored (the arc goes on and never lands).
         assert_eq!(arc_landing(&s, prim(9, 0.5), pos, |_, _| None), None);

@@ -232,7 +232,7 @@ fn aim_preview(w: &mut World, id: MobyId) -> bool {
                 Some(LineHit { point: h.point, normal: h.normal, moby: h.moby, kind: h.kind, surface: h.surface_id() })
             },
             |m| { let q = ww.m(m).position; [q[0], q[1], q[2]] },
-            |a, b| ww.coll_line(pv4([a[0], a[1], a[2], 0.0]), pv4([b[0], b[1], b[2], 0.0]), 2, None).map(|h| h.normal),
+            |a, b| ww.coll_line(pv4([a[0], a[1], a[2], 0.0]), pv4([b[0], b[1], b[2], 0.0]), 2, None).map(|h| (h.normal, h.moby)),
         )
     };
     let Some(l) = landing else { return false };

@@ -462,8 +462,10 @@ impl Game {
             if let Some(data) = self.item_data.as_ref() {
                 // 0x1abe80, the targetable mobys of the moby loop's run list (crate::targeting), for the items' aim searches.
                 let targets = if self.hero.items.slot.item.is_some() { self.target_list(hooks.world.as_deref()) } else { Vec::new() };
-                // The thrown wrench's lines test the mobys' collision too (the doors: crate::hero::comet).
-                let scene = if self.hero.items.slot.detached != 0 { hooks.world.as_deref_mut().and_then(|w| w.scene(&self.mobys)) } else { None };
+                // The thrown wrench's lines test the mobys' collision too (the doors: crate::hero::comet), and so does the
+                // Bomb Glove's line of sight to its targets (crate::hero::gloves).
+                let lines = self.hero.items.slot.detached != 0 || self.hero.items.slot.id == crate::inventory::item::BOMB_GLOVE;
+                let scene = if lines { hooks.world.as_deref_mut().and_then(|w| w.scene(&self.mobys)) } else { None };
                 let scene = scene.as_ref().map(OwnedScene::scene);
                 let ienv = ItemEnv { data, pad: &self.pad, frame: self.counter as i32, hero_moby: self.hero_moby, coll: Some(coll), mobys: scene.as_ref(), camera: Some((self.camera.out.pos_f32(), self.camera.out.rows_f32()[0])), camera_up: Some(self.camera.out.rows_f32()[2]), targets: &targets };
                 items_update(&mut self.hero, &mut self.item_globals, &mut self.mobys, &*anim, &mut self.rng, &ienv, hits);

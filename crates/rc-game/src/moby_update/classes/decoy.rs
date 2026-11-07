@@ -565,11 +565,11 @@ fn push(w: &mut World, id: MobyId) {
     }
 }
 
-/// `0x2d9760(pvars, decoy, 1)`: the landing preview ([`tg::arc_landing`] with gravity 9, primitives snapped without
+/// `0x2d9760(pvars, decoy, mode)`: the landing preview ([`tg::arc_landing`] with gravity 9, primitives snapped without
 /// the height limit): held, from the launch point 0.39082 up with the aimed velocity (z − 0.5·dt, plus Ratchet's
 /// displacement while grinding) for 300 ticks; flying, from the decoy for the +0x44 ticks (0 after a release: no
 /// reticle); the point pulled toward the camera and the glove reticle registered (`0x2d8e28`, the bomb's `0x2c23c0`
-/// copy: [`tg::BOMB_RETICLE`]).
+/// copy: [`tg::BOMB_RETICLE`]); on a carrier the modes of [`short_glove_preview_on`].
 fn preview(w: &mut World, id: MobyId) -> bool {
     if w.hero.state == 0x72 || w.svc.game_mode != 0 { return false; }
     let v4 = |a: [f32; 4]| [a[0], a[1], a[2]];
@@ -581,30 +581,44 @@ fn preview(w: &mut World, id: MobyId) -> bool {
         if w.hero.weapons.glove.held.is_some() { c::set_pi16(w, id, pv::NEW_HELD, 1); }
         c::pi16(w, id, pv::TIMER) as i32
     };
-    let Some((point, normal)) = short_glove_preview(w, id, held, vel, budget) else { return false };
+    let Some((point, normal)) = short_glove_preview_on(w, id, held, vel, budget) else { return false };
     c::set_pv4(w, id, pv::POINT, [point[0], point[1], point[2], 0.0]);
     c::set_pv4(w, id, pv::NORMAL, [normal[0], normal[1], normal[2], 0.0]);
     true
 }
 
+/// Whether moby `m` is a carrier (`FUN_00275290`: a platform block).
+fn is_carrier(w: &World, m: Option<MobyId>) -> bool {
+    m.and_then(|m| w.table.mobys.get(m)).is_some_and(|m| crate::moby_update::triggers::platform_block(m).is_some())
+}
+
+/// The previews' caller (the decoy's update `0x2d9f90`, the canister's `0x2de650`): off a carrier the plain search
+/// (mode 1); on one (Ratchet's ground moby 0x13f64c has a platform block), first the search that must land on a carrier
+/// (mode 0, the throw in the carrier's frame), else the one with Ratchet's displacement that draws no reticle on a
+/// carrier (mode 2).
+pub(crate) fn short_glove_preview_on(w: &mut World, id: MobyId, held: bool, vel: [f32; 3], budget: i32) -> Option<([f32; 3], [f32; 3])> {
+    if !is_carrier(w, w.hero.ground_moby) { return short_glove_preview(w, id, held, vel, budget, 1); }
+    short_glove_preview(w, id, held, vel, budget, 0).or_else(|| short_glove_preview(w, id, held, vel, budget, 2))
+}
+
 /// The landing preview of the Decoy Glove's decoy (`0x2d9760`) and the Glove of Doom's canister (`0x2de0a8`, the
 /// same code over its own pvars): [`tg::arc_landing`] with gravity 9, primitives snapped without the height limit,
-/// from the launch point 0.39082 up with the aimed velocity (z − 0.5·dt, plus Ratchet's displacement while grinding)
-/// when `held`, else from the object; for `budget` ticks. The point is pulled toward the camera (0.95 of the way from
-/// it) and the glove reticle registered (`0x2d8e28` / `0x2dda60`, the bomb's `0x2c23c0` copies:
-/// [`tg::BOMB_RETICLE`]). Returns the point and the normal the caller keeps in its pvars; None: no landing (or
+/// from the launch point 0.39082 up with the aimed velocity (z − 0.5·dt, plus Ratchet's displacement while grinding,
+/// and on a carrier in modes 1 / 2) when `held`, else from the object; for `budget` ticks. Mode 0 needs the landing's
+/// moby (the collision output's) to be a carrier; mode 2 registers no reticle there. The point is pulled toward the
+/// camera (0.95 of the way from it) and the glove reticle registered (`0x2d8e28` / `0x2dda60`, the bomb's `0x2c23c0`
+/// copies: [`tg::BOMB_RETICLE`]). Returns the point and the normal the caller keeps in its pvars; None: no landing (or
 /// Ratchet in 0x72, a game mode).
-pub(crate) fn short_glove_preview(w: &mut World, id: MobyId, held: bool, vel: [f32; 3], budget: i32) -> Option<([f32; 3], [f32; 3])> {
+fn short_glove_preview(w: &mut World, id: MobyId, held: bool, vel: [f32; 3], budget: i32, mode: u8) -> Option<([f32; 3], [f32; 3])> {
     use crate::targeting::{ArcStart, LineHit, Prims};
     if w.hero.state == 0x72 || w.svc.game_mode != 0 { return None; }
     let v4 = |a: [f32; 4]| [a[0], a[1], a[2]];
     let mut vel = vel;
     let from = if held {
         let from = crate::hero::gloves::launch_at(w.hero, 0.390_82);
-        if w.hero.group == 0xf {
-            let d = crate::hero::physics::to_f32x3(w.hero.disp);
-            vel = [vel[0] + d[0], vel[1] + d[1], vel[2] + d[2]];
-        }
+        let d = crate::hero::physics::to_f32x3(w.hero.disp);
+        if w.hero.group == 0xf { vel = [vel[0] + d[0], vel[1] + d[1], vel[2] + d[2]]; }
+        if mode != 0 && is_carrier(w, w.hero.ground_moby) { vel = [vel[0] + d[0], vel[1] + d[1], vel[2] + d[2]]; }
         from
     } else {
         v4(c::pos(w, id))
@@ -633,13 +647,14 @@ pub(crate) fn short_glove_preview(w: &mut World, id: MobyId, held: bool, vel: [f
                 Some(LineHit { point: h.point, normal: h.normal, moby: h.moby, kind: h.kind, surface: h.surface_id() })
             },
             |m| { let q = ww.m(m).position; [q[0], q[1], q[2]] },
-            |a, b| ww.coll_line(pv([a[0], a[1], a[2], 0.0]), pv([b[0], b[1], b[2], 0.0]), 2, None).map(|h| h.normal),
+            |a, b| ww.coll_line(pv([a[0], a[1], a[2], 0.0]), pv([b[0], b[1], b[2], 0.0]), 2, None).map(|h| (h.normal, h.moby)),
         )
     };
     let l = landing?;
+    if mode == 0 && !is_carrier(w, l.hit) { return None; }
     let cam = [w.camera[0].to_f32(), w.camera[1].to_f32(), w.camera[2].to_f32()];
     let point = tg::pull_toward(cam, l.point);
-    w.svc.reticles.register(w.counter, tg::Reticle { point, normal: l.normal, style: &tg::BOMB_RETICLE });
+    if mode != 2 || !is_carrier(w, l.hit) { w.svc.reticles.register(w.counter, tg::Reticle { point, normal: l.normal, style: &tg::BOMB_RETICLE }); }
     Some((point, l.normal))
 }
 

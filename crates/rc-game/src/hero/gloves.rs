@@ -172,6 +172,7 @@ pub fn row(id: i32) -> Option<&'static GloveRow> { GLOVES.iter().find(|r| r.id =
 fn add3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] { [a[0] + b[0], a[1] + b[1], a[2] + b[2]] }
 fn scale3(a: [f32; 3], k: f32) -> [f32; 3] { [a[0] * k, a[1] * k, a[2] * k] }
 fn len2f(a: [f32; 3]) -> f32 { (a[0] * a[0] + a[1] * a[1]).sqrt() }
+fn sub3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
 
 /// The shared glove update (the module doc's steps 1–8), for the row of the hand item.
 pub fn update(hero: &mut Hero, table: &mut MobyTable, _anim: &dyn super::anim::AnimCtl, env: &ItemEnv, hits: &mut dyn HitSink, rng: &mut Rng) {
@@ -368,26 +369,31 @@ fn wall_probe(table: &mut MobyTable, env: &ItemEnv, hits: &mut dyn HitSink, from
 // ------------------------------------------------------------------------------------------------
 // The Bomb Glove (0x2d8330): the bomb class 121 (crate::moby_update::classes::bomb)
 
-/// The Bomb Glove's aim: 8.5 ahead of the launch point, or at the target the glove's search picks (without L1 / L2),
-/// or along the camera (with them); `0x2d80f0` with gravity 11 into the bomb's velocity.
+/// The Bomb Glove's aim: 8.5 ahead of the launch point (with L1 / L2 held 8.5 + 2.5·the gold byte 0x13e52a), or at the
+/// target the glove's search picks (without L1 / L2), or along the camera (with them); `0x2d80f0` with gravity 11 into
+/// the bomb's velocity.
 fn bomb_aim(hero: &mut Hero, table: &mut MobyTable, env: &ItemEnv, b: MobyId) -> [f32; 3] {
     let (fwd, yawf) = facing(hero);
     let launch = super::weapons::launch_point(to_f32x3(hero.pos), fwd);
-    let k = 8.5f32;
     let strafe = env.pad.held & button::STRAFE != 0;
+    let k = bomb_reach(hero, strafe);
     let mut target = add3(launch, scale3(fwd, k));
     if !strafe || hero.items.f13fc != 0 {
-        // The target search over 0x1abe80 (crate::targeting); its line of sight from the camera, world only.
+        // The target search over 0x1abe80 (crate::targeting); its line of sight `CollLine_Fix(camera, point, 6, glove,
+        // 0)`: the world and the mobys' meshes (the tick's scene), no primitives.
         hero.weapons.aim = None;
         let cam = env.camera.map(|c| c.0);
+        let flags = targeting::BOMB_GLOVE.los_flags;
         let clear = |p: [f32; 3]| match (cam, env.coll) {
-            (Some(c), Some(coll)) => line_world(coll, from_f32x3(c), from_f32x3(p), targeting::BOMB_GLOVE.los_flags).is_none(),
+            (Some(c), Some(coll)) => match env.mobys {
+                Some(sc) => crate::collision_query::coll_line_m(coll, Some(sc), c, p, crate::collision_query::QueryFlags(flags), None).is_none(),
+                None => line_world(coll, from_f32x3(c), from_f32x3(p), flags).is_none(),
+            },
             _ => true,
         };
-        // The search's first reference is the launch point's yaw (the facing turned by 0xbeb953df, −20.7°: the
-        // glove hand), not the facing: the cone leans right.
-        let reference = crate::moby_update::creature::add_rot(yawf, f32::from_bits(0xbeb9_53df));
-        if let Some(t) = targeting::aim_search(&targeting::BOMB_GLOVE, table, env.targets, launch, reference, clear) {
+        // The search's first reference is the facing's yaw (`FastArcTan` of (1, 0, 0) through Ratchet's rows 0x13f990);
+        // the launch point's turn 0xbeb953df only places the point.
+        if let Some(t) = targeting::aim_search(&targeting::BOMB_GLOVE, table, env.targets, launch, yawf, clear) {
             target = t.point;
             hero.weapons.aim = Some(t.id);
             let m = &table.mobys[t.id];
@@ -404,6 +410,51 @@ fn bomb_aim(hero: &mut Hero, table: &mut MobyTable, env: &ItemEnv, b: MobyId) ->
     launch
 }
 
+/// The Bomb Glove's reach (`0x2d8330` / `0x2c27a8`): 8.5, with L1 / L2 held (0x13cae0 & 5) `0x13e52a·2.5 + 8.5`.
+fn bomb_reach(hero: &Hero, strafe: bool) -> f32 {
+    if strafe { hero.weapons.gold.get(10).copied().unwrap_or(0) as f32 * 2.5 + 8.5 } else { 8.5 }
+}
+
+/// `0x2c27a8`'s lead (not grinding, not on a carrier): the moby the preview holds (+0x60, `bomb::aim_preview`) — its
+/// motion a tick (+0x40) added for the classes 0x56e / 0x58e; any other once held for a tick (+0x64): the point it will
+/// be at when the bomb gets there (along the line to Ratchet when it comes closer, else along its motion; ahead of
+/// Ratchet at half the distance when that point is more than 90° off his facing), `0x2d80f0` toward it, and the
+/// velocity 0.65 of that and 0.35 of the aimed one.
+fn bomb_lead(hero: &Hero, table: &mut MobyTable, env: &ItemEnv, b: MobyId, from: [f32; 3]) {
+    use crate::moby_update::services::pvar;
+    let pv = &table.mobys[b].pvars;
+    let Some(t) = (pvar::i32(pv, bomb::pv::TARGET) as usize).checked_sub(1).filter(|&t| t < table.mobys.len()) else { return };
+    let vel = pvar::v4f(pv, bomb::pv::VEL);
+    let motion = pvar::v4f(pv, 0x40);
+    let held = pvar::i32(pv, 0x64);
+    let (tp, class) = (table.mobys[t].position, table.mobys[t].o_class);
+    let new = if class == 0x56e || class == 0x58e {
+        [vel[0] + motion[0], vel[1] + motion[1], vel[2] + motion[2], vel[3] + motion[3]]
+    } else if held != 0 {
+        let hp = to_f32x3(hero.pos);
+        let len = len2f([vel[0], vel[1], vel[2]]);
+        let d = sub3(hp, [tp[0], tp[1], tp[2]]);
+        let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        let diff = if l == 0.0 { [0.0; 3] } else { scale3(d, 1.0 / l) };
+        let dot = diff[0] * motion[0] + diff[1] * motion[1] + diff[2] * motion[2];
+        let ticks = len2f(sub3(from, [tp[0], tp[1], tp[2]])) / (dot + len);
+        let base = [tp[0], tp[1], tp[2]];
+        let mut to = if dot > 0.0 { add3(scale3(diff, ticks * dot), base) } else { add3(scale3([motion[0], motion[1], motion[2]], ticks), base) };
+        let (_, yawf) = facing(hero);
+        let toward = (to[1] - hp[1]).atan2(to[0] - hp[0]);
+        if std::f32::consts::FRAC_PI_2 < crate::moby_update::creature::diff_rots(yawf, toward) {
+            let r = len2f(sub3(hp, to)) * 0.5;
+            to = [hp[0] + yawf.cos() * r, hp[1] + yawf.sin() * r, hp[2]];
+        }
+        let k = bomb_reach(hero, env.pad.held & button::STRAFE != 0);
+        let a = super::weapons::launch_velocity(DT * DT * 11.0, k, hero.rot[2].to_f32(), from, to);
+        [a[0] * 0.65 + vel[0] * 0.35, a[1] * 0.65 + vel[1] * 0.35, a[2] * 0.65 + vel[2] * 0.35, vel[3]]
+    } else {
+        return;
+    };
+    pvar::set_v4f(&mut table.mobys[b].pvars, bomb::pv::VEL, new);
+}
+
 /// `0x2c2640`: a bomb in the glove (`CreateMoby(0x79)` through the hit sink).
 fn create_bomb(hero: &mut Hero, table: &mut MobyTable, env: &ItemEnv, hits: &mut dyn HitSink, rng: &mut Rng) -> Option<MobyId> {
     let b = hits.create_moby(table, bomb::BOMB_CLASS, env.frame as u64)?;
@@ -413,11 +464,12 @@ fn create_bomb(hero: &mut Hero, table: &mut MobyTable, env: &ItemEnv, hits: &mut
 }
 
 /// `0x2c27a8`: the bomb released at the launch point (plus Ratchet's displacement 0x13f450 while grinding or standing
-/// on a carrier, `FUN_00275290(0x13f64c)`: the Metropolis train); a wall between Ratchet (at the launch height) and the
-/// launch point explodes it there. Last, the gold glove (0x13e52a) thrown in the look state 1 (first person) reaches
+/// on a carrier, `FUN_00275290(0x13f64c)`: the Metropolis train; else the lead on its target, [`bomb_lead`]); a wall
+/// between Ratchet (at the launch height) and the launch point explodes it there. Last, the gold glove (0x13e52a) thrown in the look state 1 (first person) reaches
 /// further: the velocity ×1.5 in x / y, its z ÷1.5.
 fn release_bomb(hero: &mut Hero, table: &mut MobyTable, env: &ItemEnv, _hits: &mut dyn HitSink, _rng: &mut Rng, b: MobyId, t: Throw) {
     let disp = throw_disp(hero, table);
+    if disp.is_none() { bomb_lead(hero, table, env, b, t.launch); }
     bomb::release(&mut table.mobys[b], t.launch, disp);
     let r = &table.mobys[env.hero_moby];
     let from = [r.position[0], r.position[1], t.launch[2]];
