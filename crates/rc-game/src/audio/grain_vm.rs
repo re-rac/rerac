@@ -99,8 +99,6 @@ struct Handler {
     lfo_pb: i32,
     registers: [i8; 4],
     lfo: [Lfo; 4],
-    /// RAND_PLAY / PLAY_CYCLE keep their "previous" / "index" in the grain (param[2]); per handler here.
-    grain_state: BTreeMap<usize, i16>,
 }
 
 /// `PitchBend(tone, pb, pm, note, fine)`: `v = note·128 + fine + pm`, plus `pb_high·(pb << 7)/0x7fff` or
@@ -133,11 +131,15 @@ pub struct Snd989 {
     pub tones_started: u64,
     /// The groups the last `snd_PauseAllSoundsInGroup` named, until continued ([`Snd989::set_groups_paused`]).
     pub paused_groups: u32,
+    /// RAND_PLAY's "previous" and PLAY_CYCLE's "index", which 989snd writes back into the grain itself (param[2], the
+    /// bank's copy): they carry over from one play of the sound to the next, so a PLAY_CYCLE sound alternates its
+    /// options. Keyed by (sound, grain); a new bank (a new level) starts again from the file's values.
+    grain_state: BTreeMap<(usize, usize), i16>,
 }
 
 impl Default for Snd989 {
     fn default() -> Self {
-        Snd989 { vm: VoiceManager::default(), handlers: BTreeMap::new(), next_handle: 1, tick: 0, rng: IopRng::default(), block_reg: [0; 32], unimplemented: BTreeMap::new(), tones_started: 0, paused_groups: 0 }
+        Snd989 { vm: VoiceManager::default(), handlers: BTreeMap::new(), next_handle: 1, tick: 0, rng: IopRng::default(), block_reg: [0; 32], unimplemented: BTreeMap::new(), tones_started: 0, paused_groups: 0, grain_state: BTreeMap::new() }
     }
 }
 
@@ -189,7 +191,6 @@ impl Snd989 {
             lfo_pb: 0,
             registers: [0; 4],
             lfo: [Lfo::default(); 4],
-            grain_state: BTreeMap::new(),
         };
         let handle = self.next_handle;
         self.next_handle = self.next_handle.wrapping_add(1).max(1);
@@ -425,13 +426,13 @@ impl Snd989 {
             grain::STOP => h.done = true,
             grain::RAND_PLAY => {
                 let (options, count) = (p[0] as i32, p[1] as i32);
-                let prev = h.grain_state.get(&gi).copied().unwrap_or(p[2]) as i32;
+                let prev = self.grain_state.get(&(h.sound, gi)).copied().unwrap_or(p[2]) as i32;
                 let mut rnd = self.rng.rand() % options.max(1);
                 if rnd == prev {
                     rnd += 1;
                     if rnd >= options { rnd = 0; }
                 }
-                h.grain_state.insert(gi, rnd as i16);
+                self.grain_state.insert((h.sound, gi), rnd as i16);
                 h.next_grain += rnd * count;
                 h.grains_to_play = (count + 1) as u32;
                 h.grains_to_skip = ((options - 1 - rnd) * count) as u32;
@@ -500,10 +501,10 @@ impl Snd989 {
             }
             grain::PLAY_CYCLE => {
                 let (group_size, group_count) = (p[0] as i32, p[1] as i32);
-                let a = h.grain_state.get(&gi).copied().unwrap_or(p[2]) as i32;
+                let a = self.grain_state.get(&(h.sound, gi)).copied().unwrap_or(p[2]) as i32;
                 let mut index = a + 1;
                 if index == group_size { index = 0; }
-                h.grain_state.insert(gi, index as i16);
+                self.grain_state.insert((h.sound, gi), index as i16);
                 h.next_grain += group_count * a;
                 h.grains_to_play = (group_count + 1) as u32;
                 h.grains_to_skip = ((group_size - 1 - a) * group_count) as u32;
