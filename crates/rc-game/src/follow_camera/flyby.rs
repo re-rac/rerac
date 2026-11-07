@@ -23,7 +23,7 @@
 //! | 0x2f65f8 | done → −1; armed and the best not class 19 → 1; else the best not releasing and not below in priority → 0; the region test (`0x2f5a78`: the cuboid, cylinder, sphere or path of the header holding Ratchet's feet; no shape: armed and not done), state / group → 1 | [`Camera::flyby_hook`] |
 //! | 0x2f5b58 | +0x38 = 1; D+0x40..0x54 = 0, D+0x56 = `ticks(+0x3a)`; the FOV keys D+0x58 (point index, −1) / D+0x68 (degrees, the current FOV when > 180) from the camera path's points with w > 0; D+0x88 = 2·atan(0x16cf70); the camera path's w = its chords, D+0x48 its length; +0x3a > 0 → +0x3c = length / ticks · 60; the look path's chords and length D+0x4c; D+0x00 / +0x04 / +0x20 / +0x24 = 0.03 / 0.2; the previous camera's rows and position; not +0x4c → `SetState(0x72, 1)` | [`Camera::flyby_init`] |
 //! | 0x2f5f18 phase 0 | the fade + 0.05 until 1 → the letterbox, phase 1, the camera at the path's first point facing the look path's first point (or the moby + offset) | [`Camera::flyby_update`] |
-//! | phase 1 | the fade − 0.05 (to 0); along the path at +0x3c·dt (`0x250318` = `crate::spline::advance`); the timer D+0x56; the end (path, timer, +0x39; with +0x40 the timer below `ticks(20)`) → phase 2; the FOV lerped between its keys (`0x24a8d0`) into 0x16cf70; the look along the look path by the share travelled, or the moby + offset; rows from the look and −gravity | `flyby_update` |
+//! | phase 1 | the fade − 0.05 (to 0); along the path at +0x3c·dt (`0x250318` = `crate::spline::advance`); the timer D+0x56; the end (path, timer, +0x39; with +0x40 the timer below `ticks(20)`) → phase 2; the FOV eased between its keys (`0x24a8d0` = `CosInterp`) into 0x16cf70; the look along the look path by the share travelled, or the moby + offset; rows from the look and −gravity | `flyby_update` |
 //! | phase 2 | the fade + 0.05 to 1 → phase 3: the FOV back, +0x39 = 1, the fade-out rate 0x167358 = 0.05, +0x7e = 4, the letterbox off, not +0x4c → `SetState(0, 1)`; +0x40 keeps flying | `flyby_update` |
 //! | phase 3 | nothing (the follow camera takes over: +0x7e = 4, a cut) | `flyby_update` |
 //! | 0x2f66c0 | pre hook: empty | n/a |
@@ -333,7 +333,7 @@ impl Camera {
             let before: f32 = (a..seg).map(chord).sum();
             let span: f32 = before + (seg..b).map(chord).sum::<f32>();
             let at = before + st.cursor.t;
-            let deg = st.degrees[k] + (st.degrees[k + 1] - st.degrees[k]) * (at / span);
+            let deg = super::script::cos_interp(st.degrees[k], st.degrees[k + 1], at / span);
             let half = deg * 0.017_453_292 * 0.5;
             self.flyby_out.tan = Some(half.sin() / half.cos());
         }
