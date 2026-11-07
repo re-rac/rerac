@@ -2,6 +2,11 @@
 
 ## 2026-11-06: R&C1 pass against Lombyte / OpenRAC (open posts, runtime 0.3.7 / 0.3.8)
 
+2026-11-07: the waterfalls' white foam over the lip, lost at some camera angles (Batalia 1560473204643074058, Pokitaru
+1561285436104642710): Bevy 0.19 sorts Transparent3d by the mesh AABB centre, so a pool's passes (one mesh each,
+0.25 apart in bias) reordered as the camera turned and L0's mix covered the foam; every draw-callback mesh and the
+water strips now sort at the origin (`fx_draw::sort_at_origin`). Confirmed white at every angle on PCSX2 by the user.
+
 Fixed on main (retest after the next release): the Oltanis crash after dying (255705f: stale draw callbacks across
 the death reload); the gold Bomb Glove's first-person range (a2a7721); the FOV after crashing the Pokitaru jet while
 boosting (7d63c30: the on-foot hero frame resets it); Batalia's turret, re-enterable after the battle and △ leaves

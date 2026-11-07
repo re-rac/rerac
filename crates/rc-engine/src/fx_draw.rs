@@ -254,7 +254,18 @@ impl PrimBuf {
         mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, self.uv);
         mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, self.color);
         mesh.insert_indices(Indices::U32(self.idx));
+        sort_at_origin(mesh);
     }
+}
+
+/// Makes a mesh sort as if it sat at the world origin. Bevy sorts Transparent3d by the view depth of the mesh's
+/// AABB centre (`RenderMesh::aabb_center`, from `Mesh::compute_aabb`) plus the material's depth bias, so draws whose
+/// order is their bias alone (the callback lists' slots, a callback's passes) would reorder by their geometry as the
+/// camera turns: a pool's L0 mix landing after its foam hid the foam (Batalia, Pokitaru). A precomputed AABB about
+/// the origin pins the centre; it outlives extraction only on a mesh kept in the main world (a `RENDER_WORLD` mesh
+/// recomputes it from its positions in `take_gpu_data`). The extents are wide enough that nothing culls by it.
+pub fn sort_at_origin(mesh: &mut Mesh) {
+    mesh.final_aabb = Some(bevy::math::bounding::Aabb3d::new(Vec3::ZERO, Vec3::splat(1.0e6)));
 }
 
 /// One draw of a callback this tick: FX texture, equation and primitives.

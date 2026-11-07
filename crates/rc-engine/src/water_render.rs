@@ -300,11 +300,14 @@ fn strip_mesh(d: &StripDescriptor) -> Mesh {
     let z1: Vec<f32> = d.vertices.iter().map(|v| v[3]).collect();
     let uv: Vec<[f32; 4]> = d.uvs.iter().map(|u| [u[0], u[1], u[0], u[1]]).collect();
     let tag: Vec<[u32; 2]> = d.vertices.iter().map(|v| [d.rgba, ww::wobble_hash(v[0], v[1]) & 7]).collect();
-    Mesh::new(PrimitiveTopology::TriangleStrip, RenderAssetUsages::RENDER_WORLD)
+    // Kept in the main world so its origin AABB survives extraction (crate::fx_draw::sort_at_origin).
+    let mut m = Mesh::new(PrimitiveTopology::TriangleStrip, RenderAssetUsages::default())
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, pos)
         .with_inserted_attribute(ATTRIBUTE_WATER_Z1, z1)
         .with_inserted_attribute(ATTRIBUTE_WATER_UV, uv)
-        .with_inserted_attribute(ATTRIBUTE_WATER_TAG, VertexAttributeValues::Uint32x2(tag))
+        .with_inserted_attribute(ATTRIBUTE_WATER_TAG, VertexAttributeValues::Uint32x2(tag));
+    crate::fx_draw::sort_at_origin(&mut m);
+    m
 }
 
 fn params(fix: u8, kind: u32, slot: u32, patch: usize) -> WaterParams {
