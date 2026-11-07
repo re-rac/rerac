@@ -460,6 +460,11 @@ pub fn create_particles(h: &Hero, sys: &mut Particles) {
     sys.hero_plat = crate::hero::physics::to_f32x3(h.plat_applied);
     // 0x13f5e0, the gravity direction type 78 homes around.
     sys.gravity = crate::hero::physics::to_f32x3(h.gravity_dir);
+    // The object in the glove follows the hand point in the hero update, after the moby loop wrote its anchor: the
+    // Doom canister's type-32 glows (`0x283ea8`) read its position +0x10 in `UpdateParts`, after the hero.
+    if let Some((b, p)) = h.weapons.glove.placed {
+        if let Some(a) = sys.anchors.get_mut(&b) { *a = p; }
+    }
     for s in &h.fx.parts { create_one(sys, s, gold); }
 }
 

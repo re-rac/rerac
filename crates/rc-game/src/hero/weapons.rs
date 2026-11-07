@@ -98,6 +98,9 @@ pub struct Glove {
     pub hand_mtx: [[f32; 4]; 4],
     /// The Mine Glove's +0x54: no new mine until it runs out (10 ticks after a throw).
     pub respawn: i32,
+    /// The object the tail put at the hand point this tick and where (`gloves::update` step 8): the particles that
+    /// follow it read its position in `UpdateParts`, after the hero update ([`super::fx::create_particles`]).
+    pub placed: Option<(MobyId, [f32; 3])>,
 }
 
 /// The weapons' fields: the ammo mirror, the Bomb Glove's pvars, the weapon arm.

@@ -279,6 +279,7 @@ pub fn update(hero: &mut Hero, table: &mut MobyTable, _anim: &dyn super::anim::A
         _ => {}
     }
     // 8. The tail.
+    hero.weapons.glove.placed = None;
     if row.refill == Refill::AmmoAfterDelay && hero.weapons.glove.respawn > 0 { hero.weapons.glove.respawn -= 1; }
     match hero.weapons.glove.held {
         None => {
@@ -294,6 +295,7 @@ pub fn update(hero: &mut Hero, table: &mut MobyTable, _anim: &dyn super::anim::A
             let h = hero.weapons.glove.hand;
             let m = &mut table.mobys[b];
             m.position = [h[0], h[1], h[2], m.position[3]];
+            hero.weapons.glove.placed = Some((b, h));
         }
     }
 }
