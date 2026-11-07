@@ -69,7 +69,7 @@
 //! **Port Options** (port-only, `rc_game::menus::pause::port`): an extra "Port Options" entry in the Options
 //! list (the pause menu's and the main menu's) opens a page built from the game's machinery; its graphics rows are synced with crate::graphics's
 //! `GraphicsSettings` around every menu tick (the shadows row likewise with `shadow_render::ShadowSettings`, the display
-//! rows with `display::DisplaySettings`): the resource's value is shown, a ✕ writes it back and saves it to the port
+//! rows with `display::DisplaySettings`, the controller rows with `haptics::ControllerSettings`): the resource's value is shown, a ✕ writes it back and saves it to the port
 //! settings file. The anti-aliasing row offers only the sample counts the GPU supports ([`SupportedMsaa`]; ✕ skips the
 //! rest, e.g. 8x on Apple M-series).
 //!
@@ -562,8 +562,22 @@ fn port_rows_in(
     display: &crate::display::DisplaySettings,
     gfx: &crate::graphics::GraphicsSettings,
     supported: Option<&SupportedMsaa>,
+    (haptics, gms): (Option<&crate::haptics::ControllerSettings>, Option<&crate::gms::Gms>),
 ) {
     if let Some(s) = shadows { menu.set_port_value(Setting::Shadows, !s.enabled as u8); }
+    // The Gadgetron Movement System page's rows: the connected controllers (crate::gms).
+    if let Some(g) = gms {
+        menu.set_gms_rows(g.rows());
+        menu.gms_in_log = g.in_log;
+    }
+    if let Some(h) = haptics {
+        menu.set_port_value(Setting::Vibration, !h.enabled as u8);
+        menu.set_port_value(Setting::VibrationStrength, h.strength.index());
+        menu.set_port_value(Setting::FireButton, h.fire_r2 as u8);
+        menu.set_port_value(Setting::TriggerEffects, !h.triggers as u8);
+        menu.set_port_value(Setting::ButtonIcons, h.icons.index());
+        menu.set_port_value(Setting::Lightbar, h.lightbar.index());
+    }
     menu.set_port_value(Setting::Resolution, display.resolution.index());
     menu.set_port_value(Setting::Aspect, display.aspect.index());
     menu.set_port_value(Setting::Fullscreen, display.fullscreen as u8);
@@ -572,13 +586,34 @@ fn port_rows_in(
 
 /// The Port Options rows read back after the tick: a changed row changes its setting and saves it.
 fn port_rows_out(
-    menu: &PageMenu,
+    menu: &mut PageMenu,
     shadows: Option<&mut crate::shadow_render::ShadowSettings>,
     display: &mut crate::display::DisplaySettings,
     gfx: &mut crate::graphics::GraphicsSettings,
     gfx_before: &crate::graphics::GraphicsSettings,
     frame: u64,
+    (haptics, gms): Controller<'_>,
 ) {
+    // ✕ on a GMS row: lock that controller, or free it.
+    if let (Some(g), Some(i)) = (gms, menu.take_gms_pick()) {
+        g.pick(i);
+        println!("menus: frame {frame}: GMS: lock {:?}", g.lock);
+    }
+    if let Some(h) = haptics {
+        let want = crate::haptics::ControllerSettings {
+            enabled: menu.port_value(Setting::Vibration).map_or(h.enabled, |v| v == 0),
+            strength: menu.port_value(Setting::VibrationStrength).map_or(h.strength, crate::haptics::Strength::from_index),
+            fire_r2: menu.port_value(Setting::FireButton).map_or(h.fire_r2, |v| v == 1),
+            triggers: menu.port_value(Setting::TriggerEffects).map_or(h.triggers, |v| v == 0),
+            icons: menu.port_value(Setting::ButtonIcons).map_or(h.icons, crate::button_icons::IconStyle::from_index),
+            lightbar: menu.port_value(Setting::Lightbar).map_or(h.lightbar, crate::haptics::Lightbar::from_index),
+        };
+        if *h != want {
+            *h = want;
+            println!("menus: frame {frame}: Port Options: controller {h:?}");
+            h.save();
+        }
+    }
     if let (Some(v), Some(s)) = (menu.port_value(Setting::Shadows), shadows) {
         if s.enabled != (v == 0) {
             s.enabled = v == 0;
@@ -621,6 +656,17 @@ type InteractParams<'w> = (
     Option<ResMut<'w, crate::audio_out::AudioOut>>,
 );
 
+/// The settings the Port Options rows read and write (shadows, display, graphics, controller, the GMS page).
+type PortParams<'w> = (
+    Option<ResMut<'w, crate::shadow_render::ShadowSettings>>,
+    ResMut<'w, crate::display::DisplaySettings>,
+    ResMut<'w, crate::graphics::GraphicsSettings>,
+    (Option<ResMut<'w, crate::haptics::ControllerSettings>>, Option<ResMut<'w, crate::gms::Gms>>),
+);
+
+/// The controller rows' settings and the Gadgetron Movement System's state (crate::haptics, crate::gms).
+type Controller<'a> = (Option<&'a mut crate::haptics::ControllerSettings>, Option<&'a mut crate::gms::Gms>);
+
 #[allow(clippy::too_many_arguments)]
 fn menu_frame(
     rt: Option<ResMut<MenuRt>>,
@@ -632,11 +678,7 @@ fn menu_frame(
     source: Res<crate::game_camera::CameraSource>,
     supported: Option<Res<SupportedMsaa>>,
     (mut vr, mut feed, mut view, mut audio): InteractParams,
-    (mut shadows, mut display, mut gfx): (
-        Option<ResMut<crate::shadow_render::ShadowSettings>>,
-        ResMut<crate::display::DisplaySettings>,
-        ResMut<crate::graphics::GraphicsSettings>,
-    ),
+    (mut shadows, mut display, mut gfx, (mut haptics, mut gms)): PortParams,
     mut widgets3d: ResMut<crate::menu_models::GadgetsPreview>,
     (mut fer, movies): (ResMut<crate::saves::FrontEndRt>, Option<Res<crate::movie_render::MovieState>>),
 ) {
@@ -647,7 +689,7 @@ fn menu_frame(
     if fer.fe.is_some() {
         let busy = movies.as_deref().is_some_and(|m| m.busy());
         let fer = &mut *fer;
-        let port = (shadows.as_deref_mut(), &mut *display, &mut *gfx, supported.as_deref());
+        let port = (shadows.as_deref_mut(), &mut *display, &mut *gfx, supported.as_deref(), (haptics.as_deref_mut(), gms.as_deref_mut()));
         front_end_frame(rt, &mut mm, &mut play, gs, fer, &pad, &source, busy, audio.as_deref_mut(), port);
         mm.state.end_frame();
         mm.loop_frame += 1;
@@ -789,14 +831,14 @@ fn menu_frame(
                 post_fade_step(rt, &mut mm, &mut play, gs, sess.hp, audio.as_deref_mut(), frame, true);
             } else if let Some(menu) = rt.menu.as_mut() {
                 let gfx_before = *gfx;
-                port_rows_in(menu, shadows.as_deref(), &display, &gfx_before, supported.as_deref());
+                port_rows_in(menu, shadows.as_deref(), &display, &gfx_before, supported.as_deref(), (haptics.as_deref(), gms.as_deref()));
                 // The card and the save inputs moved into the menu for its tick (crate::saves).
                 saves_in(menu, &play);
                 // 0x15172a as the widgets read it (the Helpdesk girl).
                 menu.media.voice_state = play.svc.help.voice.state;
                 let out = menu.tick(&inp, gs, &env);
                 if out.elapsed_hold { play.svc.elapsed_hold = true; }
-                port_rows_out(menu, shadows.as_deref_mut(), &mut display, &mut gfx, &gfx_before, frame);
+                port_rows_out(menu, shadows.as_deref_mut(), &mut display, &mut gfx, &gfx_before, frame, (haptics.as_deref_mut(), gms.as_deref_mut()));
                 if trace && !out.sounds.is_empty() { println!("menus: frame {frame}: sounds {:?}", out.sounds); }
                 // The class-0x472 sounds (`PlayClassSound(n, 0x11, frame moby)`), the close's audio, then the frame's sound_update.
                 if let Some(a) = audio.as_deref_mut() {
@@ -1358,12 +1400,14 @@ fn end_choice(rt: &mut MenuRt, play: &mut Play, gs: &mut rc_game::game_state::Ga
     }
 }
 
-/// The settings the Port Options page reads and writes (shadows, display, graphics, the device's MSAA counts).
+/// The settings the Port Options page reads and writes (shadows, display, graphics, the device's MSAA counts, the
+/// controller and the GMS page).
 type FrontPortSettings<'a> = (
     Option<&'a mut crate::shadow_render::ShadowSettings>,
     &'a mut crate::display::DisplaySettings,
     &'a mut crate::graphics::GraphicsSettings,
     Option<&'a SupportedMsaa>,
+    Controller<'a>,
 );
 
 /// One main-loop frame of the front end (crate::saves; `rc_game::frontend`).
@@ -1379,7 +1423,7 @@ fn front_end_frame(
     movie_busy: bool,
     mut audio: Option<&mut crate::audio_out::AudioOut>,
     // The Port Options' settings: the main menu's copy of the page reads and writes them as the pause menu's does.
-    (shadows, display, gfx, supported): FrontPortSettings<'_>,
+    (shadows, display, gfx, supported, (haptics, gms)): FrontPortSettings<'_>,
 ) {
     let frame = mm.loop_frame;
     let vsync = frame as u32;
@@ -1447,9 +1491,9 @@ fn front_end_frame(
                 saves_in(menu, play);
                 menu.saves.card.front_end = true;
                 let gfx_before = *gfx;
-                port_rows_in(menu, shadows.as_deref(), display, &gfx_before, supported);
+                port_rows_in(menu, shadows.as_deref(), display, &gfx_before, supported, (haptics.as_deref(), gms.as_deref()));
                 let o = menu.tick(&inp, gs, &env);
-                port_rows_out(menu, shadows, display, gfx, &gfx_before, frame);
+                port_rows_out(menu, shadows, display, gfx, &gfx_before, frame, (haptics, gms));
                 if o.elapsed_hold { play.svc.elapsed_hold = true; }
                 if let Some(a) = audio.as_deref_mut() {
                     play_menu_sounds(play, a, &o.sounds);
@@ -1537,6 +1581,7 @@ fn build_prims(
     let Some(mut rt) = rt else { return };
     let Some(lh) = level.0.hud.as_ref() else { return };
     let mut h = Hud2d::default();
+    h.sharp_icons = true;
     h.frame_sizes = rt.assets.hud.frame_sizes.clone();
     let mut st = TextState::default();
     let mut statics: [Vec<Prim>; 3] = Default::default();
@@ -1546,6 +1591,7 @@ fn build_prims(
     // The pages stay clipped to the 512×416 screen in a 16:9 frame (`Prim::boxed`): their unused panels lie off it.
     for p in h.prims.iter_mut().chain(statics.iter_mut().flatten()) { p.boxed = true; }
     hook.prims = h.prims;
+    hook.icons = h.icons.into_iter().map(|m| crate::hud_render::IconMark { boxed: true, ..m }).collect();
     hook.statics = statics;
     hook.replace_hud = matches!(rt.render_mode, Mode::Menu | Mode::Slideshow) || menu_under_freeze(&rt);
     // The vendor (mode 5) runs `HudUpdate(1)` every frame: the HUD ticks and draws over its screens.
@@ -1692,7 +1738,15 @@ fn menu_layer(
         let pal = palette.get_or_insert_with(|| buffers.get(&fr.extra.palette).and_then(|b| b.data.clone()).unwrap_or_default());
         let rec = records.get_or_insert_with(|| buffers.get(&fr.extra.instances).and_then(|b| b.data.clone()).unwrap_or_default());
         // MobyAnimEval of the slot's state (the frame mobys have no pose layers and no blends).
-        let m = rc_formats::moby_anim::evaluate_with_snapshot(&f.class.anim, &slots[i].state, None);
+        let mut m = rc_formats::moby_anim::evaluate_with_snapshot(&f.class.anim, &slots[i].state, None);
+        // Port-only: the port pages' panel adjustments (rc_game::menus::pause::frame::PanelAdjust) move the corner
+        // joints as they moved the panel rects, so the 3D border follows (its thickness unchanged).
+        for (c, &j) in frame::CORNER_JOINTS.iter().enumerate() {
+            let s = f.shifts[i][c];
+            if let Some(r) = m.get_mut(j) {
+                for l in 0..3 { r[3][l] += s[l]; }
+            }
+        }
         let base = i * fr.slots as usize;
         let bytes: Vec<u8> = m.iter().take(fr.slots as usize).flat_map(|r| r.iter().flatten().flat_map(|v| v.to_le_bytes())).collect();
         if let Some(dst) = pal.get_mut(base * 64..base * 64 + bytes.len()) { dst.copy_from_slice(&bytes); }
