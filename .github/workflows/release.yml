@@ -23,8 +23,8 @@ env:
   SITE_DISPATCH_TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
 
 jobs:
-  # One package per platform. macOS Apple Silicon is the tested one; Windows x64 and Linux x64 are built the same way
-  # and have never been run (fail-fast is off and the release job only requires the macOS package). Linux builds on
+  # One package per platform. macOS Apple Silicon is the main tested one and Windows x64 has been run; Linux x64 is built
+  # the same way and has never been run (fail-fast is off and the release job only requires the macOS package). Linux builds on
   # Ubuntu 22.04 so the binary runs on systems with glibc 2.35 or newer.
   build:
     name: Build ${{ matrix.name }}
@@ -34,7 +34,7 @@ jobs:
         include:
           - name: macOS Apple Silicon
             platform: macos-14
-          - name: Windows x64 (untested)
+          - name: Windows x64
             platform: windows-latest
           - name: Linux x64 (untested)
             platform: ubuntu-22.04

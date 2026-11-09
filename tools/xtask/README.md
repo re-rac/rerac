@@ -78,7 +78,7 @@ cargo xtask regen-data [--iso <image>] [--data-dir <dir>] [--force] [--check]
 What it does, in order:
 
 1. **The disc.** Without `--iso` or `RC_ISO`, it prints how to set `RC_ISO` once (fish: `set -Ux RC_ISO "…"`; zsh /
-   bash: an `export` line in `~/.zshrc` / `~/.bashrc`) and exits with code 2.
+   bash: an `export` line in `~/.zshrc` / `~/.bashrc`; PowerShell: a user environment variable) and exits with code 2.
 2. **What the folder holds.** Every file is sorted into:
    * **extractor output:** the Tier 0 table's files, `extract-info.json`, `cache/`, `exports/`;
    * **known C++ extractor leftovers,** listed with counts and sizes, then deleted with the old folder: `*.partial`,

@@ -67,7 +67,21 @@ RC_AUDIO=0; cargo-nextest when installed, else `cargo test --workspace --feature
 /// The repository root (this crate lives at `tools/xtask`).
 pub fn repo_root() -> PathBuf {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    p.canonicalize().unwrap_or(p)
+    p.canonicalize().map(strip_verbatim).unwrap_or(p)
+}
+
+/// `p` without the `\\?\` prefix `canonicalize` adds on Windows (Git Bash cannot open such paths).
+pub fn strip_verbatim(p: PathBuf) -> PathBuf {
+    match p.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
+        Some(rest) if !rest.starts_with(r"UNC\") => PathBuf::from(rest),
+        _ => p,
+    }
+}
+
+/// The user's home folder: `HOME`, else `USERPROFILE` on Windows (where `HOME` is usually unset).
+pub fn home_dir() -> Option<PathBuf> {
+    let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    var("HOME").or_else(|| if cfg!(windows) { var("USERPROFILE") } else { None })
 }
 
 /// The `cargo` that ran us (`CARGO` is set by `cargo run`), else `cargo` from `PATH`.
@@ -100,10 +114,27 @@ fn main() -> ExitCode {
 /// `cargo xtask package [args]`: `tools/package/package.sh [args]`, from the repo root.
 fn package(args: &[OsString]) -> ExitCode {
     let root = repo_root();
-    let status = Command::new("bash").arg(root.join("tools/package/package.sh")).args(args).current_dir(&root).status();
+    let bash = bash();
+    let status = Command::new(&bash).arg("tools/package/package.sh").args(args).current_dir(&root).status();
     match status {
         Ok(s) if s.success() => ExitCode::SUCCESS,
         Ok(s) => ExitCode::from(s.code().and_then(|c| u8::try_from(c).ok()).unwrap_or(1)),
-        Err(e) => { eprintln!("error: cannot run bash tools/package/package.sh: {e}"); ExitCode::FAILURE }
+        Err(e) => { eprintln!("error: cannot run {} tools/package/package.sh: {e}", bash.display()); ExitCode::FAILURE }
     }
+}
+
+/// The bash that runs `package.sh`. On Windows a bare `bash` can resolve to WSL's, so Git for Windows' is preferred.
+fn bash() -> PathBuf {
+    #[cfg(windows)]
+    if let Some(b) = git_bash() { return b; }
+    "bash".into()
+}
+
+/// Git for Windows' bash: `git --exec-path` is `<git>/mingw64/libexec/git-core`, bash is `<git>/bin/bash.exe`.
+#[cfg(windows)]
+fn git_bash() -> Option<PathBuf> {
+    let out = Command::new("git").arg("--exec-path").output().ok()?;
+    let exec = PathBuf::from(String::from_utf8(out.stdout).ok()?.trim());
+    let b = exec.ancestors().nth(3)?.join("bin/bash.exe");
+    b.is_file().then_some(b)
 }
