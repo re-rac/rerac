@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.3.9-alpha
+
+Fixes from the bug reports on Discord.
+
+- Batalia's and Pokitaru's waterfalls keep their white foam from every camera angle.
+- Cutscenes start and end cleanly: no flicker, no stray frame of play, and the fades ease in and out.
+- Cutscene cuts no longer click.
+- Music no longer keeps playing in slow motion while the game has it paused.
+- Sounds pause properly while a vendor is open.
+- Clank's footsteps stop when you switch back to Ratchet.
+- The Magneboots' struggling jump alternates between its two sounds again.
+- Helmets, the O2 mask, boots and gloves follow Ratchet's head and arm movements.
+- The wrench appears at the right moment when Ratchet climbs ledges.
+- The Glove of Doom's glow stays inside the glove.
+- The Bomb Glove aims where Ratchet is facing, prefers enemies over crates it cannot see, leads moving targets and throws further with gold upgrades while L1 or L2 is held.
+- The Decoy Glove and the Glove of Doom show the right landing spot on boats and the Metropolis train.
+- The Gold Bomb Glove throws further in first person.
+- Creatures fired from the Suck Cannon leave Ratchet's hand properly.
+- The Pokitaru jet no longer leaves the view zoomed after a crash.
+- Batalia's turret can be used again once the battle is won.
+- The mirrored-levels cheat no longer flashes black.
+- Gaspar's turret sounds no longer stack up after a death.
+- Oltanis no longer crashes after dying.
+- In the Hologuise, Clank and his pack squash along with Ratchet.
+- Fly-by cameras zoom smoothly.
+
 ## v0.3.8-alpha
 
 Fixes and features from the community's pull requests.
