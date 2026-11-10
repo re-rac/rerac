@@ -33,7 +33,7 @@ jobs:
       matrix:
         include:
           - name: macOS Apple Silicon
-            platform: macos-14
+            platform: macos-15
           - name: Windows x64 (untested)
             platform: windows-latest
           - name: Linux x64 (untested)
@@ -111,12 +111,12 @@ jobs:
       - name: Collect the packages
         id: assets
         run: |
-          mac="$(ls packages/rerac-package-macos-14/*macos-arm64.zip 2>/dev/null || true)"
+          mac="$(ls packages/rerac-package-macos-15/*macos-arm64.zip 2>/dev/null || true)"
           if [ -z "$mac" ]; then
             echo "::error::The macOS package is missing; nothing is released."
             exit 1
           fi
-          files="$mac $(ls packages/rerac-package-macos-14/*/rerac-manifest.json)"
+          files="$mac $(ls packages/rerac-package-macos-15/*/rerac-manifest.json)"
           win="$(ls packages/rerac-package-windows-latest/*windows-x86_64.zip 2>/dev/null || true)"
           if [ -n "$win" ]; then files="$files $win"; else echo "::warning::No Windows package in this release."; fi
           linux="$(ls packages/rerac-package-ubuntu-22.04/*linux-x86_64.zip 2>/dev/null || true)"
