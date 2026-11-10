@@ -539,6 +539,8 @@ pub fn log_list_enter(m: &mut PageMenu, w: u32, gs: &GameState, log_ids: &[(i16,
     let Some(Data::List(l)) = m.widgets.get_mut(&w).map(|x| &mut x.data) else { return };
     l.items = (0..n).map(|k| Item { label: log_ids.get(gs.global.help_log[n - 1 - k] as usize).map_or(0, |e| e.1), action: 1, ..Item::default() }).collect();
     l.items.retain(|it| it.label != 0);
+    // Port-only: the Gadgetron Movement System note, last (the oldest), never in the saved log.
+    if m.gms_in_log { l.items.push(Item { label: super::port::text::GMS_TITLE as i16, action: 1, ..Item::default() }); }
 }
 
 /// `fun_0021d1f8` (0x290c00): hidden (draw flags |= 4) while `all_text` streams (+0x50 = 1).
