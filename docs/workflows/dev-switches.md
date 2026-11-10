@@ -59,6 +59,9 @@ module that reads it: `grep -rn '"RC_' crates/` lists them all.
 | `RC_TRACE_RESPAWN` | `1`: at every death reload, the spawn test's verdict for each Kerwan trooper (574) with the bits that decided it, and a line whenever a trooper blows up or is deleted (`respawn trace:`) |
 | `RC_TRACE_BOTS` | `1`: Clank's gadgetbots and their pads (class 857 / 1302) on stderr: each bot merged into a pad with the count left, each knock-back home, each pad trigger with its count, mission and the class and state of each linked door (a door opens only from state 2) |
 | `RC_ASPECT` | `4:3` (default: the original TV picture), `16:10`, `16:9` or `fill` (the window's own shape, never narrower than 4:3: the frame is the window's, so an ultrawide monitor has no black pillars, while a narrower window is letterboxed) (Hor+: the view widens, the HUD's side elements move to the frame's edges, the menus stay in the centred 4:3 box); overrides the Port Options value at start (crate::display) |
+| `RC_DUALSENSE` | `0`: do not read DualSense pads from their HID reports (crate::dualsense; they then go through Bevy's gamepads, which miss a Bluetooth pad in its extended report mode); no rumble or trigger effects either |
+| `RC_DUALSENSE_TRACE` | `1`: print every DualSense report as decoded (sticks, buttons, R2's travel) |
+| `RC_VIBRATION` | `0` / `1`: controller rumble off / on at start, over the Port Options value (crate::haptics) |
 | `RC_RESOLUTION` | `window` (default: the largest frame of the Aspect ratio that fits the window) or `416`, `720`, `1080`, `1440`, `2160` (a frame that many lines high at the Aspect ratio, scaled to the window); overrides the Port Options value at start (crate::display) |
 | `RC_FULLSCREEN` | `1`: borderless fullscreen on the current monitor; `0`: windowed; overrides the Port Options value at start (F11 toggles in game) |
 | `RC_FOG` | `0`: disable fog |
