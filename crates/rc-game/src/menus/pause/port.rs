@@ -1,5 +1,6 @@
 //! **Port-only** (not in the game): the "Port Options" page, for settings the PS2 never had (the graphics options and
-//! their preset, anti-aliasing, switching the moby shadows off, the aspect, the render resolution and fullscreen).
+//! their preset, anti-aliasing, switching the moby shadows off, the gameplay and cutscene aspects, the render
+//! resolution and fullscreen).
 //! Spec: docs/plan/menus.md "Port-only settings"; the graphics rows: docs/plan/graphics_options.md (every row's first
 //! value is the game's own look).
 //!
@@ -64,8 +65,24 @@ const FRONT_SOUND_LABEL: i16 = 20258;
 /// backwards to it (another page's, e.g. Cheats', end on their own parent's layout under the Options page).
 pub const MODEL_FEW: u32 = 0x1b5788;
 pub const MODEL_MANY: u32 = 0x1b5ee0;
-/// The rows the Camera frame's list panel shows at once; the list scrolls ([`PortList::top`]).
+/// The rows the list shows at once before its panel has a rect; the list scrolls ([`PortList::top`]).
 pub const VISIBLE: usize = 4;
+/// The list panel (slot 3 on both pages) stretched to these screen rows, from below the title (y 26..68) to above
+/// the hint list (318..388): the model pages' panels are 165..248 (Camera) and 118..267 (the front end's Sound).
+pub const LIST_SLOT: usize = 3;
+pub const LIST_ROWS: [i32; 2] = [82, 302];
+/// The least row spacing: the panel shows `h / ROW_STEP − 1` rows (the camera list's `h/(n+1)` spacing at ≥ this).
+pub const ROW_STEP: i32 = 20;
+
+/// The frame mobys' stretch for page `page` ([`super::frame::FrameMobys::stretch`]): the list panel on the port pages.
+pub fn panel_stretch(page: u32) -> [Option<[i32; 2]>; super::frame::SLOTS] {
+    let mut s = [None; super::frame::SLOTS];
+    if page == PAGE || page == PAGE_FRONT { s[LIST_SLOT] = Some(LIST_ROWS); }
+    s
+}
+
+/// The rows a list panel `h` pixels high shows.
+fn visible(h: i32) -> usize { if h <= 0 { VISIBLE } else { ((h / ROW_STEP - 1).max(1) as usize).min(ENTRIES.len()) } }
 
 /// The port's own strings (not in the game's text table). Ids are negative; [`MenuAssets::msg`] resolves them.
 pub mod text {
@@ -90,6 +107,7 @@ pub mod text {
     pub const ASPECT_16_9: i32 = -0x152;
     pub const ASPECT_16_10: i32 = -0x153;
     pub const ASPECT_FILL: i32 = -0x154;
+    pub const CUTSCENE_ASPECT: i32 = -0x155;
     pub const PRESET: i32 = -0x160;
     pub const ORIGINAL: i32 = -0x161;
     pub const ENHANCED: i32 = -0x162;
@@ -124,7 +142,8 @@ pub mod text {
             RES_1440 => b"1440p",
             RES_2160 => b"2160p",
             FULLSCREEN => b"Fullscreen",
-            ASPECT => b"Aspect ratio",
+            ASPECT => b"Gameplay aspect",
+            CUTSCENE_ASPECT => b"Cutscene aspect",
             ASPECT_4_3 => b"4:3",
             ASPECT_16_9 => b"16:9",
             ASPECT_16_10 => b"16:10",
@@ -162,10 +181,13 @@ pub enum Setting {
     Resolution,
     /// The window: value 0 windowed, 1 fullscreen.
     Fullscreen,
-    /// The frame's aspect: value 0 the TV's 4:3, 1 16:10, 2 16:9, 3 the window's own (Fill: the frame is the window's
-    /// shape, never narrower than 4:3 — a narrower window is letterboxed, not squashed; the 3D view widens; the 2D
-    /// screen stays 4:3, centred).
+    /// The gameplay view's aspect: value 0 the TV's 4:3, 1 16:10, 2 16:9, 3 the window's own (Fill: the window's shape,
+    /// never narrower than 4:3 — a narrower window is letterboxed, not squashed; the 3D view widens; the 2D screen stays
+    /// 4:3, centred; the HUD's side slots move out to the view's edges).
     Aspect,
+    /// The cutscenes' aspect (the story scenes, the letterboxed cutaways, the ship's take-off / landing), the same
+    /// values. The frame takes the wider of the two; the narrower view is pillarboxed in it.
+    CutsceneAspect,
     /// How the game's 2D screen reaches the frame: value 0 Original (scaled smoothly, as on a TV), 1 Sharp pixels.
     Hud,
     /// How world textures pick their detail level: value 0 Original (the PS2's rule), 1 Smooth, 2 Sharp.
@@ -192,6 +214,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry { setting: Setting::Hud, label: text::HUD, values: &[text::ORIGINAL, text::SHARP_PIXELS] },
     Entry { setting: Setting::Shadows, label: text::SHADOWS, values: &[text::ON, text::OFF] },
     Entry { setting: Setting::Aspect, label: text::ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9, text::ASPECT_FILL] },
+    Entry { setting: Setting::CutsceneAspect, label: text::CUTSCENE_ASPECT, values: &[text::ASPECT_4_3, text::ASPECT_16_10, text::ASPECT_16_9, text::ASPECT_FILL] },
     Entry { setting: Setting::Resolution, label: text::RESOLUTION, values: &[text::RES_WINDOW, text::RES_416, text::RES_720, text::RES_1080, text::RES_1440, text::RES_2160] },
     Entry { setting: Setting::Fullscreen, label: text::FULLSCREEN, values: &[text::OFF, text::ON] },
 ];
@@ -320,12 +343,13 @@ impl PageMenu {
 pub fn update(m: &mut PageMenu, w: u32, inp: &MenuInput, out: &mut MenuOut) -> i32 {
     if !m.is_focus(w) { return 0; }
     if let Some(r) = keys(m, inp, 1) { return r; }
+    let shown = visible(m.widgets.get(&w).map_or(0, |wd| wd.rect[3])) as i32;
     let Some(p) = list_mut(m, w) else { return 0 };
     let start = p.cursor;
     if inp.pressed_u & button::UP != 0 && p.cursor != 0 { p.cursor -= 1; }
     if inp.pressed_u & button::DOWN != 0 && (p.cursor as usize + 1) < ENTRIES.len() { p.cursor += 1; }
     if p.cursor != start { out.sounds.push(MenuSound::Cursor); }
-    p.top = p.top.clamp(p.cursor - VISIBLE as i32 + 1, p.cursor).max(0);
+    p.top = p.top.clamp(p.cursor - shown + 1, p.cursor).max(0);
     let r = p.cursor as usize;
     if inp.pressed_u & button::CROSS != 0 {
         let choices = p.choices.get(r).copied().unwrap_or(u32::MAX);
@@ -342,8 +366,8 @@ pub fn draw(m: &mut PageMenu, w: u32, a: &MenuAssets, out: &mut Vec<MenuDraw>) -
     let Some(wd) = m.widgets.get(&w) else { return 1 };
     let [_, _, ww, wh] = wd.rect;
     let Data::Port(p) = &wd.data else { return 1 };
-    // The camera list's spacing for the rows shown (h/(n+1), n = VISIBLE).
-    let shown = ENTRIES.len().min(VISIBLE);
+    // The camera list's spacing for the rows shown (h/(n+1)).
+    let shown = visible(wh);
     let step = wh / (shown as i32 + 1);
     let mut y = step - 8;
     let top = (p.top.max(0) as usize).min(ENTRIES.len() - shown);

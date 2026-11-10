@@ -522,10 +522,13 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
   (0x1b2878) and hint list W4 (0x1b2920, "✕ Toggle / △ Exit") are those of Subtitles 0x1b5788 (≤ 2 rows; Camera 0x1b5ee0's
   for 3+). Only an Options sub-page's frames work: a page's frame animations start from its parent's layout and △ plays
   them backwards to it (with Cheats' frames, tried 2026-10-10, △ left the Options page in the Goodies layout). W0 is a
-  clone of the sub-page title label (flags 0xf: large, centred) with the port title; W3 is the port list, showing
-  `port::VISIBLE` (4) rows at a time and scrolling with the cursor; the game's arrow (icon 0xe99e frame 6, the Epilogue's
-  page arrow, turned to point up / down) marks rows hidden above and below (players missed that the list scrolls). The port
-  list is
+  clone of the sub-page title label (flags 0xf: large, centred) with the port title; W3 is the port list, in a panel
+  stretched (port-only) to rows 82..302 between the title and the hints on both pages (`port::panel_stretch`:
+  `frame::FrameMobys::stretch` moves the slot's top / bottom corners in world z, in proportion to its sequence's
+  progress, so the open / close animations reach it smoothly; the engine moves the corner joints of the drawn moby
+  by the same amount), showing `h / 20 − 1` rows (10) at a time and scrolling with the cursor; the game's arrow (icon
+  0xe99e frame 6, the Epilogue's page arrow, turned to point up / down) marks rows hidden above and below (players missed
+  that the list scrolls). The port list is
   updated and drawn exactly like the camera list 0x294cc0 / 0x294e68 (rows `h/(n+1)`, first y `h/(n+1) − 8`, label regular at
   (12, y) 0x8020ffff selected / 0x80ffa888, value right-aligned at (w − 12, y) 0x80ffa888; Up/Down without wrap + sound 1; ✕
   cycles the value + sound 0; generic Start/Select/R3 close and △ → Options). Transitions (12 ticks, seqs forward / reversed),
@@ -539,11 +542,15 @@ sub-pages (`crates/rc-game/src/menus/pause/port.rs`, `PageMenu::install_port_pag
 * **Rows** (`port::ENTRIES`, one entry per option): the graphics rows (Preset, Anti-aliasing: Original / off / 2x / 4x / 8x,
   Detail distance, Texture filtering, HUD; docs/plan/graphics_options.md) → `graphics::GraphicsSettings` (engine
   `menu_render.rs` syncs the rows with the resource around each menu tick; a change is saved; the anti-aliasing samples
-  reach the cameras through `render_settings::RenderSettings::msaa`). Shadows: on / off. Aspect ratio: 4:3 / 16:10 / 16:9 / Fill, Resolution: Window / 416p / 720p /
+  reach the cameras through `render_settings::RenderSettings::msaa`). Shadows: on / off. Gameplay aspect and Cutscene aspect: 4:3 / 16:10 / 16:9 / Fill each, Resolution: Window / 416p / 720p /
   1080p / 1440p / 2160p and Fullscreen: off / on → `display::DisplaySettings` (the game frame every camera renders into, presented
-  on black at the window's size; keys `aspect` / `resolution` / `fullscreen` in the settings file). Fill is the window's own
+  on black at the window's size; keys `aspect` (gameplay) / `cutscene_aspect` / `resolution` / `fullscreen` in the settings
+  file; a file without `cutscene_aspect` gives the cutscenes the gameplay aspect). Fill is the window's own
   shape, so an ultrawide monitor (3440×1440, 43:18 — not the 21:9 its label suggests) fills with no black pillars, but never
-  narrower than 4:3: a window narrower than the TV's is letterboxed (top / bottom bars), so the UI is never squashed. 16:10 / 16:9 / Fill are Hor+: the
+  narrower than 4:3: a window narrower than the TV's is letterboxed (top / bottom bars), so the UI is never squashed. The
+  frame takes the wider aspect in the window; while the view shown is narrower (a cutscene — a scene, the letterbox 0x15f404
+  set, mode 6's take-off / landing / fly-away — or gameplay), black bars cover the margin it does not show
+  (`display::pillar_bars`, drawn in the HUD layer). The HUD's side slots follow the gameplay aspect. 16:10 / 16:9 / Fill are Hor+: the
   world projection's x tangent is the game's × 6/5 / × 4/3 / the frame's ratio ÷ 4:3 and culling reads the live projection; the 512×416 screen maps to
   the frame's centred 4:3 box, the HUD layer is 51 / 85 game px wider on each side at 16:10 / 16:9 (the frame's own margin at Fill; its left/right-anchored slots move out,
   primitives spanning the screen stretch) and the menu pages stay clipped to the box (`Prim::boxed`). The world is not re-rendered under the menu (the snapshot is shown), so the new
